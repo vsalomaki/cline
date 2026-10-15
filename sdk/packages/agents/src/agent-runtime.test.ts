@@ -1713,6 +1713,31 @@ describe("AgentRuntime", () => {
 		}
 	});
 
+	it("caps provider error retries at the configured count", async () => {
+		vi.useFakeTimers();
+		try {
+			const model = new ScriptedModel(
+				Array.from({ length: 4 }, () => () => [
+					{
+						type: "finish" as const,
+						reason: "error" as const,
+						error: "Provider returned error",
+					},
+				]),
+			);
+			const runtime = new AgentRuntime({ model, providerErrorMaxRetries: 1 });
+
+			const runPromise = runtime.run("Hi");
+			await vi.runAllTimersAsync();
+			const result = await runPromise;
+
+			expect(result.status).toBe("failed");
+			expect(model.requests).toHaveLength(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("recovers when a retried provider error later succeeds", async () => {
 		vi.useFakeTimers();
 		try {

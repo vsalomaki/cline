@@ -170,8 +170,9 @@ async function readTextWindow(
 			}
 
 			let line = rawLine;
-			if (line.length > caps.maxLineChars) {
-				line = `${line.slice(0, caps.maxLineChars)} [line truncated]`;
+			const lineCap = Math.min(caps.maxLineChars, caps.maxReadOutputChars);
+			if (line.length > lineCap) {
+				line = `${line.slice(0, lineCap)} [line truncated]`;
 			}
 
 			const nextChars = chars + line.length + lineNumberPrefixChars + 1;
@@ -284,7 +285,11 @@ export function createFileReadExecutor(
 		const stat = await fs.stat(resolvedPath);
 
 		if (stat.isDirectory()) {
-			const listing = await listDirectoryTopLevel(resolvedPath);
+			const listing = await listDirectoryTopLevel(
+				resolvedPath,
+				undefined,
+				maxReadOutputChars,
+			);
 			return `${resolvedPath} is a directory, so here is its listing. Use list_files for recursive listings.\n${listing}`;
 		}
 		if (!stat.isFile()) {

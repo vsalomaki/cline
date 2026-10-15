@@ -18,6 +18,7 @@ import {
 	buildMessageModelInfo,
 	buildModelOptions,
 	createAgentRuntimeConfig,
+	resolveProviderErrorMaxRetries,
 	resolveToolExecution,
 } from "./agent-runtime-config-builder";
 
@@ -108,6 +109,17 @@ describe("buildMessageModelInfo", () => {
 // ---------------------------------------------------------------------------
 // resolveToolExecution
 // ---------------------------------------------------------------------------
+
+describe("resolveProviderErrorMaxRetries", () => {
+	it("uses the provider's configured retry count", () => {
+		const config = (maxRetries?: unknown) =>
+			({ providerConfig: { maxRetries } }) as never;
+		expect(resolveProviderErrorMaxRetries(config(2))).toBe(2);
+		expect(resolveProviderErrorMaxRetries(config(0))).toBe(0);
+		expect(resolveProviderErrorMaxRetries(config(undefined))).toBeUndefined();
+		expect(resolveProviderErrorMaxRetries(config(-1))).toBeUndefined();
+	});
+});
 
 describe("resolveToolExecution", () => {
 	it("returns undefined when unset", () => {

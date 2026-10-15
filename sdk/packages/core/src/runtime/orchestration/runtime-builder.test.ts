@@ -367,6 +367,31 @@ Use the review guidance.`,
 		}
 	}, 10_000);
 
+	it("keeps shell listing guidance when list_files is disabled by policy", async () => {
+		const describeRunCommands = async (
+			toolPolicies?: CoreSessionConfig["toolPolicies"],
+		) => {
+			const runtime = await new DefaultRuntimeBuilder().build({
+				config: makeBaseConfig({ mode: "act", toolPolicies }),
+			});
+			const names = runtime.tools.map((tool) => tool.name);
+			const description = runtime.tools.find(
+				(tool) => tool.name === "run_commands",
+			)?.description;
+			return { names, description };
+		};
+
+		const enabled = await describeRunCommands();
+		expect(enabled.names).toContain("list_files");
+		expect(enabled.description).toContain("use list_files instead");
+
+		const disabled = await describeRunCommands({
+			list_files: { enabled: false },
+		});
+		expect(disabled.names).not.toContain("list_files");
+		expect(disabled.description).toContain("Use for listing files");
+	});
+
 	it("does not infer yolo preset from auto-approval alone", async () => {
 		const runtime = await new DefaultRuntimeBuilder().build({
 			config: makeBaseConfig({

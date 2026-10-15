@@ -543,6 +543,14 @@ describe("isRetryableBeyondSdkRetries", () => {
 		expect(isRetryableBeyondSdkRetries("Provider returned error")).toBe(true);
 	});
 
+	it("retries nothing when retries are turned off", () => {
+		expect(isRetryableBeyondSdkRetries(apiCallError(503), 0)).toBe(false);
+		expect(isRetryableBeyondSdkRetries("Provider returned error", 0)).toBe(
+			false,
+		);
+		expect(isRetryableBeyondSdkRetries(apiCallError(503), 2)).toBe(true);
+	});
+
 	it("still refuses permanent failures", () => {
 		expect(
 			isRetryableBeyondSdkRetries(apiCallError(401, "Invalid API Key")),

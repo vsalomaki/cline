@@ -1496,14 +1496,17 @@ interface CapturedStreamError {
 	baseMessage: string;
 }
 
-function captureStreamError(error: unknown): CapturedStreamError {
+function captureStreamError(
+	error: unknown,
+	sdkMaxRetries?: number,
+): CapturedStreamError {
 	const requestId = extractResponseRequestId(error);
 	const baseMessage = extractErrorMessage(error);
 	return {
 		message: appendRequestId(baseMessage, requestId),
 		baseMessage,
 		errorClass: classifyProviderError(error),
-		retryable: isRetryableBeyondSdkRetries(error),
+		retryable: isRetryableBeyondSdkRetries(error, sdkMaxRetries),
 		...(requestId ? { requestId } : {}),
 	};
 }
@@ -2175,6 +2178,8 @@ function createAiSdkProvider(
 			const kind = resolveModelProviderKind(defaultKind, context);
 			const log = context.logger;
 			let stream: AiSdkStreamResult | undefined;
+			const configuredMaxRetries = resolveMaxRetries(context.config.maxRetries);
+			const sdkMaxRetries = configuredMaxRetries ?? MODEL_REQUEST_MAX_RETRIES;
 			const capturedError: { current: CapturedStreamError | undefined } = {
 				current: undefined,
 			};
@@ -2351,7 +2356,6 @@ function createAiSdkProvider(
 					provider.buildStreamConfig
 						? provider.buildStreamConfig(request, context)
 						: buildAiSdkStreamConfig(request, context);
-				const maxRetries = resolveMaxRetries(context.config.maxRetries);
 				recordProviderRequestCapture({
 					stage: "ai_sdk_prompt",
 					request,
@@ -2373,13 +2377,13 @@ function createAiSdkProvider(
 								provider.operations.language(context.model.id),
 								provider.retryEmptyResponses,
 								context.logger,
-								maxRetries,
+								configuredMaxRetries,
 							) as never,
 							messages: messages as never,
 							...(useSystemOption ? { system: systemPrompt } : {}),
 							...(tools ? { tools } : {}),
 							abortSignal: request.signal,
-							maxRetries: maxRetries ?? MODEL_REQUEST_MAX_RETRIES,
+							maxRetries: sdkMaxRetries,
 							experimental_repairToolCall: repairMalformedToolCall as never,
 							telemetry: {
 								...aiSdkTelemetry,
@@ -2408,7 +2412,7 @@ function createAiSdkProvider(
 							...requestConfig,
 							...(portableReasoning ? { reasoning: portableReasoning } : {}),
 							onError: ({ error: streamError }) => {
-								const captured = captureStreamError(streamError);
+								const captured = captureStreamError(streamError, sdkMaxRetries);
 								const msg = captured.message;
 								capturedError.current = captured;
 								if (log?.error) {
@@ -2459,7 +2463,8 @@ function createAiSdkProvider(
 				suppressDanglingStreamPromises(stream);
 				// Prefer the real provider error captured in onError over the generic
 				// NoOutputGeneratedError that the AI SDK throws when 0 steps are recorded.
-				const captured = capturedError.current ?? captureStreamError(error);
+				const captured =
+					capturedError.current ?? captureStreamError(error, sdkMaxRetries);
 				const msg = captured.message;
 				if (log?.error) {
 					log.error("[ai-sdk] provider error", {

@@ -29,6 +29,26 @@ describe("createFileReadExecutor", () => {
 		}
 	});
 
+	it("caps a directory listing at the read output budget", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			for (let index = 0; index < 100; index++) {
+				await fs.writeFile(path.join(dir, `file-${index}.txt`), "");
+			}
+
+			const result = String(
+				await createFileReadExecutor({ maxReadOutputChars: 300 })(
+					{ path: dir },
+					{} as Parameters<ReturnType<typeof createFileReadExecutor>>[1],
+				),
+			);
+
+			expect(result.length).toBeLessThan(600);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("recovers multiline MCP payloads serialized as YAML, including late line ranges", async () => {
 		const payload = Array.from(
 			{ length: 200 },
@@ -234,6 +254,27 @@ describe("createFileReadExecutor", () => {
 		expect(result).toContain("[line truncated]");
 		expect(result).toContain("end");
 		expect(result.length).toBeLessThan(2500);
+	});
+
+	it("keeps a single long line within the read output budget", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			const filePath = path.join(dir, "minified.js");
+			await fs.writeFile(filePath, "z".repeat(5000), "utf-8");
+			const readFile = createFileReadExecutor({
+				maxLineChars: 1_000_000,
+				maxReadOutputChars: 1000,
+			});
+			const result = (await readFile(
+				{ path: filePath },
+				{ agentId: "agent-1", conversationId: "conv-1", iteration: 1 },
+			)) as string;
+
+			expect(result).toContain("[line truncated]");
+			expect(result.length).toBeLessThan(1200);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("rejects very large text files instead of streaming them", async () => {

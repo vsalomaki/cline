@@ -444,9 +444,16 @@ export function isRetryableProviderError(error: unknown): boolean {
  * the SDK's attempts by the agent's, so a `RetryError` is terminal here even
  * when its final attempt looks transient. Everything else (most importantly a
  * provider error emitted mid-stream, which the SDK never retries) is judged by
- * {@link isRetryableProviderError}.
+ * {@link isRetryableProviderError}. `sdkMaxRetries` 0 means retries are off,
+ * so nothing is retryable here either.
  */
-export function isRetryableBeyondSdkRetries(error: unknown): boolean {
+export function isRetryableBeyondSdkRetries(
+	error: unknown,
+	sdkMaxRetries?: number,
+): boolean {
+	if (sdkMaxRetries === 0) {
+		return false;
+	}
 	// Guarded like the other typed checks: `RetryError.isInstance` throws when
 	// the "ai" module is only partially available (tests mock it with a subset
 	// of exports), and the classifier below is the correct fallback then.

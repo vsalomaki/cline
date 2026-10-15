@@ -142,7 +142,7 @@ unless the name says bytes or lines.
 | `CLINE_TOOL_MAX_SEARCH_OUTPUT_CHARS` | `48000` | `search_codebase` output per query |
 | `CLINE_TOOL_MAX_WEB_FETCH_CONTENT_CHARS` | `48000` | Page content kept per `fetch_web_content` request |
 | `CLINE_TOOL_MAX_EDITOR_INPUT_CHARS` | `50000` | `old_text`/`new_text` accepted per `editor` call |
-| `CLINE_TOOL_MAX_COMMAND_INPUT_CHARS` | `12000` | Length of a single shell command |
+| `CLINE_TOOL_MAX_COMMAND_INPUT_CHARS` | `12000` | Length the model is asked to keep each shell command within |
 | `CLINE_TOOL_MAX_EDITOR_DIFF_LINES` | `200` | Diff lines in the `editor` result summary |
 | `CLINE_TOOL_MAX_COMMAND_PREVIEW_CHARS` | `200` | Command text echoed back in the tool result |
 | `CLINE_MESSAGE_BUILDER_MAX_TOOL_RESULT_CHARS` | `50000` | Each tool result forwarded to the model |
@@ -175,8 +175,9 @@ The **Model API** group there applies to every provider:
 - **Response timeout** (default 5 minutes): how long a request may wait for the
   model to start responding. A request that times out is retried. Once a
   response starts streaming it is never cut off.
-- **Retries** (default 2): how often a request is retried when it fails to
-  start, times out, comes back empty or drops before any output.
+- **Retries** (default 5): how often a request is retried when it fails to
+  start, times out, comes back empty or drops before any output. 0 turns
+  retries off.
 
 ## Related Docs
 

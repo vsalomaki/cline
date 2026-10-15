@@ -1234,20 +1234,19 @@ export class AgentRuntime {
 	/**
 	 * Run `issue`, re-running it with backoff while it returns a turn that
 	 * failed with a transient, retryable provider error (see
-	 * {@link isRetryableProviderErrorTurn}), up to PROVIDER_ERROR_MAX_RETRIES
-	 * times. `issue` decides what is re-run: the whole prepared turn for an
+	 * {@link isRetryableProviderErrorTurn}), up to `providerErrorMaxRetries`
+	 * times (PROVIDER_ERROR_MAX_RETRIES by default). `issue` decides what is re-run: the whole prepared turn for an
 	 * ordinary request, or just the issuing of an already-prepared request.
 	 */
 	private async withProviderErrorRetry<
 		T extends { message: AgentMessage; finishReason: AgentModelFinishReason },
 	>(issue: () => Promise<T>): Promise<T> {
+		const maxRetries =
+			this.config.providerErrorMaxRetries ?? PROVIDER_ERROR_MAX_RETRIES;
 		let attempt = 0;
 		for (;;) {
 			const turn = await issue();
-			if (
-				attempt >= PROVIDER_ERROR_MAX_RETRIES ||
-				!this.isRetryableProviderErrorTurn(turn)
-			) {
+			if (attempt >= maxRetries || !this.isRetryableProviderErrorTurn(turn)) {
 				return turn;
 			}
 			attempt += 1;
@@ -1262,14 +1261,14 @@ export class AgentRuntime {
 			await this.emit({
 				type: "status-notice",
 				snapshot: this.snapshot(),
-				message: `provider error — retrying (attempt ${attempt}/${PROVIDER_ERROR_MAX_RETRIES})`,
+				message: `provider error — retrying (attempt ${attempt}/${maxRetries})`,
 				metadata: {
 					kind: "provider_error_retry",
 					reason: "provider_error_retry",
 					phase: "started",
 					iteration: this.state.iteration,
 					attempt,
-					maxRetries: PROVIDER_ERROR_MAX_RETRIES,
+					maxRetries,
 					delayMs,
 					providerError,
 				},

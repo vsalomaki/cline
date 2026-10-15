@@ -141,6 +141,25 @@ function filterToolsForConfiguredAgent(
 	return tools.filter((tool) => allowedToolNames.has(tool.name));
 }
 
+/** Disables list_files for an agent whose tool list leaves it out. */
+function withConfiguredAgentListFiles(
+	toolPolicies: CoreSessionConfig["toolPolicies"],
+	agent: ConfiguredAgentConfig,
+): CoreSessionConfig["toolPolicies"] {
+	if (
+		agent.tools === undefined ||
+		agent.tools.some(
+			(name) => resolveConfiguredAgentToolName(name) === "list_files",
+		)
+	) {
+		return toolPolicies;
+	}
+	return {
+		...toolPolicies,
+		list_files: { ...toolPolicies?.list_files, enabled: false },
+	};
+}
+
 export function createTeamName(): string {
 	return `team-${nanoid(5)}`;
 }
@@ -178,6 +197,10 @@ function createBuiltinToolsList(
 					...preset,
 					enableSkills: !!skillsExecutor,
 					...toolRoutingConfig,
+					// run_commands names list_files only when the session keeps it.
+					...(isToolEnabledByPolicies("list_files", toolPolicies)
+						? {}
+						: { enableListFiles: false }),
 					executors: {
 						...(skillsExecutor
 							? {
@@ -666,6 +689,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			logger: logger ?? config.logger,
 			telemetry: input.telemetry ?? config.telemetry,
 			workspaceMetadata: config.workspaceMetadata,
+			contextLimits: config.contextLimits,
 		});
 		if (normalized.enableSpawnAgent) {
 			if (configuredAgents.configs.length > 0) {
@@ -683,7 +707,10 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 												normalized.mode,
 												agent.modelId ?? config.modelId,
 												config.toolRoutingRules,
-												effectiveToolPolicies,
+												withConfiguredAgentListFiles(
+													effectiveToolPolicies,
+													agent,
+												),
 												agent.skills !== undefined &&
 													userInstructionService?.createSkillsExecutor
 													? userInstructionService.createSkillsExecutor(

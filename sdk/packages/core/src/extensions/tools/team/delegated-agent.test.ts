@@ -26,6 +26,24 @@ describe("buildDelegatedAgentConfig", () => {
 		expect(config.parentAgentId).toBe("agent-lead");
 	});
 
+	it("inherits the parent's context limits", () => {
+		const contextLimits = { message: { toolResultChars: 100_000 } };
+		const configProvider = createDelegatedAgentConfigProvider({
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-5",
+			contextLimits,
+		});
+
+		const config = buildDelegatedAgentConfig({
+			kind: "subagent",
+			prompt: "review the diff",
+			tools: [],
+			configProvider,
+		});
+
+		expect(config.contextLimits).toBe(contextLimits);
+	});
+
 	it("leaves identity fields undefined when the parent has none", () => {
 		const configProvider = createDelegatedAgentConfigProvider({
 			providerId: "anthropic",

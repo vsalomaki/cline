@@ -586,6 +586,8 @@ export interface AgentRuntimeConfig {
 		completionGuard?: () => string | undefined;
 	};
 	toolExecution?: "sequential" | "parallel";
+	/** Retries for a turn that fails with a transient provider error before any output (default 3). */
+	providerErrorMaxRetries?: number;
 	toolPolicies?: Record<string, ToolPolicy>;
 	toolContextMetadata?: Record<string, unknown>;
 	requestToolApproval?: (
