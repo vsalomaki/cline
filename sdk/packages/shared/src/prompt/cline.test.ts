@@ -37,6 +37,46 @@ describe("processWorkspaceInfo", () => {
 	});
 });
 
+describe("buildClineSystemPrompt task discipline", () => {
+	const prompt = buildClineSystemPrompt({ ...BASE_OPTIONS, mode: "act" });
+
+	it("asks for a full review of the changes before the final answer", () => {
+		expect(prompt).toContain("review every file you changed as a whole");
+		expect(prompt).toContain("Remove leftovers");
+		expect(prompt).toContain("do the final review above before sending it");
+	});
+
+	it("ties success claims to verification", () => {
+		expect(prompt).toContain("Verify by execution, not assumption");
+		expect(prompt).toContain("if you could not verify it, say so");
+	});
+
+	it("asks for a report that covers what was skipped, failed or unverified", () => {
+		expect(prompt).toContain("what you did not do or skipped");
+		expect(prompt).toContain(
+			"anything that failed, is unverified, or only partly works",
+		);
+		expect(prompt).toContain("Do not leave out problems");
+	});
+
+	it("checks a correction against the codebase before acting on it", () => {
+		expect(prompt).toContain("do not simply agree and start editing");
+		expect(prompt).toContain("establish the actual state of the codebase");
+		expect(prompt).toContain("not on memory of earlier turns");
+	});
+
+	it("points directory listing at run_commands", () => {
+		expect(prompt).toContain("Call only the tools you are given");
+		expect(prompt).toContain("list files with run_commands");
+	});
+
+	it("asks for the files and verification in a plan", () => {
+		expect(PLAN_MODE_INSTRUCTIONS).toContain(
+			"the files you expect to change, and how you will verify the result",
+		);
+	});
+});
+
 describe("buildClineSystemPrompt mode instructions", () => {
 	it("explains the user_input mode attribute in act mode", () => {
 		const prompt = buildClineSystemPrompt({ ...BASE_OPTIONS, mode: "act" });
