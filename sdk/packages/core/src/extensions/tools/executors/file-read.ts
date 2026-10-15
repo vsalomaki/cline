@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import type { AgentToolContext } from "@cline/shared";
 import { resolveExistingFilePath } from "@cline/shared/storage";
+import { getFileReadLedger } from "../../../session/services/file-read-ledger";
 import {
 	TOOL_RESULT_CACHE_MISS,
 	ToolResultCache,
@@ -36,6 +37,9 @@ const IMAGE_MEDIA_TYPES = new Map<string, string>([
  * Options for the file read executor
  */
 export interface FileReadExecutorOptions {
+	/** Directory that relative paths resolve against. @default process.cwd() */
+	cwd?: string;
+
 	/**
 	 * Maximum file size to read in bytes
 	 * @default 10_000_000 (10MB)
@@ -73,7 +77,9 @@ export interface FileReadExecutorOptions {
 	maxReadOutputChars?: number;
 }
 
-const DEFAULT_FILE_READ_OPTIONS: Required<FileReadExecutorOptions> = {
+const DEFAULT_FILE_READ_OPTIONS: Required<
+	Omit<FileReadExecutorOptions, "cwd">
+> = {
 	maxFileSizeBytes: 10_000_000, // 10MB default limit
 	encoding: "utf-8", // Default to UTF-8 encoding
 	includeLineNumbers: true, // Include line numbers by default
@@ -273,7 +279,7 @@ export function createFileReadExecutor(
 		}
 		const initialPath = path.isAbsolute(filePath)
 			? path.normalize(filePath)
-			: path.resolve(process.cwd(), filePath);
+			: path.resolve(options.cwd ?? process.cwd(), filePath);
 		// Tolerate Unicode-whitespace mismatches (e.g. macOS Sonoma+
 		// screenshot paths where the on-disk filename contains U+202F but
 		// the caller's string has a regular space).
@@ -306,6 +312,7 @@ export function createFileReadExecutor(
 				throw new Error("Current model does not support image input");
 			}
 			const data = await fs.readFile(resolvedPath);
+			await getFileReadLedger(context.metadata)?.record(resolvedPath, stat);
 			return [
 				{
 					type: "text",
@@ -325,7 +332,7 @@ export function createFileReadExecutor(
 			);
 		}
 
-		return readTextWindow(
+		const text = await readTextWindow(
 			createReadStream(resolvedPath, { encoding }),
 			includeLineNumbers,
 			start_line,
@@ -333,5 +340,7 @@ export function createFileReadExecutor(
 			caps,
 			context.signal,
 		);
+		await getFileReadLedger(context.metadata)?.record(resolvedPath, stat);
+		return text;
 	};
 }

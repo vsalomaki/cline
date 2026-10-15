@@ -5,6 +5,7 @@ import {
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
 	resolveStartupParallelToolCalls,
+	resolveStartupReadBeforeWrite,
 	resolveStartupToolAutoApprove,
 } from "./startup-settings";
 
@@ -170,5 +171,23 @@ describe("resolveStartupParallelToolCalls", () => {
 				makeSettings({ parallelToolCalls: true }),
 			),
 		).toBe(false);
+	});
+});
+
+describe("resolveStartupReadBeforeWrite", () => {
+	it("prefers the flag over the persisted value and leaves unset to Core", () => {
+		expect(resolveStartupReadBeforeWrite({}, makeSettings())).toBeUndefined();
+		expect(
+			resolveStartupReadBeforeWrite(
+				{},
+				makeSettings({ readBeforeWrite: false }),
+			),
+		).toBe(false);
+		expect(
+			resolveStartupReadBeforeWrite(
+				{ readBeforeWrite: true },
+				makeSettings({ readBeforeWrite: false }),
+			),
+		).toBe(true);
 	});
 });

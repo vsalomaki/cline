@@ -58,11 +58,17 @@ export function getContextLimitEnvSources() {
 	return { message: {}, tool: {} }
 }
 
-export function resolveToolCallSettings(config: { maxParallelToolCalls?: number; parallelToolCalls?: boolean } = {}) {
-	return { maxParallelToolCalls: config.maxParallelToolCalls ?? 4, parallelToolCalls: config.parallelToolCalls ?? true }
+export function resolveToolCallSettings(
+	config: { maxParallelToolCalls?: number; parallelToolCalls?: boolean; readBeforeWrite?: boolean } = {},
+) {
+	return {
+		maxParallelToolCalls: config.maxParallelToolCalls ?? 4,
+		parallelToolCalls: config.parallelToolCalls ?? true,
+		readBeforeWrite: config.readBeforeWrite ?? true,
+	}
 }
 
-export function getToolCallEnvSources(): { maxParallelToolCalls?: string; parallelToolCalls?: string } {
+export function getToolCallEnvSources(): { maxParallelToolCalls?: string; parallelToolCalls?: string; readBeforeWrite?: string } {
 	return {}
 }
 

@@ -97,6 +97,7 @@ export interface ParsedArgs {
 	maxParallelToolCalls?: number;
 	invalidMaxParallelToolCalls?: string;
 	parallelToolCalls?: boolean;
+	readBeforeWrite?: boolean;
 	cwd?: string;
 	teamName?: string;
 	defaultToolAutoApprove: boolean;

@@ -73,6 +73,7 @@ export const GlobalSettingsSchema = z
 			.optional()
 			.catch(undefined),
 		parallelToolCalls: z.boolean().optional().catch(undefined),
+		readBeforeWrite: z.boolean().optional().catch(undefined),
 		tuiTheme: z.string().optional().catch(undefined),
 		disabledTools: GlobalSettingsStringListSchema.optional(),
 		tools: ModelToolSettingsSchema,
@@ -90,6 +91,7 @@ export const GlobalSettingsSchema = z
 			toolAutoApprove?: boolean;
 			maxParallelToolCalls?: number;
 			parallelToolCalls?: boolean;
+			readBeforeWrite?: boolean;
 			tuiTheme?: string;
 			disabledTools?: string[];
 			tools?: ModelToolSettings;
@@ -116,6 +118,9 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.parallelToolCalls !== undefined) {
 			normalized.parallelToolCalls = settings.parallelToolCalls;
+		}
+		if (settings.readBeforeWrite !== undefined) {
+			normalized.readBeforeWrite = settings.readBeforeWrite;
 		}
 		if (settings.tuiTheme?.trim()) {
 			normalized.tuiTheme = settings.tuiTheme.trim();

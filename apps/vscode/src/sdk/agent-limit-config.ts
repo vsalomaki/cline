@@ -28,7 +28,7 @@ const TIMEOUT_FIELDS = {
 
 export type AgentLimitSessionConfig = Pick<
 	CoreSessionConfig,
-	"contextLimits" | "toolTimeouts" | "execution" | "maxParallelToolCalls" | "parallelToolCalls"
+	"contextLimits" | "toolTimeouts" | "execution" | "maxParallelToolCalls" | "parallelToolCalls" | "readBeforeWrite"
 > & {
 	compaction?: Pick<NonNullable<CoreSessionConfig["compaction"]>, "triggerRatio" | "preserveRecentTokens">
 	providerConfig?: { timeoutMs?: number; maxRetries?: number }
@@ -89,6 +89,9 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	}
 	if (values?.["api.parallelToolCalls"] !== undefined) {
 		config.parallelToolCalls = values["api.parallelToolCalls"] !== 0
+	}
+	if (values?.["session.readBeforeWrite"] !== undefined) {
+		config.readBeforeWrite = values["session.readBeforeWrite"] !== 0
 	}
 
 	const execution: NonNullable<CoreSessionConfig["execution"]> = {}
@@ -168,11 +171,15 @@ export function getAgentLimitsState(
 	}
 	effective["session.maxParallelToolCalls"] = toolCalls.maxParallelToolCalls
 	effective["api.parallelToolCalls"] = toolCalls.parallelToolCalls ? 1 : 0
+	effective["session.readBeforeWrite"] = toolCalls.readBeforeWrite ? 1 : 0
 	if (toolCallEnvSources.maxParallelToolCalls) {
 		envOverrides["session.maxParallelToolCalls"] = toolCallEnvSources.maxParallelToolCalls
 	}
 	if (toolCallEnvSources.parallelToolCalls) {
 		envOverrides["api.parallelToolCalls"] = toolCallEnvSources.parallelToolCalls
+	}
+	if (toolCallEnvSources.readBeforeWrite) {
+		envOverrides["session.readBeforeWrite"] = toolCallEnvSources.readBeforeWrite
 	}
 	const soft = getAgentLimitValue(values, "session.loopSoftThreshold")
 	if (getAgentLimitValue(values, "session.loopHardThreshold") <= soft) {

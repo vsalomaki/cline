@@ -685,6 +685,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			temperature: config.temperature,
 			maxParallelToolCalls: config.maxParallelToolCalls,
 			parallelToolCalls: config.parallelToolCalls,
+			readBeforeWrite: config.readBeforeWrite,
 			maxIterations: config.maxIterations,
 			hooks,
 			extensions: runtimeExtensions,

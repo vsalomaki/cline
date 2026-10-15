@@ -319,6 +319,12 @@ export interface CoreSessionConfig
 	 * @default true
 	 */
 	parallelToolCalls?: boolean;
+	/**
+	 * Refuse edits to existing files the agent has not read in this session,
+	 * or that changed since it last read them. `CLINE_READ_BEFORE_WRITE` takes precedence.
+	 * @default true
+	 */
+	readBeforeWrite?: boolean;
 	toolTimeouts?: CoreToolTimeouts;
 	onTeamEvent?: (event: TeamEvent) => void;
 	onConsecutiveMistakeLimitReached?: (

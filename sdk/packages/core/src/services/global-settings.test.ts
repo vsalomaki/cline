@@ -309,11 +309,13 @@ describe("global-settings", () => {
 			GlobalSettingsSchema.parse({
 				maxParallelToolCalls: 8,
 				parallelToolCalls: false,
+				readBeforeWrite: false,
 			}),
 		).toEqual({
 			autoUpdateEnabled: true,
 			maxParallelToolCalls: 8,
 			parallelToolCalls: false,
+			readBeforeWrite: false,
 			telemetryOptOut: false,
 		});
 		for (const maxParallelToolCalls of [0, -1, 1.5, "4"]) {
@@ -321,6 +323,7 @@ describe("global-settings", () => {
 				GlobalSettingsSchema.parse({
 					maxParallelToolCalls,
 					parallelToolCalls: "no",
+					readBeforeWrite: "no",
 				}),
 			).toEqual({
 				autoUpdateEnabled: true,

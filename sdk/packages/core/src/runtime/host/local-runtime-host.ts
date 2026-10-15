@@ -826,6 +826,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			temperature: configWithProvider.temperature,
 			maxParallelToolCalls: configWithProvider.maxParallelToolCalls,
 			parallelToolCalls: configWithProvider.parallelToolCalls,
+			readBeforeWrite: configWithProvider.readBeforeWrite,
 			systemPrompt: configWithProvider.systemPrompt,
 			maxIterations: configWithProvider.maxIterations,
 			execution: configWithProvider.execution,

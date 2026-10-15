@@ -77,6 +77,14 @@ export function addRootOptions(cmd: Command): Command {
 				"Ask the model for one tool call per response",
 			)
 			.option(
+				"--read-before-write",
+				"Refuse edits to existing files the agent has not read, or that changed since (default)",
+			)
+			.option(
+				"--no-read-before-write",
+				"Allow edits to files the agent has not read",
+			)
+			.option(
 				"-t, --timeout <seconds>",
 				"Optional timeout in seconds (default: 0 for no timeout)",
 			)
@@ -237,6 +245,9 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.parallelToolCalls === "boolean") {
 		result.parallelToolCalls = opts.parallelToolCalls;
+	}
+	if (typeof opts.readBeforeWrite === "boolean") {
+		result.readBeforeWrite = opts.readBeforeWrite;
 	}
 
 	// Simple string/number options

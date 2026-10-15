@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@opentui/core";
 import { describe, expect, it, vi } from "vitest";
-import { useRootKeyboard } from "./use-root-keyboard";
 import { shouldHandleInputHistory } from "./root-keyboard-routing";
+import { useRootKeyboard } from "./use-root-keyboard";
 
 describe("root keyboard input history routing", () => {
 	it("handles history while idle", () => {

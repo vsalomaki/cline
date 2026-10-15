@@ -10,6 +10,22 @@ import {
 import { createFileReadExecutor } from "./file-read";
 
 describe("createFileReadExecutor", () => {
+	it("resolves relative paths against the configured cwd", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			await fs.writeFile(path.join(dir, "a.txt"), "hello");
+
+			const result = await createFileReadExecutor({ cwd: dir })(
+				{ path: "a.txt" },
+				{} as Parameters<ReturnType<typeof createFileReadExecutor>>[1],
+			);
+
+			expect(result).toContain("hello");
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("returns a directory's top-level listing instead of failing", async () => {
 		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
 		try {

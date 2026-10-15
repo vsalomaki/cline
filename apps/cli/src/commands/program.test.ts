@@ -111,4 +111,10 @@ describe("tool-call options", () => {
 		expect(parse(["--no-parallel-tool-calls"]).parallelToolCalls).toBe(false);
 		expect(parse(["--parallel-tool-calls"]).parallelToolCalls).toBe(true);
 	});
+
+	it("parses --no-read-before-write and --read-before-write", () => {
+		expect(parse([]).readBeforeWrite).toBeUndefined();
+		expect(parse(["--no-read-before-write"]).readBeforeWrite).toBe(false);
+		expect(parse(["--read-before-write"]).readBeforeWrite).toBe(true);
+	});
 });

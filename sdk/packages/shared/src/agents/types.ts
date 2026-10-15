@@ -765,6 +765,12 @@ export interface AgentConfig {
 	 */
 	parallelToolCalls?: boolean;
 	/**
+	 * Refuse edits to existing files the agent has not read, or that changed
+	 * since it last read them.
+	 * @default true
+	 */
+	readBeforeWrite?: boolean;
+	/**
 	 * Maximum output tokens per API call
 	 */
 	maxTokensPerTurn?: number;
@@ -950,6 +956,7 @@ export const AgentConfigSchema = z.object({
 	maxIterations: z.number().positive().optional(),
 	maxParallelToolCalls: z.number().int().positive().optional(),
 	parallelToolCalls: z.boolean().optional(),
+	readBeforeWrite: z.boolean().optional(),
 	maxTokensPerTurn: z.number().positive().optional(),
 	temperature: z.number().nonnegative().optional(),
 	apiTimeoutMs: z.number().positive().optional(),

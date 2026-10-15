@@ -47,6 +47,7 @@ describe("AGENT_LIMIT_DEFINITIONS", () => {
 			envVar: TOOL_CALL_ENV.maxParallelToolCalls,
 		})
 		expect(byId.get("api.parallelToolCalls")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.parallelToolCalls })
+		expect(byId.get("session.readBeforeWrite")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.readBeforeWrite })
 	})
 })
 
@@ -93,6 +94,7 @@ describe("buildAgentLimitSessionConfig", () => {
 			parallelToolCalls: false,
 		})
 		expect(buildAgentLimitSessionConfig({ "api.parallelToolCalls": 1 })).toEqual({ parallelToolCalls: true })
+		expect(buildAgentLimitSessionConfig({ "session.readBeforeWrite": 0 })).toEqual({ readBeforeWrite: false })
 	})
 
 	it("turns loop detection off", () => {

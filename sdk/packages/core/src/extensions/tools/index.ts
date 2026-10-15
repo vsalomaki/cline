@@ -227,6 +227,7 @@ export function createBuiltinTools(
 			shell,
 		},
 		fileRead: {
+			cwd: toolsConfig.cwd,
 			maxReadLines: limits.readLines,
 			maxLineChars: limits.lineChars,
 			maxReadOutputChars: limits.readOutputChars,

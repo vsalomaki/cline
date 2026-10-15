@@ -63,6 +63,7 @@ import {
 	captureSessionErrorRecorded,
 } from "../../services/telemetry/core-events";
 import { toPersistedToolResultContent } from "../../session/persisted-tool-result-content";
+import { FileReadLedger } from "../../session/services/file-read-ledger";
 import {
 	DEFAULT_MAX_TOOL_RESULT_CHARS,
 	getMessageBuilderOptions,
@@ -75,6 +76,7 @@ import {
 } from "../../session/services/tool-result-cache";
 import { ConversationStore } from "../../session/stores/conversation-store";
 import type { ContextLimitOverrides } from "../../settings/context-limits";
+import { resolveToolCallSettings } from "../../settings/tool-calls";
 import {
 	agentMessagesToMessages,
 	agentMessagesToMessagesWithMetadata,
@@ -341,6 +343,7 @@ export class SessionRuntime {
 	readonly telemetry?: ITelemetryService;
 	private readonly conversation: ConversationStore;
 	private readonly toolResultCache: ToolResultCache;
+	private readonly fileReadLedger: FileReadLedger | undefined;
 	private cacheableToolNames = new Set<string>();
 	private readonly maxCachedResultChars: number;
 	private pendingTerminalError:
@@ -443,6 +446,9 @@ export class SessionRuntime {
 		this.toolResultCache = new ToolResultCache(
 			config.sessionId ?? this.agentId,
 		);
+		this.fileReadLedger = resolveToolCallSettings(config).readBeforeWrite
+			? new FileReadLedger()
+			: undefined;
 		const messageBuilderOptions = getMessageBuilderOptions(
 			config.contextLimits,
 		);
@@ -618,6 +624,7 @@ export class SessionRuntime {
 		this.messageBuilder.resetConversationState();
 		this.mistakeTracker.reset();
 		this.loopTracker.reset();
+		this.fileReadLedger?.clear();
 		this.pendingLoopNotice = undefined;
 	}
 
@@ -1034,6 +1041,7 @@ export class SessionRuntime {
 				modelSupportsImages: modelSupportsImageInput(modelInfo ?? {}),
 				...this.config.toolContextMetadata,
 				toolResultCache: this.toolResultCache,
+				...(this.fileReadLedger ? { fileReadLedger: this.fileReadLedger } : {}),
 			},
 			hooks: this.createRuntimeHooks(),
 			prepareTurn: this.createRuntimePrepareTurn(modelInfo, tools),
@@ -1246,7 +1254,13 @@ export class SessionRuntime {
 				},
 				overflowRecovery: context.overflowRecovery,
 				previousRequestInputTokens: context.previousRequestInputTokens,
-				emitStatusNotice: context.emitStatusNotice,
+				emitStatusNotice: (message, metadata) => {
+					// The summary keeps file paths, not contents, so edits need fresh reads.
+					if (metadata?.phase === "completed") {
+						this.fileReadLedger?.clear();
+					}
+					context.emitStatusNotice?.(message, metadata);
+				},
 			});
 			if (!result) {
 				return undefined;
