@@ -88,6 +88,14 @@ export interface ContextCompactionPrepareTurnOptions {
 
 const LONG_CONVERSATION_TARGET_RATIO = 0.5;
 
+export function resolveCompactionTriggerRatio(
+	ratio: number | undefined,
+): number {
+	return typeof ratio === "number" && ratio > 0 && ratio <= 1
+		? ratio
+		: COMPACTION_TRIGGER_RATIO;
+}
+
 function isCompactionCancellation(
 	error: unknown,
 	abortSignal: AbortSignal,
@@ -283,6 +291,9 @@ export function createContextCompactionPrepareTurn(
 		} as ProviderConfig);
 	const estimateMessageTokens = createTokenEstimator();
 	const strategy = userCompaction?.strategy ?? "agentic";
+	const triggerRatio = resolveCompactionTriggerRatio(
+		userCompaction.triggerRatio,
+	);
 	const runBuiltinStrategy = BUILTIN_COMPACTION_STRATEGIES[strategy];
 	const mode = options.mode ?? "auto";
 	const telemetryStrategy: TelemetryCompactionStrategy = userCompaction?.compact
@@ -315,7 +326,7 @@ export function createContextCompactionPrepareTurn(
 				maxInputTokens: context.model.info?.maxInputTokens,
 				contextWindow: context.model.info?.contextWindow,
 			}) ?? DEFAULT_MAX_INPUT_TOKENS;
-		const requestTriggerTokens = maxInputTokens * COMPACTION_TRIGGER_RATIO;
+		const requestTriggerTokens = maxInputTokens * triggerRatio;
 		const messageTriggerTokens = translateRequestBudgetToMessages(
 			requestTriggerTokens,
 			requestOverheadTokens,
@@ -334,7 +345,7 @@ export function createContextCompactionPrepareTurn(
 			maxInputTokens,
 			requestTriggerTokens,
 			messageTriggerTokens,
-			thresholdRatio: COMPACTION_TRIGGER_RATIO,
+			thresholdRatio: triggerRatio,
 			shouldCompact,
 			messageCount: context.messages.length,
 			apiMessageCount: context.apiMessages.length,
@@ -382,7 +393,7 @@ export function createContextCompactionPrepareTurn(
 					triggerTokens: requestTriggerTokens,
 					targetTokens: requestTargetTokens,
 					overheadTokens: requestOverheadTokens,
-					thresholdRatio: COMPACTION_TRIGGER_RATIO,
+					thresholdRatio: triggerRatio,
 					utilizationRatio:
 						maxInputTokens > 0 ? requestInputTokens / maxInputTokens : 0,
 				},
@@ -551,7 +562,7 @@ export function createContextCompactionPrepareTurn(
 				tokensSaved: requestInputTokens - afterRequestTokens,
 				utilizationBefore: `${((requestInputTokens / maxInputTokens) * 100).toFixed(1)}%`,
 				utilizationAfter: `${((afterRequestTokens / maxInputTokens) * 100).toFixed(1)}%`,
-				thresholdTrigger: `${(COMPACTION_TRIGGER_RATIO * 100).toFixed(1)}%`,
+				thresholdTrigger: `${(triggerRatio * 100).toFixed(1)}%`,
 				messagesBefore: beforeMessageCount,
 				messagesAfter: result.messages.length,
 				messagesRemoved: beforeMessageCount - result.messages.length,
@@ -579,7 +590,7 @@ export function createContextCompactionPrepareTurn(
 				tokensSaved: requestInputTokens - afterRequestTokens,
 				triggerTokens: requestTriggerTokens,
 				maxInputTokens,
-				thresholdRatio: COMPACTION_TRIGGER_RATIO,
+				thresholdRatio: triggerRatio,
 				durationMs,
 				// Matches the field name used by other TASK telemetry helpers
 				// (e.g. captureTaskCompleted, captureToolUsage).
@@ -628,7 +639,7 @@ export function createContextCompactionPrepareTurn(
 				tokensBefore: requestInputTokens,
 				triggerTokens: requestTriggerTokens,
 				maxInputTokens,
-				thresholdRatio: COMPACTION_TRIGGER_RATIO,
+				thresholdRatio: triggerRatio,
 				durationMs,
 				provider: config.providerId,
 				modelId: config.modelId,

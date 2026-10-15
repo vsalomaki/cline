@@ -5,6 +5,10 @@ import {
 	type ToolExecutors,
 	ToolPresets,
 } from "../../../extensions/tools";
+import {
+	applySessionToolOptions,
+	resolveSessionToolOptions,
+} from "../../../extensions/tools/session-tool-options";
 import type {
 	SubAgentEndContext,
 	SubAgentStartContext,
@@ -131,12 +135,17 @@ export function createSessionSpawnTool(
 	);
 	const createSubAgentTools = () => {
 		const tools: AgentTool[] = config.enableTools
-			? createBuiltinTools({
-					cwd: config.cwd,
-					telemetry: config.telemetry,
-					...ToolPresets[resolveToolPresetName({ mode: config.mode })],
-					executors: toolExecutors,
-				})
+			? createBuiltinTools(
+					applySessionToolOptions(
+						{
+							cwd: config.cwd,
+							telemetry: config.telemetry,
+							...ToolPresets[resolveToolPresetName({ mode: config.mode })],
+							executors: toolExecutors,
+						},
+						resolveSessionToolOptions(config),
+					),
+				)
 			: [];
 		if (config.enableSpawnAgent) {
 			tools.push(

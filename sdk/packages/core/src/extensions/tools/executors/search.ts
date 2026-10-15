@@ -67,6 +67,12 @@ export interface SearchExecutorOptions {
 	 * @default MAX_LINE_CHARS
 	 */
 	maxLineChars?: number;
+
+	/**
+	 * How long to wait on ripgrep before falling back to the regex walk.
+	 * @default 5000
+	 */
+	ripgrepTimeoutMs?: number;
 }
 
 const DEFAULT_INCLUDE_EXTENSIONS = [
@@ -347,6 +353,7 @@ export function createSearchExecutor(
 		maxDepth = 20,
 		maxSearchOutputChars = MAX_SEARCH_OUTPUT_CHARS,
 		maxLineChars = MAX_LINE_CHARS,
+		ripgrepTimeoutMs = 5000,
 	} = options;
 	const excludeDirsSet = new Set(excludeDirs);
 	const includeExtensionsSet = new Set(
@@ -372,7 +379,7 @@ export function createSearchExecutor(
 				cwd,
 				maxResults,
 				contextLines,
-				5000,
+				ripgrepTimeoutMs,
 				context.signal,
 			);
 		}

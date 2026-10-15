@@ -102,7 +102,10 @@ import {
 	RuntimeOAuthTokenManager,
 } from "../orchestration/runtime-oauth-token-manager";
 import type { RuntimeBuilder } from "../orchestration/session-runtime";
-import { SessionRuntime } from "../orchestration/session-runtime-orchestrator";
+import {
+	SessionRuntime,
+	type SessionRuntimeConfig,
+} from "../orchestration/session-runtime-orchestrator";
 import { PendingPromptsController } from "../turn-queue/pending-prompt-service";
 import { manifestToSessionRecord } from "./history";
 import { AgentEventBridge } from "./local/agent-event-bridge";
@@ -237,7 +240,7 @@ export interface LocalRuntimeHostOptions {
 	distinctId?: string;
 	sessionService: SessionBackend;
 	runtimeBuilder?: RuntimeBuilder;
-	createAgent?: (config: AgentConfig) => SessionRuntime;
+	createAgent?: (config: SessionRuntimeConfig) => SessionRuntime;
 	capabilities?: RuntimeCapabilities;
 	toolPolicies?: AgentConfig["toolPolicies"];
 	providerSettingsManager?: ProviderSettingsManager;
@@ -257,7 +260,9 @@ export class LocalRuntimeHost implements RuntimeHost {
 	public readonly pendingPrompts: PendingPromptsServiceApi;
 	private readonly sessionService: SessionBackend;
 	private readonly runtimeBuilder: RuntimeBuilder;
-	private readonly createAgentInstance: (config: AgentConfig) => SessionRuntime;
+	private readonly createAgentInstance: (
+		config: SessionRuntimeConfig,
+	) => SessionRuntime;
 	private readonly toolExecutors?: Partial<ToolExecutors>;
 	private readonly defaultCapabilities?: RuntimeCapabilities;
 	private readonly defaultToolPolicies?: AgentConfig["toolPolicies"];
@@ -734,6 +739,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			systemPrompt: configWithProvider.systemPrompt,
 			maxIterations: configWithProvider.maxIterations,
 			execution: configWithProvider.execution,
+			contextLimits: configWithProvider.contextLimits,
 			prepareTurn,
 			tools,
 			modelTools: runtime.modelTools,
@@ -787,7 +793,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 					configWithProvider,
 					event,
 				),
-		} as AgentConfig;
+		} as SessionRuntimeConfig;
 		agentConfig.hooks = {
 			...agentConfig.hooks,
 			onEvent: async (event) => {

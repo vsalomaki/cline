@@ -60,10 +60,11 @@ import {
 	captureMistakeLimitReached,
 } from "../../services/telemetry/core-events";
 import {
-	getMessageBuilderOptionsFromEnv,
+	getMessageBuilderOptions,
 	MessageBuilder,
 } from "../../session/services/message-builder";
 import { ConversationStore } from "../../session/stores/conversation-store";
+import type { ContextLimitOverrides } from "../../settings/context-limits";
 import {
 	agentMessagesToMessages,
 	agentMessagesToMessagesWithMetadata,
@@ -296,13 +297,18 @@ export type ConnectionOverrides = ConnectionUpdate;
 // SessionRuntime orchestrator
 // =============================================================================
 
+export interface SessionRuntimeConfig extends AgentConfig {
+	/** Provider-request budgets; matching env vars take precedence. */
+	contextLimits?: ContextLimitOverrides;
+}
+
 /**
  * Per-session orchestrator. Construct once per agent session; call
  * `run` / `continue` repeatedly. The class matches the subset of
  * runtime-facing session surface.
  */
 export class SessionRuntime {
-	private config: AgentConfig;
+	private config: SessionRuntimeConfig;
 	private readonly agentId: string;
 	private readonly parentAgentId?: string;
 	private readonly logger?: BasicLogger;
@@ -389,7 +395,10 @@ export class SessionRuntime {
 	/** True when tracker logic has issued an abort for the active run. */
 	private trackerAbortInFlight = false;
 
-	constructor(config: AgentConfig, deps: SessionRuntimeOrchestratorDeps = {}) {
+	constructor(
+		config: SessionRuntimeConfig,
+		deps: SessionRuntimeOrchestratorDeps = {},
+	) {
 		this.config = config;
 		this.agentId = `agent_${Date.now()}_${Math.random()
 			.toString(36)
@@ -401,7 +410,9 @@ export class SessionRuntime {
 			deps.createAgentRuntimeImpl ?? createAgentRuntime;
 
 		this.conversation = new ConversationStore(config.initialMessages);
-		this.messageBuilder = new MessageBuilder(getMessageBuilderOptionsFromEnv());
+		this.messageBuilder = new MessageBuilder(
+			getMessageBuilderOptions(config.contextLimits),
+		);
 		this.contributionRegistry = createContributionRegistry<
 			AgentExtension,
 			AgentTool,
@@ -526,7 +537,7 @@ export class SessionRuntime {
 	/** Mutate provider / reasoning fields for subsequent runs. */
 	updateConnection(overrides: ConnectionOverrides): void {
 		const updates = normalizeConnectionUpdate(overrides);
-		const next: AgentConfig = { ...this.config };
+		const next: SessionRuntimeConfig = { ...this.config };
 		if (updates.providerId !== undefined) next.providerId = updates.providerId;
 		if (updates.modelId !== undefined) next.modelId = updates.modelId;
 		if (updates.apiKey !== undefined) next.apiKey = updates.apiKey;

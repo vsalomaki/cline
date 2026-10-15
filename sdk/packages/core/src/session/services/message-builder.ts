@@ -25,6 +25,7 @@ import {
 	validateAndReserveImageMedia,
 } from "@cline/shared";
 import {
+	type ContextLimitOverrides,
 	DEFAULT_CONTEXT_LIMITS,
 	MESSAGE_LIMIT_ENV,
 	resolveContextLimits,
@@ -95,7 +96,14 @@ export interface MessageBuilderOptions {
 export function getMessageBuilderOptionsFromEnv(
 	env: Record<string, string | undefined> = process.env,
 ): MessageBuilderOptions {
-	const { message } = resolveContextLimits({}, env);
+	return getMessageBuilderOptions({}, env);
+}
+
+export function getMessageBuilderOptions(
+	overrides: ContextLimitOverrides = {},
+	env: Record<string, string | undefined> = process.env,
+): MessageBuilderOptions {
+	const { message } = resolveContextLimits(overrides, env);
 	return {
 		maxToolResultChars: message.toolResultChars,
 		maxFileContentChars: message.fileContentChars,

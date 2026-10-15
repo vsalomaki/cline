@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_CONTEXT_LIMITS,
+	getContextLimitEnvSources,
 	MESSAGE_LIMIT_ENV,
 	resolveContextLimits,
 	TOOL_LIMIT_ENV,
@@ -137,5 +138,21 @@ describe("resolveContextLimits", () => {
 		// so it needs the same clearance as the other budgeted producers.
 		const { message, tool } = resolveContextLimits({}, {});
 		expect(message.toolResultChars - tool.webFetchContentChars).toBe(2_000);
+	});
+});
+
+describe("getContextLimitEnvSources", () => {
+	it("reports only env vars that parse as valid limits", () => {
+		const sources = getContextLimitEnvSources({
+			CLINE_TOOL_MAX_READ_LINES: "500",
+			CLINE_TOOL_MAX_LINE_CHARS: "lots",
+			CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES: "0",
+		});
+
+		expect(sources.tool).toEqual({ readLines: "CLINE_TOOL_MAX_READ_LINES" });
+		expect(sources.message).toEqual({
+			minOutdatedRewriteBytes:
+				"CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES",
+		});
 	});
 });

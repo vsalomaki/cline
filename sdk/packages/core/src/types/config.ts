@@ -17,6 +17,8 @@ import type {
 } from "@cline/shared";
 import type { ToolRoutingRule } from "../extensions/tools/model-tool-routing";
 import type { TeamEvent } from "../extensions/tools/team";
+import type { DefaultToolsConfig } from "../extensions/tools/types";
+import type { ContextLimitOverrides } from "../settings/context-limits";
 import type { ProviderConfig } from "./provider-settings";
 
 export type CoreAgentMode = AgentMode;
@@ -159,6 +161,12 @@ export interface CoreCompactionConfig {
 	enabled?: boolean;
 	strategy?: CoreCompactionStrategy;
 	preserveRecentTokens?: number;
+	/**
+	 * Share of the usable input budget at which automatic compaction runs.
+	 * Values outside (0, 1] fall back to the default.
+	 * @default 0.9
+	 */
+	triggerRatio?: number;
 	summarizer?: CoreCompactionSummarizerConfig;
 	compact?: (
 		context: CoreCompactionContext,
@@ -236,6 +244,23 @@ export interface CoreCheckpointConfig {
 		| undefined;
 }
 
+/** Timeouts for the builtin tools; unset fields keep each tool's default. */
+export type CoreToolTimeouts = Pick<
+	DefaultToolsConfig,
+	| "fileReadTimeoutMs"
+	| "searchTimeoutMs"
+	| "webFetchTimeoutMs"
+	| "applyPatchTimeoutMs"
+	| "editorTimeoutMs"
+> & {
+	/**
+	 * How long `search_codebase` waits on ripgrep before falling back to the
+	 * much slower in-process regex walk.
+	 * @default 5000
+	 */
+	ripgrepTimeoutMs?: number;
+};
+
 export interface CoreSessionConfig
 	extends CoreModelConfig,
 		CoreRuntimeFeatures,
@@ -275,6 +300,9 @@ export interface CoreSessionConfig
 	execution?: AgentConfig["execution"];
 	compaction?: CoreCompactionConfig;
 	checkpoint?: CoreCheckpointConfig;
+	/** Caps on tool and provider-request text. Matching env vars take precedence. */
+	contextLimits?: ContextLimitOverrides;
+	toolTimeouts?: CoreToolTimeouts;
 	onTeamEvent?: (event: TeamEvent) => void;
 	onConsecutiveMistakeLimitReached?: (
 		context: ConsecutiveMistakeLimitContext,

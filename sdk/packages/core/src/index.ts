@@ -878,6 +878,7 @@ export {
 	type ContextLimitOverrides,
 	type ContextLimits,
 	DEFAULT_CONTEXT_LIMITS,
+	getContextLimitEnvSources,
 	MESSAGE_LIMIT_ENV,
 	type MessageContextLimits,
 	resolveContextLimits,
@@ -1075,6 +1076,7 @@ export type {
 	CoreModelConfig,
 	CoreRuntimeFeatures,
 	CoreSessionConfig,
+	CoreToolTimeouts,
 } from "./types/config";
 export type {
 	CoreSessionEvent,

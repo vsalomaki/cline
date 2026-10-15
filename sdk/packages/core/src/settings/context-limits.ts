@@ -121,6 +121,36 @@ function parseNonNegativeEnv(raw: string | undefined): number | undefined {
 	return parsePositiveEnv(trimmed);
 }
 
+/** Limits a valid env var currently sets, and the variable setting each. */
+export function getContextLimitEnvSources(
+	env: Record<string, string | undefined> = process.env,
+): {
+	message: Partial<Record<keyof MessageContextLimits, string>>;
+	tool: Partial<Record<keyof ToolContextLimits, string>>;
+} {
+	const message: Partial<Record<keyof MessageContextLimits, string>> = {};
+	for (const key of Object.keys(MESSAGE_LIMIT_ENV) as Array<
+		keyof MessageContextLimits
+	>) {
+		const parse =
+			key === "minOutdatedRewriteBytes"
+				? parseNonNegativeEnv
+				: parsePositiveEnv;
+		if (parse(env[MESSAGE_LIMIT_ENV[key]]) !== undefined) {
+			message[key] = MESSAGE_LIMIT_ENV[key];
+		}
+	}
+	const tool: Partial<Record<keyof ToolContextLimits, string>> = {};
+	for (const key of Object.keys(TOOL_LIMIT_ENV) as Array<
+		keyof ToolContextLimits
+	>) {
+		if (parsePositiveEnv(env[TOOL_LIMIT_ENV[key]]) !== undefined) {
+			tool[key] = TOOL_LIMIT_ENV[key];
+		}
+	}
+	return { message, tool };
+}
+
 export interface ContextLimitOverrides {
 	message?: Partial<MessageContextLimits>;
 	tool?: Partial<ToolContextLimits>;
