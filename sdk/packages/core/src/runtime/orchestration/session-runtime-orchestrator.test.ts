@@ -2801,6 +2801,51 @@ describe("SessionRuntime.run — tracker wiring (P1 #3)", () => {
 		expect(abortCalls.length).toBeGreaterThanOrEqual(1);
 	});
 
+	it("delivers the soft loop warning on the next model request, once", async () => {
+		const identical = (i: number): AgentRuntimeEvent => ({
+			type: "tool-started",
+			iteration: 1,
+			toolCall: {
+				type: "tool-call",
+				toolCallId: `tc${i}`,
+				toolName: "same",
+				input: { a: 1 },
+			},
+			snapshot: makeSnapshot(),
+		});
+		const { deps } = makeScriptedRuntime({
+			events: [
+				{ type: "turn-started", iteration: 1, snapshot: makeSnapshot() },
+				identical(1),
+				identical(2),
+			],
+		});
+		const createScripted = deps.createAgentRuntimeImpl as NonNullable<
+			typeof deps.createAgentRuntimeImpl
+		>;
+		let runtimeConfig: AgentRuntimeConfig | undefined;
+		const session = new SessionRuntime(
+			makeAgentConfig({
+				execution: { loopDetection: { softThreshold: 2, hardThreshold: 5 } },
+				consumePendingUserMessage: () => "steer",
+			}),
+			{
+				createAgentRuntimeImpl: (config) => {
+					runtimeConfig = config;
+					return createScripted(config);
+				},
+			},
+		);
+		await session.run("loop-me");
+
+		const pending = await runtimeConfig?.consumePendingUserMessage?.();
+		expect(pending).toMatch(
+			/^Detected 2 consecutive identical calls to `same`/,
+		);
+		expect(pending).toMatch(/\n\nsteer$/);
+		expect(await runtimeConfig?.consumePendingUserMessage?.()).toBe("steer");
+	});
+
 	it("resets loop detection when run() starts a fresh conversation", async () => {
 		const identical = (i: number): AgentRuntimeEvent => ({
 			type: "tool-started",
