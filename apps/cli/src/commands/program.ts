@@ -65,6 +65,18 @@ export function addRootOptions(cmd: Command): Command {
 				`Number of maximum consecutive mistakes (retries) before exiting (default: ${CLI_DEFAULT_MAX_CONSECUTIVE_MISTAKES})`,
 			)
 			.option(
+				"--max-parallel-tool-calls <count>",
+				"Maximum number of read-only tool calls run concurrently (default: 4; 1 runs every call in order)",
+			)
+			.option(
+				"--parallel-tool-calls",
+				"Let the model request several tool calls per response (default)",
+			)
+			.option(
+				"--no-parallel-tool-calls",
+				"Ask the model for one tool call per response",
+			)
+			.option(
 				"-t, --timeout <seconds>",
 				"Optional timeout in seconds (default: 0 for no timeout)",
 			)
@@ -212,6 +224,19 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 		} else if (raw) {
 			result.invalidRetries = raw;
 		}
+	}
+
+	if (opts.maxParallelToolCalls !== undefined) {
+		const raw = String(opts.maxParallelToolCalls).trim();
+		const parsed = Number.parseInt(raw, 10);
+		if (/^\d+$/.test(raw) && Number.isSafeInteger(parsed) && parsed >= 1) {
+			result.maxParallelToolCalls = parsed;
+		} else if (raw) {
+			result.invalidMaxParallelToolCalls = raw;
+		}
+	}
+	if (typeof opts.parallelToolCalls === "boolean") {
+		result.parallelToolCalls = opts.parallelToolCalls;
 	}
 
 	// Simple string/number options

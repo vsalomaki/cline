@@ -536,6 +536,38 @@ const routedGlmReasoningRule: ProviderOptionRule = {
 		),
 };
 
+const singleToolCallRule: ProviderOptionRule = {
+	id: "request.single-tool-call",
+	phase: "model-overlay",
+	description:
+		"parallelToolCalls:false asks for one tool call per response where the wire format has a switch.",
+	applies: (input) =>
+		input.request.parallelToolCalls === false &&
+		(input.request.tools?.length ?? 0) > 0,
+	build: (input) => {
+		switch (input.target) {
+			case "anthropic":
+			case "bedrock":
+			case "vertex":
+				return { anthropic: { disableParallelToolUse: true } };
+			case "openai":
+			case "openai-codex":
+				return { openai: { parallelToolCalls: false } };
+			case "mistral":
+				return { mistral: { parallelToolCalls: false } };
+			case "cline":
+			case "openai-compatible":
+				return buildProviderAndAliasPatch({
+					providerId: input.request.providerId,
+					providerOptionsKey: input.providerOptionsKey,
+					bucketOptions: { parallel_tool_calls: false },
+				});
+			default:
+				return undefined;
+		}
+	},
+};
+
 /**
  * The table is the provider/family behavior matrix. Adding a new exception
  * should mean adding a named rule here, not adding a branch in the composer.
@@ -565,6 +597,7 @@ export const PROVIDER_OPTION_RULES: ReadonlyArray<ProviderOptionRule> = [
 	miniMaxThinkingRule,
 	routedGlmReasoningRule,
 	togetherReasoningToggleRule,
+	singleToolCallRule,
 ];
 
 export function matchProviderOptionRules(

@@ -8,7 +8,15 @@
  * limit lives in `agentLimitSettings`.
  */
 
-export type AgentLimitGroup = "modelApi" | "toolOutput" | "toolInput" | "providerRequest" | "timeouts" | "loop" | "compaction"
+export type AgentLimitGroup =
+	| "modelApi"
+	| "toolCalls"
+	| "toolOutput"
+	| "toolInput"
+	| "providerRequest"
+	| "timeouts"
+	| "loop"
+	| "compaction"
 
 export type AgentLimitUnit = "chars" | "bytes" | "lines" | "milliseconds" | "count" | "tokens" | "percent" | "toggle"
 
@@ -51,6 +59,30 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		default: 5,
 		min: 0,
 		max: 10,
+	},
+	{
+		id: "session.maxParallelToolCalls",
+		group: "toolCalls",
+		label: "Parallel tool calls",
+		description:
+			"Read-only tools (file reads, searches, listings, web fetches, skills) run at once when the model asks for several in one response. Edits, commands and questions always run one at a time. 1 runs every call in order.",
+		unit: "count",
+		default: 4,
+		min: 1,
+		max: 16,
+		envVar: "CLINE_MAX_PARALLEL_TOOL_CALLS",
+	},
+	{
+		id: "api.parallelToolCalls",
+		group: "toolCalls",
+		label: "Several tool calls per response",
+		description:
+			"Lets the model ask for several tools in one response, which saves round trips, time and tokens. Keep it on unless a model garbles responses that hold several calls, as some small local models do. Off asks the provider for one call per response.",
+		unit: "toggle",
+		default: 1,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_PARALLEL_TOOL_CALLS",
 	},
 	{
 		id: "tool.commandOutputChars",
@@ -382,6 +414,7 @@ export interface AgentLimitsState {
 
 export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: string; description: string }> = [
 	{ id: "modelApi", title: "Model API", description: "Applies to every provider." },
+	{ id: "toolCalls", title: "Tool calls", description: "How Cline runs the tool calls in one model response." },
 	{
 		id: "toolOutput",
 		title: "Tool output",

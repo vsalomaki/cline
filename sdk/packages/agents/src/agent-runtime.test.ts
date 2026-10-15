@@ -2134,6 +2134,100 @@ describe("AgentRuntime", () => {
 	});
 
 	it.each([
+		[1, 1],
+		[2, 2],
+		[undefined, 5],
+	] as const)("caps concurrent parallel tools at maxParallelToolCalls %s", async (maxParallelToolCalls, expectedPeak) => {
+		const ids = ["a", "b", "c", "d", "e"];
+		let running = 0;
+		let peak = 0;
+		const started: string[] = [];
+		const model = new ScriptedModel([
+			() => [
+				...ids.map((id) => ({
+					type: "tool-call-delta" as const,
+					toolCallId: id,
+					toolName: "worker",
+					inputText: JSON.stringify({ text: id }),
+				})),
+				{ type: "finish", reason: "tool-calls" },
+			],
+			() => [
+				{ type: "text-delta", text: "done" },
+				{ type: "finish", reason: "stop" },
+			],
+		]);
+		const runtime = new AgentRuntime({
+			model,
+			maxParallelToolCalls,
+			tools: [
+				{
+					name: "worker",
+					description: "concurrent tool",
+					executionMode: "parallel",
+					inputSchema: { type: "object" },
+					execute: async (input: { text: string }) => {
+						started.push(input.text);
+						running += 1;
+						peak = Math.max(peak, running);
+						await new Promise((resolve) => setTimeout(resolve, 5));
+						running -= 1;
+						return input.text;
+					},
+				},
+			],
+		});
+
+		const result = await runtime.run("Run tools");
+
+		expect(result.status).toBe("completed");
+		expect(peak).toBe(expectedPeak);
+		expect(started).toEqual(ids);
+		expect(
+			result.messages
+				.filter((message) => message.role === "tool")
+				.map((message) => message.content[0]),
+		).toEqual(ids.map((id) => expect.objectContaining({ toolCallId: id })));
+	});
+
+	it("does not start queued tools after the run is aborted", async () => {
+		const started: string[] = [];
+		const model = new ScriptedModel([
+			() => [
+				...["a", "b", "c"].map((id) => ({
+					type: "tool-call-delta" as const,
+					toolCallId: id,
+					toolName: "worker",
+					inputText: JSON.stringify({ text: id }),
+				})),
+				{ type: "finish", reason: "tool-calls" },
+			],
+		]);
+		const runtime: AgentRuntime = new AgentRuntime({
+			model,
+			maxParallelToolCalls: 1,
+			tools: [
+				{
+					name: "worker",
+					description: "concurrent tool",
+					executionMode: "parallel",
+					inputSchema: { type: "object" },
+					execute: async (input: { text: string }) => {
+						started.push(input.text);
+						runtime.abort("stop");
+						return input.text;
+					},
+				},
+			],
+		});
+
+		const result = await runtime.run("Run tools");
+
+		expect(result.status).toBe("aborted");
+		expect(started).toEqual(["a"]);
+	});
+
+	it.each([
 		"skip",
 		"stop",
 	] as const)("preserves beforeTool %s semantics for parallel tools", async (decision) => {

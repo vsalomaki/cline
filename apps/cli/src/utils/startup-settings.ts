@@ -32,6 +32,24 @@ export function resolveStartupToolAutoApprove(
 
 /**
  * Returns undefined when neither a flag nor a persisted value exists, so
+ * Core's env/default resolution applies.
+ */
+export function resolveStartupMaxParallelToolCalls(
+	args: Pick<ParsedArgs, "maxParallelToolCalls">,
+	settings: GlobalSettings,
+): number | undefined {
+	return args.maxParallelToolCalls ?? settings.maxParallelToolCalls;
+}
+
+export function resolveStartupParallelToolCalls(
+	args: Pick<ParsedArgs, "parallelToolCalls">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.parallelToolCalls ?? settings.parallelToolCalls;
+}
+
+/**
+ * Returns undefined when neither a flag nor a persisted value exists, so
  * callers fall through to Core's compaction default.
  */
 export function resolveStartupCompactionMode(

@@ -119,6 +119,8 @@ cline doctor log
 | `CLINE_HOOKS_DIR` | Additional hooks directory |
 | `CLINE_TOOL_MAX_*` | Caps on what each tool returns and accepts ([Context limits](#context-limits)) |
 | `CLINE_MESSAGE_BUILDER_*` | Caps on the text in each provider request ([Context limits](#context-limits)) |
+| `CLINE_MAX_PARALLEL_TOOL_CALLS` | Read-only tool calls run at once ([Tool calls](#tool-calls)) |
+| `CLINE_PARALLEL_TOOL_CALLS` | Whether the model may request several tool calls per response ([Tool calls](#tool-calls)) |
 | `CLINE_LOG_PATH` | CLI log file (default: `~/.cline/data/logs/cline.log`). `cline doctor log` opens it |
 
 ### CLINE_DATA_DIR
@@ -178,6 +180,25 @@ The **Model API** group there applies to every provider:
 - **Retries** (default 5): how often a request is retried when it fails to
   start, times out, comes back empty or drops before any output. 0 turns
   retries off.
+
+### Tool calls
+
+When the model requests several tool calls in one response, read-only tools
+(`read_files`, `search_codebase`, `list_files`, `fetch_web_content`, skills) run
+concurrently. Everything else runs in order, and approvals are still asked one at
+a time.
+
+| Variable | Default | Governs |
+|----------|---------|---------|
+| `CLINE_MAX_PARALLEL_TOOL_CALLS` | `4` | Read-only tool calls run at once; `1` runs every call in order |
+| `CLINE_PARALLEL_TOOL_CALLS` | `true` | `false` (or `0`, `off`) asks the provider for one tool call per response |
+
+In the VS Code extension, both settings are under **Settings → Agent Limits → Tool calls**.
+The CLI also takes `--max-parallel-tool-calls <n>` and `--no-parallel-tool-calls`,
+and reads `maxParallelToolCalls` and `parallelToolCalls` from
+`global-settings.json`. An env var wins over the flag and the file, and the flag wins
+over the file. Values that are not valid (a non-positive or non-integer count, an
+unrecognized boolean) are ignored.
 
 ## Related Docs
 

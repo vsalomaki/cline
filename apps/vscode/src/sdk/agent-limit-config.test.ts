@@ -34,6 +34,20 @@ describe("AGENT_LIMIT_DEFINITIONS", () => {
 			Object.keys(DEFAULT_CONTEXT_LIMITS.tool).length + Object.keys(DEFAULT_CONTEXT_LIMITS.message).length,
 		)
 	})
+
+	it("matches the SDK's tool-call defaults and env var names", async () => {
+		const realModulePath = path.resolve(import.meta.dirname, "../../../../sdk/packages/core/src/settings/tool-calls.ts")
+		const { DEFAULT_MAX_PARALLEL_TOOL_CALLS, TOOL_CALL_ENV } = (await import(/* @vite-ignore */ realModulePath)) as Pick<
+			typeof CoreContextLimits,
+			"DEFAULT_MAX_PARALLEL_TOOL_CALLS" | "TOOL_CALL_ENV"
+		>
+		const byId = new Map<string, AgentLimitDefinition>(AGENT_LIMIT_DEFINITIONS.map((d) => [d.id, d]))
+		expect(byId.get("session.maxParallelToolCalls")).toMatchObject({
+			default: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+			envVar: TOOL_CALL_ENV.maxParallelToolCalls,
+		})
+		expect(byId.get("api.parallelToolCalls")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.parallelToolCalls })
+	})
 })
 
 describe("buildAgentLimitSessionConfig", () => {
@@ -71,6 +85,14 @@ describe("buildAgentLimitSessionConfig", () => {
 		const config = buildAgentLimitSessionConfig({ "api.requestTimeout": 60_000, "api.maxRetries": 0 })
 
 		expect(config).toEqual({ providerConfig: { timeoutMs: 60_000, maxRetries: 0 } })
+	})
+
+	it("maps the tool-call settings onto top-level session options", () => {
+		expect(buildAgentLimitSessionConfig({ "session.maxParallelToolCalls": 1, "api.parallelToolCalls": 0 })).toEqual({
+			maxParallelToolCalls: 1,
+			parallelToolCalls: false,
+		})
+		expect(buildAgentLimitSessionConfig({ "api.parallelToolCalls": 1 })).toEqual({ parallelToolCalls: true })
 	})
 
 	it("turns loop detection off", () => {

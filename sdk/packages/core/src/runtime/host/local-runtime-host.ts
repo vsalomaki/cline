@@ -824,6 +824,8 @@ export class LocalRuntimeHost implements RuntimeHost {
 			thinkingBudgetTokens: configWithProvider.thinkingBudgetTokens,
 			maxTokensPerTurn: configWithProvider.maxTokensPerTurn,
 			temperature: configWithProvider.temperature,
+			maxParallelToolCalls: configWithProvider.maxParallelToolCalls,
+			parallelToolCalls: configWithProvider.parallelToolCalls,
 			systemPrompt: configWithProvider.systemPrompt,
 			maxIterations: configWithProvider.maxIterations,
 			execution: configWithProvider.execution,

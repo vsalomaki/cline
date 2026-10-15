@@ -120,6 +120,80 @@ describe("handleEvent text formatting", () => {
 		expect(output).toMatch(/\[run_commands\].*\n.*\[read_files\]/s);
 	});
 
+	it("names the tool again when concurrent results finish out of order", () => {
+		const start = (toolCallId: string, toolName: string, input: unknown) =>
+			handleEvent(
+				{
+					type: "content_start",
+					contentType: "tool",
+					toolCallId,
+					toolName,
+					input,
+				} as unknown as AgentEvent,
+				{} as Config,
+			);
+		const end = (toolCallId: string, toolName: string, outputText: string) =>
+			handleEvent(
+				{
+					type: "content_end",
+					contentType: "tool",
+					toolCallId,
+					toolName,
+					output: outputText,
+				} as unknown as AgentEvent,
+				{} as Config,
+			);
+
+		start("a", "read_files", { path: "/tmp/a.txt" });
+		start("b", "read_files", { path: "/tmp/b.txt" });
+		start("c", "list_files", { path: "/tmp" });
+		end("c", "list_files", "result-c");
+		end("a", "read_files", "result-a");
+		end("b", "read_files", "result-b");
+
+		const header = (name: string, input: string) =>
+			`\x1b[36m[${name}]\x1b[0m ${input}\n`;
+		const result = (text: string) =>
+			`   \x1b[90m⎿ \x1b[0m\x1b[2m${text}\x1b[0m\n`;
+		expect(output).toBe(
+			header("read_files", '{"path":"/tmp/a.txt"}') +
+				header("read_files", '{"path":"/tmp/b.txt"}') +
+				header("list_files", "/tmp") +
+				result("result-c") +
+				header("read_files", '{"path":"/tmp/a.txt"}') +
+				result("result-a") +
+				header("read_files", '{"path":"/tmp/b.txt"}') +
+				result("result-b"),
+		);
+	});
+
+	it("does not repeat the header when a result follows its own start", () => {
+		for (const id of ["a", "b"]) {
+			handleEvent(
+				{
+					type: "content_start",
+					contentType: "tool",
+					toolCallId: id,
+					toolName: "read_files",
+					input: { path: `/tmp/${id}.txt` },
+				} as unknown as AgentEvent,
+				{} as Config,
+			);
+			handleEvent(
+				{
+					type: "content_end",
+					contentType: "tool",
+					toolCallId: id,
+					toolName: "read_files",
+					output: "ok",
+				} as unknown as AgentEvent,
+				{} as Config,
+			);
+		}
+
+		expect(output.match(/\[read_files\]/g)).toHaveLength(2);
+	});
+
 	it("saves generated images and prints an openable path", () => {
 		handleEvent(
 			{

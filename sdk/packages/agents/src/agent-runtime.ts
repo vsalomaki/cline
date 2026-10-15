@@ -2344,7 +2344,9 @@ export class AgentRuntime {
 			const execution = prepared[index];
 			const mode = execution.tool?.executionMode ?? this.config.toolExecution;
 			if (mode === "sequential") {
-				results.push(await this.executePreparedTool(execution));
+				results.push(
+					await this.executePreparedTool(this.unlessAborted(execution)),
+				);
 				index += 1;
 				continue;
 			}
@@ -2360,13 +2362,49 @@ export class AgentRuntime {
 				index += 1;
 			}
 			results.push(
-				...(await Promise.all(
-					prepared
-						.slice(start, index)
-						.map((call) => this.executePreparedTool(call)),
-				)),
+				...(await this.executeParallelGroup(prepared.slice(start, index))),
 			);
 		}
+		return results;
+	}
+
+	/** After an abort, calls that have not started return an error result instead of running. */
+	private unlessAborted(
+		prepared: PreparedToolExecution,
+	): PreparedToolExecution {
+		return this.abortController?.signal.aborted && !prepared.skipReason
+			? {
+					...prepared,
+					skipReason: "The run was aborted before this tool started.",
+				}
+			: prepared;
+	}
+
+	private async executeParallelGroup(
+		group: PreparedToolExecution[],
+	): Promise<AgentMessage[]> {
+		const limit = Math.min(
+			group.length,
+			Math.max(1, this.config.maxParallelToolCalls ?? group.length),
+		);
+		const results = new Array<AgentMessage>(group.length);
+		let next = 0;
+		let stopped = false;
+		const worker = async () => {
+			while (!stopped && next < group.length) {
+				const index = next++;
+				try {
+					results[index] = await this.executePreparedTool(
+						this.unlessAborted(group[index]),
+					);
+				} catch (error) {
+					// A hook stop or failure ends the group: queued calls must not start.
+					stopped = true;
+					throw error;
+				}
+			}
+		};
+		await Promise.all(Array.from({ length: limit }, worker));
 		return results;
 	}
 

@@ -26,6 +26,7 @@ import type {
 	ITelemetryService,
 } from "@cline/shared";
 import { version as clineCoreVersion } from "../../../package.json";
+import { resolveToolCallSettings } from "../../settings/tool-calls";
 
 /**
  * Inputs required to assemble an `AgentRuntimeConfig`. Distinct from
@@ -91,10 +92,13 @@ export function createAgentRuntimeConfig(
 ): AgentRuntimeConfig {
 	const { agentConfig } = input;
 
-	const modelOptions = buildModelOptions(agentConfig);
+	const toolCalls = resolveToolCallSettings(agentConfig);
+	const modelOptions = buildModelOptions({
+		...agentConfig,
+		parallelToolCalls: toolCalls.parallelToolCalls,
+	});
 	const messageModelInfo = buildMessageModelInfo(agentConfig);
 	const hooks = input.hooks;
-	const toolExecution = resolveToolExecution(agentConfig.maxParallelToolCalls);
 
 	const config: AgentRuntimeConfig = {
 		distinctId: agentConfig.distinctId,
@@ -124,7 +128,7 @@ export function createAgentRuntimeConfig(
 				? undefined
 				: (input.completionPolicy ?? agentConfig.completionPolicy),
 		maxIterations: agentConfig.maxIterations,
-		toolExecution,
+		maxParallelToolCalls: toolCalls.maxParallelToolCalls,
 		providerErrorMaxRetries: resolveProviderErrorMaxRetries(agentConfig),
 		toolPolicies: agentConfig.toolPolicies,
 		toolContextMetadata: input.toolContextMetadata,
@@ -165,6 +169,9 @@ export function buildModelOptions(
 	if (config.apiTimeoutMs !== undefined) {
 		options.apiTimeoutMs = config.apiTimeoutMs;
 	}
+	if (config.parallelToolCalls === false) {
+		options.parallelToolCalls = false;
+	}
 	return Object.keys(options).length > 0 ? options : undefined;
 }
 
@@ -197,17 +204,4 @@ export function resolveProviderErrorMaxRetries(
 		maxRetries >= 0
 		? Math.floor(maxRetries)
 		: undefined;
-}
-
-/**
- * `"parallel"` when `maxParallelToolCalls ≥ 2`, `"sequential"` when
- * `1`, `undefined` when the caller did not specify.
- */
-export function resolveToolExecution(
-	maxParallelToolCalls: number | undefined,
-): "sequential" | "parallel" | undefined {
-	if (maxParallelToolCalls === undefined) {
-		return undefined;
-	}
-	return maxParallelToolCalls >= 2 ? "parallel" : "sequential";
 }

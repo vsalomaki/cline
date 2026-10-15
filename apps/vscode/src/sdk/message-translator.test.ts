@@ -2283,27 +2283,25 @@ describe("translateSessionEvent — agent_event content_update", () => {
 	})
 
 	it.each([
-		["run_commands", "run_commands", undefined],
-		["run_commands", "run_commands", "The user denied this operation."],
-		["execute_command", "execute_command", undefined],
-		["execute_command", "execute_command", "The user denied this operation."],
-		["run_commands", "execute_command", undefined],
-		["read_files", "run_commands", undefined],
-	] as const)("ignores a stale %s completion while the active command is %s (error: %s)", (staleToolName, activeToolName, error) => {
+		["run_commands", "run_commands"],
+		["execute_command", "execute_command"],
+		["run_commands", "execute_command"],
+		["read_files", "run_commands"],
+	] as const)("finalizes an overlapping %s call without disturbing the active %s row", (olderToolName, activeToolName) => {
 		const state = new MessageTranslatorState()
-		start(state, staleToolName, "older-call")
+		const older = start(state, olderToolName, "older-call")
 		const active = start(state, activeToolName, "active-call")
+		expect(older.ts).not.toBe(active.ts)
 
-		expect(
-			translate(state, {
-				type: "content_end",
-				contentType: "tool",
-				toolName: staleToolName,
-				toolCallId: "older-call",
-				output: [{ result: "older output", success: true }],
-				error,
-			}),
-		).toEqual([])
+		const [olderEnd, ...rest] = translate(state, {
+			type: "content_end",
+			contentType: "tool",
+			toolName: olderToolName,
+			toolCallId: "older-call",
+			output: [{ result: "older output", success: true }],
+		})
+		expect(rest).toEqual([])
+		expect(olderEnd).toMatchObject({ ts: older.ts, partial: false })
 		expect(update(state, { chunk: "active output" }, activeToolName, "active-call")).toEqual([
 			{ ...active, text: `build\n${COMMAND_OUTPUT_STRING}\nactive output` },
 		])
@@ -4459,5 +4457,73 @@ describe("persisted display-only errors", () => {
 		expect(rendered.at(-1)).toMatchObject({ type: "ask", ask: "api_req_failed" })
 		expect(rendered.at(-1)?.text).toContain("API key expired")
 		expect(rendered.some((message) => message.say === "completion_result" || message.ask === "completion_result")).toBe(false)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// translateSessionEvent — overlapping tool calls
+// ---------------------------------------------------------------------------
+
+describe("translateSessionEvent — overlapping tool calls", () => {
+	const translate = (state: MessageTranslatorState, event: Record<string, unknown>) =>
+		translateSessionEvent(
+			{ type: "agent_event", payload: { sessionId: "session-1", event: event as unknown as AgentEvent } },
+			state,
+		).messages
+	const startRead = (state: MessageTranslatorState, toolCallId: string, path: string) =>
+		translate(state, {
+			type: "content_start",
+			contentType: "tool",
+			toolName: "read_files",
+			toolCallId,
+			input: { files: [{ path }] },
+		})
+	const endRead = (state: MessageTranslatorState, toolCallId: string) =>
+		translate(state, { type: "content_end", contentType: "tool", toolName: "read_files", toolCallId, output: "ok" })
+	const readPath = (message: { text?: string }) => (JSON.parse(message.text ?? "{}") as ClineSayTool).path
+
+	it("keeps a distinct row and input per call when ends arrive in reverse order", () => {
+		const state = new MessageTranslatorState()
+		const starts = ["a", "b", "c"].map((id) => startRead(state, id, `${id}.ts`))
+		const startTs = starts.map(([message]) => message.ts)
+		expect(new Set(startTs).size).toBe(3)
+
+		for (const id of ["c", "a", "b"]) {
+			const ends = endRead(state, id)
+			const index = ["a", "b", "c"].indexOf(id)
+			expect(ends).toHaveLength(1)
+			expect(ends[0]).toMatchObject({ ts: startTs[index], say: "tool", partial: false })
+			expect(readPath(ends[0])).toBe(`${id}.ts`)
+		}
+	})
+
+	it("converts every approved ask row when the calls overlap", () => {
+		const state = new MessageTranslatorState()
+		const approvedTs = { a: 101, b: 102, c: 103 }
+		for (const [id, ts] of Object.entries(approvedTs)) {
+			state.recordApprovedToolMessageTs(id, ts)
+		}
+
+		for (const id of ["a", "b", "c"] as const) {
+			expect(startRead(state, id, `${id}.ts`)[0]).toMatchObject({ ts: approvedTs[id], partial: true })
+		}
+		for (const id of ["b", "c", "a"] as const) {
+			const [end] = endRead(state, id)
+			expect(end).toMatchObject({ ts: approvedTs[id], say: "tool", partial: false })
+			expect(readPath(end)).toBe(`${id}.ts`)
+		}
+	})
+
+	it("gives an id-less call the same row from start to end", () => {
+		const state = new MessageTranslatorState()
+		const [started] = translate(state, {
+			type: "content_start",
+			contentType: "tool",
+			toolName: "read_files",
+			input: { files: [{ path: "a.ts" }] },
+		})
+		const [ended] = translate(state, { type: "content_end", contentType: "tool", toolName: "read_files" })
+		expect(ended).toMatchObject({ ts: started.ts, partial: false })
+		expect(readPath(ended)).toBe("a.ts")
 	})
 })

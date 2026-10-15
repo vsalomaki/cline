@@ -261,6 +261,8 @@ Schedules can route results back to chat surfaces with `--delivery-adapter`, `--
 | `--thinking [none\|low\|medium\|high\|xhigh]` | Model thinking level when supported. Defaults to `medium` when the flag is provided without a level. Without the flag, the CLI uses the level you last chose with `/model`, or the provider default. |
 | `--compaction <agentic\|basic\|off>` | Context compaction mode. Defaults to `agentic`; use `basic` for local truncation or `off` to disable. |
 | `--retries <count>` | Maximum consecutive mistakes (retries) before halting (default: `3`) |
+| `--max-parallel-tool-calls <count>` | Maximum read-only tool calls run concurrently (default: `4`; `1` runs every call in order) |
+| `--no-parallel-tool-calls` | Ask the model for one tool call per response (`--parallel-tool-calls` restores the default) |
 | `--json` | Output NDJSON instead of styled text |
 | `--data-dir <path>` | Use isolated local state at `<path>` instead of `~/.cline/data` (enables sandbox mode automatically) |
 | `--auto-approve [true\|false]` | Set tool auto-approval for all tools |

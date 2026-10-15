@@ -683,6 +683,8 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			thinkingBudgetTokens: config.thinkingBudgetTokens,
 			maxTokensPerTurn: config.maxTokensPerTurn,
 			temperature: config.temperature,
+			maxParallelToolCalls: config.maxParallelToolCalls,
+			parallelToolCalls: config.parallelToolCalls,
 			maxIterations: config.maxIterations,
 			hooks,
 			extensions: runtimeExtensions,

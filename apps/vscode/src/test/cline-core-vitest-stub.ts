@@ -58,6 +58,14 @@ export function getContextLimitEnvSources() {
 	return { message: {}, tool: {} }
 }
 
+export function resolveToolCallSettings(config: { maxParallelToolCalls?: number; parallelToolCalls?: boolean } = {}) {
+	return { maxParallelToolCalls: config.maxParallelToolCalls ?? 4, parallelToolCalls: config.parallelToolCalls ?? true }
+}
+
+export function getToolCallEnvSources(): { maxParallelToolCalls?: string; parallelToolCalls?: string } {
+	return {}
+}
+
 export interface StoredModelEntry {
 	id?: string
 	name?: string
