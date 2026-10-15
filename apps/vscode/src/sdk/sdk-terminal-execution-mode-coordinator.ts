@@ -41,6 +41,11 @@ export class SdkTerminalExecutionModeCoordinator {
 		this.requestRebuild("Command timeout settings changed")
 	}
 
+	/** Tools, the message builder and loop detection capture these limits when built. */
+	handleAgentLimitsChanged(): void {
+		this.requestRebuild("Agent limit settings changed")
+	}
+
 	private requestRebuild(reason: string): void {
 		Logger.log(`[SdkController] ${reason}`)
 

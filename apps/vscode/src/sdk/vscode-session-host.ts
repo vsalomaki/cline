@@ -22,6 +22,7 @@ import {
 	type PreparedRemoteConfigCoreIntegration,
 	type RestoreInput,
 	type RestoreResult,
+	resolveContextLimits,
 	type SendSessionInput,
 	type SessionAccumulatedUsage,
 	type SessionCompactionState,
@@ -159,6 +160,7 @@ export class VscodeSessionHost implements SdkSessionHost {
 				backgroundCommandTimeoutMs: stateManager.getGlobalStateKey("backgroundCommandTimeoutMs"),
 				foregroundCommandAutoProceedMs: stateManager.getGlobalStateKey("foregroundCommandAutoProceedMs"),
 				foregroundCommands: options.foregroundCommands,
+				toolLimits: resolveContextLimits(inputWithRemoteConfig.config.contextLimits ?? {}).tool,
 			})
 			return {
 				...inputWithRemoteConfig,

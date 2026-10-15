@@ -34,6 +34,11 @@ import {
 } from "../../extensions/tools";
 import { createPlanModeCommandGuardExtension } from "../../extensions/tools/command-guard-extension";
 import {
+	applySessionToolOptions,
+	resolveSessionToolOptions,
+	type SessionToolOptions,
+} from "../../extensions/tools/session-tool-options";
+import {
 	AgentTeamsRuntime,
 	bootstrapAgentTeams,
 	createDelegatedAgentConfigProvider,
@@ -143,6 +148,7 @@ function createBuiltinToolsList(
 	executorOverrides?: Partial<ToolExecutors>,
 	telemetry?: ITelemetryService,
 	runCommandExecutionController?: RunCommandExecutionController,
+	sessionToolOptions?: SessionToolOptions,
 ): AgentTool[] {
 	const preset = ToolPresets[resolveToolPresetName({ mode })];
 	const toolRoutingConfig = resolveToolRoutingConfig(
@@ -153,24 +159,29 @@ function createBuiltinToolsList(
 	);
 
 	return filterAvailableTools(
-		createBuiltinTools({
-			cwd,
-			telemetry,
-			executorOptions: {
-				bash: { executionController: runCommandExecutionController },
-			},
-			...preset,
-			enableSkills: !!skillsExecutor,
-			...toolRoutingConfig,
-			executors: {
-				...(skillsExecutor
-					? {
-							skills: skillsExecutor,
-						}
-					: {}),
-				...(executorOverrides ?? {}),
-			},
-		}),
+		createBuiltinTools(
+			applySessionToolOptions(
+				{
+					cwd,
+					telemetry,
+					executorOptions: {
+						bash: { executionController: runCommandExecutionController },
+					},
+					...preset,
+					enableSkills: !!skillsExecutor,
+					...toolRoutingConfig,
+					executors: {
+						...(skillsExecutor
+							? {
+									skills: skillsExecutor,
+								}
+							: {}),
+						...(executorOverrides ?? {}),
+					},
+				},
+				sessionToolOptions,
+			),
+		),
 		toolPolicies,
 	);
 }
@@ -369,6 +380,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 		} = input;
 		const onTeamEvent = input.onTeamEvent ?? (() => {});
 		const normalized = normalizeConfig(config);
+		const sessionToolOptions = resolveSessionToolOptions(config);
 		const modelTools: ModelTool[] = [];
 		if (
 			normalized.enableTools &&
@@ -509,6 +521,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 					toolExecutors,
 					telemetry ?? config.telemetry,
 					input.runCommandExecutionController,
+					sessionToolOptions,
 				),
 			);
 			if (!normalized.disableMcpSettingsTools) {
@@ -585,6 +598,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 												toolExecutors,
 												telemetry ?? config.telemetry,
 												input.runCommandExecutionController,
+												sessionToolOptions,
 											),
 											agent,
 										)
@@ -691,6 +705,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 									toolExecutors,
 									telemetry ?? config.telemetry,
 									input.runCommandExecutionController,
+									sessionToolOptions,
 								)
 						: undefined,
 					teammateConfigProvider: delegatedAgentConfigProvider,

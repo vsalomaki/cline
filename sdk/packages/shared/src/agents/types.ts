@@ -272,8 +272,9 @@ export interface AgentExecutionConfig {
 	 * - At `softThreshold`: injects a recovery notice urging a different approach.
 	 * - At `hardThreshold`: triggers the consecutive-mistake-limit decision path.
 	 *
-	 * Set to `false` to explicitly disable. Omit or leave `undefined` for no detection.
-	 * The CLI enables this by default with `{ softThreshold: 3, hardThreshold: 5 }`.
+	 * Set to `false` to disable. Omitted thresholds default to
+	 * `{ softThreshold: 3, hardThreshold: 5 }`, so leaving this `undefined`
+	 * keeps detection on.
 	 */
 	loopDetection?: false | Partial<LoopDetectionConfig>;
 }

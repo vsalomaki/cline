@@ -1,3 +1,4 @@
+import type { AgentLimitValues } from "@shared/AgentLimits"
 import { AutoApprovalSettings, DEFAULT_AUTO_APPROVAL_SETTINGS } from "@shared/AutoApprovalSettings"
 import {
 	ApiProvider,
@@ -83,6 +84,8 @@ const GLOBAL_STATE_FIELDS = {
 	// Unset keeps the built-in default.
 	backgroundCommandTimeoutMs: { default: undefined as number | undefined },
 	foregroundCommandAutoProceedMs: { default: undefined as number | undefined },
+	// Only the limits the user changed (see shared/AgentLimits.ts).
+	agentLimitSettings: { default: undefined as AgentLimitValues | undefined },
 	isNewUser: { default: true as boolean },
 	welcomeViewCompleted: { default: undefined as boolean | undefined },
 	mcpDisplayMode: { default: DEFAULT_MCP_DISPLAY_MODE as McpDisplayMode },

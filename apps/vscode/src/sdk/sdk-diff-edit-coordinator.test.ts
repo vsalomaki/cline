@@ -364,6 +364,31 @@ describe("SdkDiffEditCoordinator", () => {
 		expect(previews[0].closed).toBe(1)
 	})
 
+	it("caps the default executor's diff summary at the current diff-line limit", async () => {
+		backgroundEdit = true
+		let diffLines = 4
+		const limited = makeCoordinator({ fallbackEditorExecutor: undefined, getEditorDiffLines: () => diffLines })
+		const oldText = Array.from({ length: 10 }, (_, i) => `old${i}`).join("\n")
+		const newText = Array.from({ length: 10 }, (_, i) => `new${i}`).join("\n")
+		await writeFile("a.ts", oldText)
+
+		const capped = await limited.executeEditorTool(
+			{ path: path.join(tempDir, "a.ts"), old_text: oldText, new_text: newText },
+			tempDir,
+			makeContext("tc1"),
+		)
+		diffLines = 200
+		const full = await limited.executeEditorTool(
+			{ path: path.join(tempDir, "a.ts"), old_text: newText, new_text: oldText },
+			tempDir,
+			makeContext("tc2"),
+		)
+
+		expect(String(capped)).toContain("new1")
+		expect(String(capped)).not.toContain("new9")
+		expect(String(full)).toContain("old9")
+	})
+
 	it("closes the preview even when the write fails", async () => {
 		await writeFile("a.ts", "old content")
 		const input = { path: "a.ts", old_text: "old", new_text: "new" }

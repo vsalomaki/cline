@@ -14,6 +14,7 @@ import { runBasicCompaction } from "./basic-compaction";
 import {
 	createCompactionStateAwarePrepareTurn,
 	createContextCompactionPrepareTurn,
+	resolveCompactionTriggerRatio,
 } from "./compaction";
 import {
 	createTokenEstimator,
@@ -1055,6 +1056,56 @@ describe("createContextCompactionPrepareTurn", () => {
 		const compacted = runForcedBasicCompaction(messages, 1);
 
 		expect(compacted).toBe(messages);
+	});
+
+	it("compacts at the configured trigger ratio", async () => {
+		const budgets: CoreCompactionContext["budget"][] = [];
+		const prepareTurn = createContextCompactionPrepareTurn({
+			providerId: "anthropic",
+			modelId: "mock-model",
+			compaction: {
+				enabled: true,
+				triggerRatio: 0.5,
+				compact: (context) => {
+					budgets.push(context.budget);
+					return undefined;
+				},
+			},
+			logger: undefined,
+		});
+		const messages: LlmsProviders.Message[] = [
+			{ role: "user", content: "start" },
+			{ role: "assistant", content: "x".repeat(2_400) },
+			{ role: "user", content: "Continue" },
+		];
+
+		await prepareTurn?.({
+			agentId: "agent-1",
+			conversationId: "conv-1",
+			parentAgentId: null,
+			iteration: 1,
+			abortSignal: new AbortController().signal,
+			systemPrompt: "You are helpful.",
+			tools: [],
+			messages,
+			apiMessages: messages,
+			model: {
+				id: "mock-model",
+				provider: "anthropic",
+				info: { id: "mock-model", maxInputTokens: 1_000 },
+			},
+		});
+
+		expect(budgets).toHaveLength(1);
+		expect(budgets[0]?.request.thresholdRatio).toBe(0.5);
+		expect(budgets[0]?.request.triggerTokens).toBe(500);
+	});
+
+	it("falls back to the default trigger ratio for out-of-range values", () => {
+		expect(resolveCompactionTriggerRatio(undefined)).toBe(0.9);
+		expect(resolveCompactionTriggerRatio(0)).toBe(0.9);
+		expect(resolveCompactionTriggerRatio(1.5)).toBe(0.9);
+		expect(resolveCompactionTriggerRatio(0.75)).toBe(0.75);
 	});
 
 	it("does not truncate a shallow first task prompt below the trigger for high-output models", async () => {

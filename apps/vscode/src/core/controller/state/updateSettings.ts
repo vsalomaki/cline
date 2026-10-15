@@ -5,6 +5,7 @@ import { convertProtoToApiProvider } from "@shared/proto-conversions/models/api-
 import { OpenaiReasoningEffort } from "@shared/storage/types"
 import { TelemetrySetting } from "@shared/TelemetrySetting"
 import { ClineEnv } from "@/config"
+import { applyAgentLimitUpdates } from "@/shared/AgentLimits"
 import { normalizeCommandTimeoutMs } from "@/shared/CommandTimeouts"
 import { McpDisplayMode } from "@/shared/McpDisplayMode"
 import { Logger } from "@/shared/services/Logger"
@@ -145,6 +146,15 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 		}
 		if (commandTimeoutsChanged) {
 			controller.handleCommandTimeoutsChanged()
+		}
+
+		if (Object.keys(request.agentLimitUpdates ?? {}).length > 0) {
+			const previous = controller.stateManager.getGlobalStateKey("agentLimitSettings") ?? {}
+			const next = applyAgentLimitUpdates(previous, request.agentLimitUpdates)
+			controller.stateManager.setGlobalState("agentLimitSettings", Object.keys(next).length > 0 ? next : undefined)
+			if (JSON.stringify(previous) !== JSON.stringify(next)) {
+				controller.handleAgentLimitsChanged()
+			}
 		}
 
 		if (request.hooksEnabled !== undefined) {

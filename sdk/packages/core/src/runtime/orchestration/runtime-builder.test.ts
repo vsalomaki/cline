@@ -411,6 +411,22 @@ Use the review guidance.`,
 		expect(names).not.toContain("editor");
 	});
 
+	it("applies session context limits and tool timeouts to builtin tools", async () => {
+		const runtime = await new DefaultRuntimeBuilder().build({
+			config: makeBaseConfig({
+				contextLimits: { tool: { commandOutputChars: 12_000 } },
+				toolTimeouts: { fileReadTimeoutMs: 4_000, searchTimeoutMs: 7_000 },
+			}),
+		});
+
+		const byName = new Map(runtime.tools.map((tool) => [tool.name, tool]));
+		expect(byName.get("run_commands")?.description).toContain(
+			"~12k characters",
+		);
+		expect(byName.get("read_files")?.timeoutMs).toBe(8_000);
+		expect(byName.get("search_codebase")?.timeoutMs).toBe(14_000);
+	});
+
 	it("omits builtin tools when disabled", async () => {
 		const runtime = await new DefaultRuntimeBuilder().build({
 			config: makeBaseConfig({

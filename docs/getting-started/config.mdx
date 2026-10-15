@@ -185,6 +185,12 @@ Rules:
 - The IDE reads the environment its editor was launched with, which on a desktop
   launch is not your shell's; restart the editor after changing these
 
+In the VS Code extension, the same limits can be set under **Settings → Agent
+Limits**, together with tool, ripgrep and hook timeouts, repeated-tool-call
+detection, the consecutive-mistake limit and the auto-compaction trigger. An env
+var set for the editor takes precedence over the setting, and the settings page
+marks each field it overrides. Changes apply to the current task once it is idle.
+
 ## Related Docs
 
 - [CLI Configuration](/cli/configuration)

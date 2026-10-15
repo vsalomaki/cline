@@ -38,6 +38,8 @@ export interface SdkDiffEditCoordinatorOptions {
 	createEditPreview?: () => EditPreview
 	/** Injectable for tests. Defaults to the SDK's disk-writing editor executor. */
 	fallbackEditorExecutor?: EditorExecutor
+	/** Diff lines in the default editor executor's result; read per edit so a settings change applies. */
+	getEditorDiffLines?: () => number
 	/** Injectable for tests. Defaults to the SDK's disk-writing apply_patch executor. */
 	fallbackApplyPatchExecutor?: ApplyPatchExecutor
 	/** Test seam: overrides the auto-approve preview linger. */
@@ -77,16 +79,26 @@ interface DiffEditSession {
  */
 export class SdkDiffEditCoordinator {
 	private readonly sessions = new Map<string, DiffEditSession>()
-	private readonly fallbackEditorExecutor: EditorExecutor
+	private defaultEditorExecutor: { maxDiffLines: number | undefined; execute: EditorExecutor } | undefined
 	private readonly fallbackApplyPatchExecutor: ApplyPatchExecutor
 	private readonly autoApprovePreviewLingerMs: number
 	private readonly previewOpenTimeoutMs: number
 
 	constructor(private readonly options: SdkDiffEditCoordinatorOptions) {
-		this.fallbackEditorExecutor = options.fallbackEditorExecutor ?? createEditorExecutor()
 		this.fallbackApplyPatchExecutor = options.fallbackApplyPatchExecutor ?? createApplyPatchExecutor()
 		this.autoApprovePreviewLingerMs = options.autoApprovePreviewLingerMs ?? AUTO_APPROVE_PREVIEW_LINGER_MS
 		this.previewOpenTimeoutMs = options.previewOpenTimeoutMs ?? PREVIEW_OPEN_TIMEOUT_MS
+	}
+
+	private getFallbackEditorExecutor(): EditorExecutor {
+		if (this.options.fallbackEditorExecutor) {
+			return this.options.fallbackEditorExecutor
+		}
+		const maxDiffLines = this.options.getEditorDiffLines?.()
+		if (!this.defaultEditorExecutor || this.defaultEditorExecutor.maxDiffLines !== maxDiffLines) {
+			this.defaultEditorExecutor = { maxDiffLines, execute: createEditorExecutor({ maxDiffLines }) }
+		}
+		return this.defaultEditorExecutor.execute
 	}
 
 	/**
@@ -128,7 +140,7 @@ export class SdkDiffEditCoordinator {
 					Logger.warn(`[SdkDiffEditCoordinator] Failed to show auto-approve preview: ${error}`)
 				}
 			}
-			const result = await this.fallbackEditorExecutor(input, cwd, context)
+			const result = await this.getFallbackEditorExecutor()(input, cwd, context)
 			if (!hadPreApprovalPreview && this.sessions.get(toolCallId)?.preview) {
 				// Keep the auto-approve preview visible briefly after the write; an abort
 				// just cuts the linger short (the edit has already been applied).

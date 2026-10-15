@@ -17,6 +17,7 @@ import {
 	DEFAULT_MAX_FILE_CONTENT_CHARS,
 	DEFAULT_MAX_TOOL_RESULT_CHARS,
 	DEFAULT_MAX_TOTAL_TEXT_BYTES,
+	getMessageBuilderOptions,
 	getMessageBuilderOptionsFromEnv,
 	MessageBuilder,
 } from "./message-builder";
@@ -2337,5 +2338,17 @@ describe("MessageBuilder outdated-read rewrite batching (prefix-cache stability)
 		const result = builder.buildForApi(messages);
 		expect(serializedBlockAt(result, 2)).not.toContain("outdated");
 		expect(serializedBlockAt(result, 2)).toContain("export const x = 1;");
+	});
+});
+
+describe("getMessageBuilderOptions", () => {
+	it("applies overrides, with matching env vars taking precedence", () => {
+		const options = getMessageBuilderOptions(
+			{ message: { toolResultChars: 80_000, assistantTextChars: 1_000 } },
+			{ CLINE_MESSAGE_BUILDER_MAX_ASSISTANT_TEXT_CHARS: "2000" },
+		);
+
+		expect(options.maxToolResultChars).toBe(80_000);
+		expect(options.maxAssistantTextChars).toBe(2_000);
 	});
 });

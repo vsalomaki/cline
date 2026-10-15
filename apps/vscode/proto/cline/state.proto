@@ -432,6 +432,9 @@ message UpdateSettingsRequest {
   // run_commands limits in ms; 0 resets to the default.
   optional int32 background_command_timeout_ms = 46;
   optional int32 foreground_command_auto_proceed_ms = 47;
+  // Fork-only fields are numbered from 1001 so upstream additions never collide.
+  // Keys are AgentLimitId values from shared/AgentLimits.ts; a negative value resets one.
+  map<string, double> agent_limit_updates = 1001;
 }
 
 message UpdateTerminalConnectionTimeoutRequest {

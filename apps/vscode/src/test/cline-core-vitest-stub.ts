@@ -40,8 +40,18 @@ export const DEFAULT_CONTEXT_LIMITS = {
 export type ContextLimits = typeof DEFAULT_CONTEXT_LIMITS
 export type ToolContextLimits = ContextLimits["tool"]
 
-export function resolveContextLimits() {
-	return DEFAULT_CONTEXT_LIMITS
+export type MessageContextLimits = ContextLimits["message"]
+export type ContextLimitOverrides = { message?: Partial<MessageContextLimits>; tool?: Partial<ToolContextLimits> }
+
+export function resolveContextLimits(overrides: ContextLimitOverrides = {}): ContextLimits {
+	return {
+		message: { ...DEFAULT_CONTEXT_LIMITS.message, ...overrides.message },
+		tool: { ...DEFAULT_CONTEXT_LIMITS.tool, ...overrides.tool },
+	}
+}
+
+export function getContextLimitEnvSources() {
+	return { message: {}, tool: {} }
 }
 
 export interface StoredModelEntry {

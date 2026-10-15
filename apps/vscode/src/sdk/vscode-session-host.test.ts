@@ -186,6 +186,7 @@ describe("VscodeSessionHost telemetry wiring", () => {
 			cwd: "/workspace",
 			getTerminalManager: undefined,
 			vscodeTerminalExecutionMode: undefined,
+			toolLimits: expect.objectContaining({ readLines: 2_000 }),
 		})
 		expect(result.source).toBe("vscode")
 		expect(result.config.extensions).toEqual([{ name: "remote-config" }])
