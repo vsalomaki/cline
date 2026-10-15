@@ -92,8 +92,13 @@ export interface EndpointConfig {
 	baseUrl?: string;
 	/** Custom headers to include */
 	headers?: Record<string, string>;
-	/** Request timeout in milliseconds */
+	/** How long a request may wait for the response to start, in milliseconds. @default 300000 */
 	timeoutMs?: number;
+	/**
+	 * Retries for a model request that fails to start, comes back empty, or
+	 * drops before any output. @default 2
+	 */
+	maxRetries?: number;
 	/**
 	 * Custom `fetch` implementation used by the AI gateway providers when
 	 * issuing requests. When supplied, it is forwarded to

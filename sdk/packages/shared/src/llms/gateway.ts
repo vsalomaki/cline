@@ -189,7 +189,13 @@ export interface GatewayProviderSettings {
 	apiKeyEnv?: readonly string[];
 	baseUrl?: string;
 	headers?: Record<string, string>;
+	/** How long a request may wait for the response to start. @default 300000 */
 	timeoutMs?: number;
+	/**
+	 * Retries for a model request that fails to start, comes back empty, or
+	 * drops before any output. @default 2
+	 */
+	maxRetries?: number;
 	fetch?: typeof fetch;
 	options?: Record<string, unknown>;
 	metadata?: GatewayProviderMetadata;

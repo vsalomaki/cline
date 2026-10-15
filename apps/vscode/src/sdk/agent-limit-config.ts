@@ -26,6 +26,18 @@ const TIMEOUT_FIELDS = {
 
 export type AgentLimitSessionConfig = Pick<CoreSessionConfig, "contextLimits" | "toolTimeouts" | "execution"> & {
 	compaction?: Pick<NonNullable<CoreSessionConfig["compaction"]>, "triggerRatio" | "preserveRecentTokens">
+	providerConfig?: { timeoutMs?: number; maxRetries?: number }
+}
+
+/** Joins the two places agent limits are stored into one set of values. */
+export function readAgentLimitValues(
+	agentLimitSettings: AgentLimitValues | undefined,
+	requestTimeoutMs: number | undefined,
+): AgentLimitValues {
+	return {
+		...agentLimitSettings,
+		...(typeof requestTimeoutMs === "number" && requestTimeoutMs > 0 ? { "api.requestTimeout": requestTimeoutMs } : {}),
+	}
 }
 
 export function toContextLimitOverrides(values: AgentLimitValues | undefined): ContextLimitOverrides {
@@ -91,6 +103,17 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	}
 	if (Object.keys(compaction).length > 0) {
 		config.compaction = compaction
+	}
+
+	const providerConfig: NonNullable<AgentLimitSessionConfig["providerConfig"]> = {}
+	if (values?.["api.requestTimeout"] !== undefined) {
+		providerConfig.timeoutMs = values["api.requestTimeout"]
+	}
+	if (values?.["api.maxRetries"] !== undefined) {
+		providerConfig.maxRetries = values["api.maxRetries"]
+	}
+	if (Object.keys(providerConfig).length > 0) {
+		config.providerConfig = providerConfig
 	}
 
 	return config

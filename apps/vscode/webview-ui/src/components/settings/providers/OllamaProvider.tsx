@@ -11,7 +11,6 @@ import { ApiKeyField } from "../common/ApiKeyField"
 import { BaseUrlField } from "../common/BaseUrlField"
 import { DebouncedTextField } from "../common/DebouncedTextField"
 import OllamaModelPicker from "../OllamaModelPicker"
-import { useApiConfigurationHandlers } from "../utils/useApiConfigurationHandlers"
 import { useProviderApiKeyField } from "../utils/useProviderApiKeyField"
 
 /**
@@ -26,9 +25,8 @@ interface OllamaProviderProps {
 /**
  * The Ollama provider configuration component
  */
-export const OllamaProvider = ({ showModelOptions, isPopup, currentMode }: OllamaProviderProps) => {
+export const OllamaProvider = ({ isPopup, currentMode }: OllamaProviderProps) => {
 	const { apiConfiguration } = useExtensionState()
-	const { handleFieldChange } = useApiConfigurationHandlers()
 	const { config, write, commitSelection } = useProviderConfig("ollama")
 
 	const [ollamaModels, setOllamaModels] = useState<string[]>([])
@@ -186,27 +184,6 @@ export const OllamaProvider = ({ showModelOptions, isPopup, currentMode }: Ollam
 					style={{ width: "100%" }}>
 					<span className="font-semibold">Model Context Window</span>
 				</DebouncedTextField>
-			)}
-
-			{showModelOptions && (
-				<>
-					<DebouncedTextField
-						initialValue={apiConfiguration?.requestTimeoutMs ? apiConfiguration.requestTimeoutMs.toString() : "300000"}
-						onChange={(value) => {
-							// Convert to number, with validation
-							const numValue = Number.parseInt(value, 10)
-							if (!Number.isNaN(numValue) && numValue > 0) {
-								handleFieldChange("requestTimeoutMs", numValue)
-							}
-						}}
-						placeholder="Default: 300000 (5 minutes)"
-						style={{ width: "100%" }}>
-						<span className="font-semibold">Request Timeout (ms)</span>
-					</DebouncedTextField>
-					<p className="text-xs mt-0 text-description">
-						Maximum time in milliseconds to wait for API responses before timing out.
-					</p>
-				</>
 			)}
 
 			<p

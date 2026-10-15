@@ -2,14 +2,8 @@ import type {
 	GatewayProviderContext,
 	GatewayResolvedProviderConfig,
 } from "@cline/shared";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	createOllamaProviderModule,
-	normalizeOllamaBaseUrl,
-	OLLAMA_DEFAULT_TIMEOUT_MS,
-	readOllamaTimeoutMs,
-	withOllamaResponseTimeout,
-} from "./ollama";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createOllamaProviderModule, normalizeOllamaBaseUrl } from "./ollama";
 
 const createOllamaMock = vi.hoisted(() => vi.fn());
 const ollamaModelMock = vi.hoisted(() =>
@@ -55,89 +49,6 @@ describe("normalizeOllamaBaseUrl", () => {
 	it("returns undefined for empty input", () => {
 		expect(normalizeOllamaBaseUrl(undefined)).toBeUndefined();
 		expect(normalizeOllamaBaseUrl("  ")).toBeUndefined();
-	});
-});
-
-describe("readOllamaTimeoutMs", () => {
-	it("reads a configured timeout", () => {
-		expect(readOllamaTimeoutMs(config({ timeoutMs: 180000 }))).toBe(180000);
-	});
-
-	it("falls back to the default for missing or invalid values", () => {
-		expect(readOllamaTimeoutMs(config({}))).toBe(OLLAMA_DEFAULT_TIMEOUT_MS);
-		expect(readOllamaTimeoutMs(config({ timeoutMs: 0 }))).toBe(
-			OLLAMA_DEFAULT_TIMEOUT_MS,
-		);
-		expect(readOllamaTimeoutMs(config({ timeoutMs: -5 }))).toBe(
-			OLLAMA_DEFAULT_TIMEOUT_MS,
-		);
-	});
-
-	it("defaults to 5 minutes so model cold loads don't hit a timeout error", () => {
-		// Ollama only sends response headers once the model is loaded, so the
-		// response-start budget must cover a cold load (cline/cline#12829).
-		expect(OLLAMA_DEFAULT_TIMEOUT_MS).toBe(300_000);
-	});
-});
-
-describe("withOllamaResponseTimeout", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-	});
-
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
-	it("aborts when the response does not start within the timeout", async () => {
-		const hangingFetch = ((_input, init) =>
-			new Promise((_resolve, reject) => {
-				init?.signal?.addEventListener("abort", () =>
-					reject(init.signal?.reason),
-				);
-			})) as typeof fetch;
-
-		const wrapped = withOllamaResponseTimeout(hangingFetch, 1000);
-		const pending = wrapped("http://localhost:11434/api/chat");
-		const assertion = expect(pending).rejects.toThrow(
-			"Ollama request timed out after 1 seconds",
-		);
-		await vi.advanceTimersByTimeAsync(1001);
-		await assertion;
-	});
-
-	it("does not abort once the response has started", async () => {
-		let requestSignal: AbortSignal | undefined;
-		const immediateFetch = (async (_input, init) => {
-			requestSignal = init?.signal ?? undefined;
-			return new Response("ok");
-		}) as typeof fetch;
-
-		const wrapped = withOllamaResponseTimeout(immediateFetch, 1000);
-		const response = await wrapped("http://localhost:11434/api/chat");
-		await vi.advanceTimersByTimeAsync(5000);
-
-		expect(response.ok).toBe(true);
-		// Timer was cleared on response start — streaming continues unaborted.
-		expect(requestSignal?.aborted).toBe(false);
-	});
-
-	it("propagates upstream aborts", async () => {
-		const hangingFetch = ((_input, init) =>
-			new Promise((_resolve, reject) => {
-				init?.signal?.addEventListener("abort", () =>
-					reject(init.signal?.reason),
-				);
-			})) as typeof fetch;
-
-		const upstream = new AbortController();
-		const wrapped = withOllamaResponseTimeout(hangingFetch, 60_000);
-		const pending = wrapped("http://localhost:11434/api/chat", {
-			signal: upstream.signal,
-		});
-		const assertion = expect(pending).rejects.toThrow("user cancelled");
-		upstream.abort(new Error("user cancelled"));
-		await assertion;
 	});
 });
 

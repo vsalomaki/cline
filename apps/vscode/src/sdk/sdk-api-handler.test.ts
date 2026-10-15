@@ -83,6 +83,19 @@ describe("buildSdkProviderConfig", () => {
 		expect(mocks.providerSettingsManager.getProviderSettings).toHaveBeenCalledWith("v0")
 	})
 
+	it("forwards the request timeout to standalone handlers for any provider", () => {
+		const providerConfig = buildSdkProviderConfig(
+			{
+				actModeApiProvider: "anthropic",
+				actModeApiModelId: "claude-sonnet-4-6",
+				requestTimeoutMs: 45_000,
+			},
+			"act",
+		)
+
+		expect(providerConfig).toMatchObject({ providerId: "anthropic", timeoutMs: 45_000 })
+	})
+
 	it("forwards the Ollama request timeout and context window to standalone handlers", () => {
 		mocks.providerSettingsManager.getProviderSettings.mockReturnValue(undefined)
 

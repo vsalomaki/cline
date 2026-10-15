@@ -2,7 +2,12 @@ import type * as CoreContextLimits from "@cline/core"
 import path from "path"
 import { describe, expect, it } from "vitest"
 import { AGENT_LIMIT_DEFINITIONS, type AgentLimitDefinition } from "@/shared/AgentLimits"
-import { buildAgentLimitSessionConfig, getAgentLimitsState, toContextLimitOverrides } from "./agent-limit-config"
+import {
+	buildAgentLimitSessionConfig,
+	getAgentLimitsState,
+	readAgentLimitValues,
+	toContextLimitOverrides,
+} from "./agent-limit-config"
 
 describe("AGENT_LIMIT_DEFINITIONS", () => {
 	it("matches the SDK's context limit defaults and env var names", async () => {
@@ -62,10 +67,27 @@ describe("buildAgentLimitSessionConfig", () => {
 		expect(config.execution?.loopDetection).toEqual({ softThreshold: 8, hardThreshold: 9 })
 	})
 
+	it("maps the Model API limits onto the provider config", () => {
+		const config = buildAgentLimitSessionConfig({ "api.requestTimeout": 60_000, "api.maxRetries": 0 })
+
+		expect(config).toEqual({ providerConfig: { timeoutMs: 60_000, maxRetries: 0 } })
+	})
+
 	it("turns loop detection off", () => {
 		const config = buildAgentLimitSessionConfig({ "session.loopDetection": 0, "session.loopSoftThreshold": 4 })
 
 		expect(config.execution?.loopDetection).toBe(false)
+	})
+})
+
+describe("readAgentLimitValues", () => {
+	it("reads the response timeout from the requestTimeoutMs setting", () => {
+		expect(readAgentLimitValues({ "tool.readLines": 500 }, 120_000)).toEqual({
+			"tool.readLines": 500,
+			"api.requestTimeout": 120_000,
+		})
+		expect(readAgentLimitValues(undefined, undefined)).toEqual({})
+		expect(readAgentLimitValues(undefined, 0)).toEqual({})
 	})
 })
 

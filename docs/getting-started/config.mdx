@@ -191,6 +191,14 @@ detection, the consecutive-mistake limit and the auto-compaction trigger. An env
 var set for the editor takes precedence over the setting, and the settings page
 marks each field it overrides. Changes apply to the current task once it is idle.
 
+The **Model API** group there applies to every provider:
+
+- **Response timeout** (default 5 minutes): how long a request may wait for the
+  model to start responding. A request that times out is retried. Once a
+  response starts streaming it is never cut off.
+- **Retries** (default 2): how often a request is retried when it fails to
+  start, times out, comes back empty or drops before any output.
+
 ## Related Docs
 
 - [CLI Configuration](/cli/configuration)

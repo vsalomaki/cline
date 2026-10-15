@@ -16,6 +16,7 @@ import {
 	createOpenAICompatibleProvider,
 	withEmptyResponseRetry,
 } from "./ai-sdk";
+import { withResponseTimeout } from "./http";
 
 /**
  * Integration tests proving `createRetryEmptyResponseMiddleware` is engaged
@@ -244,6 +245,78 @@ describe("openai-compatible wire format (openrouter / cline / custom endpoints)"
 		// no task.provider_api_error is ever reported for it.
 		expect(finishes[0]).not.toMatchObject({ reason: "error" });
 	}, 15_000); // The retry waits out the real default backoff (2s).
+
+	async function runWithConfig(
+		fetchImpl: typeof fetch,
+		extra: Record<string, unknown>,
+	) {
+		const config = {
+			providerId: "openai-compatible",
+			apiKey: "test-key",
+			baseUrl: "http://fake.local/v1",
+			fetch: fetchImpl,
+			...extra,
+		};
+		const provider = await createOpenAICompatibleProvider(config);
+		return collect(
+			await provider.stream(
+				streamRequest(),
+				providerContext("openai-compatible", config),
+			),
+		);
+	}
+
+	it("uses a configured maxRetries for empty turns", async () => {
+		const once = queuedFetch([emptySse]);
+		await runWithConfig(once as unknown as typeof fetch, { maxRetries: 0 });
+		expect(once).toHaveBeenCalledTimes(1);
+
+		const five = queuedFetch([emptySse]);
+		await runWithConfig(five as unknown as typeof fetch, { maxRetries: 4 });
+		expect(five).toHaveBeenCalledTimes(5);
+	});
+
+	const hangThenText = () => {
+		let call = 0;
+		return vi.fn(async (_input: unknown, init?: RequestInit) => {
+			call++;
+			if (call === 1) {
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () =>
+						reject(init.signal?.reason),
+					);
+				});
+			}
+			return new Response(textSse, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			});
+		});
+	};
+
+	it("retries a request whose response does not start in time", async () => {
+		const fetchMock = hangThenText();
+		const events = await runWithConfig(
+			withResponseTimeout(fetchMock as unknown as typeof fetch, 50),
+			{},
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(hasTextDelta(events, "hello")).toBe(true);
+	}, 15_000); // The AI SDK retry waits out its real default backoff (2s).
+
+	it("surfaces the timeout when no retries are left", async () => {
+		const fetchMock = hangThenText();
+		const run = runWithConfig(
+			withResponseTimeout(fetchMock as unknown as typeof fetch, 50),
+			{ maxRetries: 0 },
+		);
+
+		await expect(
+			run.then((events) => JSON.stringify(events)),
+		).resolves.toContain("timed out after 0.05 seconds");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("anthropic wire format", () => {

@@ -3,10 +3,12 @@
  * extension, which maps them onto the SDK session config, and the settings UI.
  *
  * Values are stored sparse: only what the user changed is kept, and a missing
- * id means the SDK default applies. Timeouts are stored in milliseconds.
+ * id means the SDK default applies. Timeouts are stored in milliseconds. The
+ * response timeout lives in the `requestTimeoutMs` API setting; every other
+ * limit lives in `agentLimitSettings`.
  */
 
-export type AgentLimitGroup = "toolOutput" | "toolInput" | "providerRequest" | "timeouts" | "loop" | "compaction"
+export type AgentLimitGroup = "modelApi" | "toolOutput" | "toolInput" | "providerRequest" | "timeouts" | "loop" | "compaction"
 
 export type AgentLimitUnit = "chars" | "bytes" | "lines" | "milliseconds" | "count" | "tokens" | "percent" | "toggle"
 
@@ -28,6 +30,27 @@ const MIN_TIMEOUT_MS = 1_000
 const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000
 
 export const AGENT_LIMIT_DEFINITIONS = [
+	{
+		id: "api.requestTimeout",
+		group: "modelApi",
+		label: "Response timeout",
+		description:
+			"How long a request may wait for the model to start responding before it is retried. Long answers are never cut off once they start.",
+		unit: "milliseconds",
+		default: 300_000,
+		min: 10_000,
+		max: MAX_TIMEOUT_MS,
+	},
+	{
+		id: "api.maxRetries",
+		group: "modelApi",
+		label: "Retries",
+		description: "Retries for a request that fails to start, times out, comes back empty or drops before any output.",
+		unit: "count",
+		default: 2,
+		min: 0,
+		max: 10,
+	},
 	{
 		id: "tool.commandOutputChars",
 		group: "toolOutput",
@@ -357,6 +380,7 @@ export interface AgentLimitsState {
 }
 
 export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: string; description: string }> = [
+	{ id: "modelApi", title: "Model API", description: "Applies to every provider." },
 	{
 		id: "toolOutput",
 		title: "Tool output",

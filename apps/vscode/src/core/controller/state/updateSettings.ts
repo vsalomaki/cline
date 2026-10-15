@@ -5,7 +5,7 @@ import { convertProtoToApiProvider } from "@shared/proto-conversions/models/api-
 import { OpenaiReasoningEffort } from "@shared/storage/types"
 import { TelemetrySetting } from "@shared/TelemetrySetting"
 import { ClineEnv } from "@/config"
-import { applyAgentLimitUpdates } from "@/shared/AgentLimits"
+import { applyAgentLimitUpdates, normalizeAgentLimitValue } from "@/shared/AgentLimits"
 import { normalizeCommandTimeoutMs } from "@/shared/CommandTimeouts"
 import { McpDisplayMode } from "@/shared/McpDisplayMode"
 import { Logger } from "@/shared/services/Logger"
@@ -149,10 +149,22 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 		}
 
 		if (Object.keys(request.agentLimitUpdates ?? {}).length > 0) {
-			const previous = controller.stateManager.getGlobalStateKey("agentLimitSettings") ?? {}
-			const next = applyAgentLimitUpdates(previous, request.agentLimitUpdates)
-			controller.stateManager.setGlobalState("agentLimitSettings", Object.keys(next).length > 0 ? next : undefined)
-			if (JSON.stringify(previous) !== JSON.stringify(next)) {
+			// The response timeout is the provider-wide `requestTimeoutMs` API setting.
+			const { "api.requestTimeout": requestTimeoutUpdate, ...limitUpdates } = request.agentLimitUpdates
+			let changed = false
+			if (requestTimeoutUpdate !== undefined) {
+				const previous = controller.stateManager.getGlobalSettingsKey("requestTimeoutMs")
+				const next = normalizeAgentLimitValue("api.requestTimeout", requestTimeoutUpdate)
+				controller.stateManager.setGlobalState("requestTimeoutMs", next)
+				changed ||= previous !== next
+			}
+			if (Object.keys(limitUpdates).length > 0) {
+				const previous = controller.stateManager.getGlobalStateKey("agentLimitSettings") ?? {}
+				const next = applyAgentLimitUpdates(previous, limitUpdates)
+				controller.stateManager.setGlobalState("agentLimitSettings", Object.keys(next).length > 0 ? next : undefined)
+				changed ||= JSON.stringify(previous) !== JSON.stringify(next)
+			}
+			if (changed) {
 				controller.handleAgentLimitsChanged()
 			}
 		}

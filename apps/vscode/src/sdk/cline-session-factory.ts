@@ -42,7 +42,7 @@ import { HostProvider } from "@/hosts/host-provider"
 import { ExtensionRegistryInfo } from "@/registry"
 import { getDistinctId } from "@/services/logging/distinctId"
 import { fetch } from "@/shared/net"
-import { buildAgentLimitSessionConfig } from "./agent-limit-config"
+import { buildAgentLimitSessionConfig, readAgentLimitValues } from "./agent-limit-config"
 import { type BedrockProviderConfig, buildBedrockProviderConfig } from "./bedrock-config"
 import { buildAgentHooks } from "./hooks-adapter"
 import { readTaskHistory, resolveDataDir } from "./legacy-state-reader"
@@ -616,7 +616,6 @@ export function resolveVertexProviderConfig(config: ApiConfiguration): Pick<Prov
 
 type OllamaProviderConfig = {
 	modelInfo?: { id: string; name: string; contextWindow: number }
-	timeoutMs?: number
 }
 
 /**
@@ -643,9 +642,7 @@ export function resolveOllamaProviderConfig(config: ApiConfiguration, modelId: s
 	const parsed = raw ? Number(raw) : Number.NaN
 	const legacyContextWindow = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined
 	const contextWindow = settingsContextWindow ?? legacyContextWindow ?? OLLAMA_DEFAULT_CONTEXT_WINDOW
-	const timeoutMs = config.requestTimeoutMs
 	return {
-		...(typeof timeoutMs === "number" && timeoutMs > 0 ? { timeoutMs } : {}),
 		...(modelId ? { modelInfo: { id: modelId, name: modelId, contextWindow } } : {}),
 	}
 }
@@ -956,8 +953,15 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	const compactionStrategy = readCompactionStrategyGlobally()
 	const enableCheckpoints = stateManager.getGlobalSettingsKey("enableCheckpointsSetting") ?? true
 	const useAutoCondense = input.taskSettings?.useAutoCondense ?? globalUseAutoCondense
-	const { compaction: compactionLimits, ...agentLimitConfig } = buildAgentLimitSessionConfig(
-		stateManager.getGlobalStateKey("agentLimitSettings"),
+	const {
+		compaction: compactionLimits,
+		providerConfig: providerLimits,
+		...agentLimitConfig
+	} = buildAgentLimitSessionConfig(
+		readAgentLimitValues(
+			stateManager.getGlobalStateKey("agentLimitSettings"),
+			stateManager.getGlobalSettingsKey("requestTimeoutMs"),
+		),
 	)
 
 	// Core resolves providers against the SDK registry, which uses the SDK's
@@ -998,6 +1002,7 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	// proxy/CA-aware fetch — can never be clobbered if those types gain matching keys.
 	const providerConfig = {
 		...(cloudProviderConfig ?? {}),
+		...providerLimits,
 		providerId: sdkProviderId,
 		modelId,
 		...(apiKey ? { apiKey } : {}),

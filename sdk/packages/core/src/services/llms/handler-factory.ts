@@ -209,6 +209,7 @@ export function createAgentModelFromConfig(
 		apiKey: config.apiKey ?? baseProviderConfig?.apiKey,
 		baseUrl: config.baseUrl ?? baseProviderConfig?.baseUrl,
 		headers: config.headers ?? baseProviderConfig?.headers,
+		timeoutMs: baseProviderConfig?.timeoutMs ?? config.apiTimeoutMs,
 		knownModels: resolveKnownModelsFromConfig(config),
 		maxOutputTokens: config.maxTokensPerTurn,
 		temperature: config.temperature,
@@ -248,6 +249,7 @@ export function createAgentModelFromConfig(
 				baseUrl: normalizedProviderConfig.baseUrl,
 				headers: normalizedProviderConfig.headers,
 				timeoutMs: normalizedProviderConfig.timeoutMs,
+				maxRetries: normalizedProviderConfig.maxRetries,
 				fetch: normalizedProviderConfig.fetch,
 				options: buildGatewayProviderOptions(normalizedProviderConfig),
 				models: normalizedProviderConfig.knownModels
