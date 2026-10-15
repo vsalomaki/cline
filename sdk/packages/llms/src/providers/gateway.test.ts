@@ -19,11 +19,13 @@ import {
 	type ITelemetryService,
 	resetSdkErrorRateLimiterForTests,
 } from "@cline/shared";
+import { APICallError } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeModelsDevProviderModels } from "../catalog/catalog-live";
 import { createOpenAICompatibleProvider } from "./ai-sdk";
 import {
 	createGateway,
+	DEFAULT_GATEWAY_MAX_OUTPUT_FRACTION,
 	DEFAULT_GATEWAY_MAX_OUTPUT_TOKENS,
 	resolveGatewayRequestMaxTokens,
 } from "./gateway";
@@ -95,22 +97,28 @@ function createFetchMock() {
 	};
 }
 
-vi.mock("ai", () => ({
-	jsonSchema: (schema: unknown, options: unknown) => ({
-		jsonSchema: schema,
-		...(options && typeof options === "object" ? options : {}),
-	}),
-	generateImage: (input: unknown) => generateImageSpy(input),
-	streamText: (input: unknown) => streamTextSpy(input),
-	// `wrapLanguageModel` is used by the openai-compatible and mistral
-	// vendors to attach `splitToolImagesMiddleware`. The middleware itself
-	// is exercised by its own unit tests; here we just need an identity
-	// pass-through so the vendor factories' downstream `model:` callbacks
-	// keep returning the spy-produced mock objects unchanged. (The mock
-	// objects don't satisfy the real `LanguageModelV4` interface, so we
-	// can't call the real `wrapLanguageModel` either way.)
-	wrapLanguageModel: ({ model }: { model: unknown }) => model,
-}));
+vi.mock("ai", async (importOriginal) => {
+	const { APICallError, RetryError } =
+		await importOriginal<typeof import("ai")>();
+	return {
+		APICallError,
+		RetryError,
+		jsonSchema: (schema: unknown, options: unknown) => ({
+			jsonSchema: schema,
+			...(options && typeof options === "object" ? options : {}),
+		}),
+		generateImage: (input: unknown) => generateImageSpy(input),
+		streamText: (input: unknown) => streamTextSpy(input),
+		// `wrapLanguageModel` is used by the openai-compatible and mistral
+		// vendors to attach `splitToolImagesMiddleware`. The middleware itself
+		// is exercised by its own unit tests; here we just need an identity
+		// pass-through so the vendor factories' downstream `model:` callbacks
+		// keep returning the spy-produced mock objects unchanged. (The mock
+		// objects don't satisfy the real `LanguageModelV4` interface, so we
+		// can't call the real `wrapLanguageModel` either way.)
+		wrapLanguageModel: ({ model }: { model: unknown }) => model,
+	};
+});
 
 vi.mock("@ai-sdk/openai", () => ({
 	createOpenAI: () => ({
@@ -320,6 +328,68 @@ function readCaptureRecords(dir: string): Array<Record<string, unknown>> {
 }
 
 describe("sdk-gateway", () => {
+	it.each([
+		["unknown", "unknown"],
+		["other", "unknown"],
+		["unexpected", "unknown"],
+		["aborted", "unknown"],
+		[undefined, "unknown"],
+		["stop", "stop"],
+		["length", "max-tokens"],
+		["tool-calls", "tool-calls"],
+		["content-filter", "content-filter"],
+		["error", "error"],
+	])("preserves finish reason %s as %s", async (finishReason, expected) => {
+		streamTextSpy.mockReturnValue({
+			fullStream: makeStreamParts([
+				{ type: "text-delta", text: "Partial" },
+				{ type: "finish", finishReason },
+			]),
+		});
+		const gateway = createGateway({
+			providerConfigs: [{ providerId: "anthropic", apiKey: "test" }],
+		});
+		const events = await collect(
+			await gateway.stream({
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				messages: baseMessages,
+			}),
+		);
+		expect(events.at(-1)).toMatchObject({ type: "finish", reason: expected });
+	});
+
+	it.each([
+		["stop", "stop"],
+		["unknown", "unknown"],
+		["length", "max-tokens"],
+		["content-filter", "content-filter"],
+		["error", "error"],
+	])("preserves %s as %s when a tool was streamed", async (finishReason, expected) => {
+		streamTextSpy.mockReturnValue({
+			fullStream: makeStreamParts([
+				{
+					type: "tool-call",
+					toolCallId: "echo-1",
+					toolName: "echo",
+					input: {},
+				},
+				{ type: "finish", finishReason },
+			]),
+		});
+		const gateway = createGateway({
+			providerConfigs: [{ providerId: "anthropic", apiKey: "test" }],
+		});
+		const events = await collect(
+			await gateway.stream({
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-5",
+				messages: baseMessages,
+			}),
+		);
+		expect(events.at(-1)).toMatchObject({ type: "finish", reason: expected });
+	});
+
 	beforeEach(() => {
 		resetSdkErrorRateLimiterForTests();
 		streamTextSpy.mockReset();
@@ -419,26 +489,62 @@ describe("sdk-gateway", () => {
 		}
 	});
 
-	it("uses the old default output cap when request max tokens are omitted", () => {
+	it("defaults to a fraction of the model's advertised output budget", () => {
 		expect(
 			resolveGatewayRequestMaxTokens({
 				requestedMaxTokens: undefined,
 				model: { maxOutputTokens: 202_800, contextWindow: 202_800 },
 				estimatedInputTokens: 1_000,
 			}),
+		).toBe(Math.floor(202_800 * DEFAULT_GATEWAY_MAX_OUTPUT_FRACTION));
+	});
+
+	it("never lowers the default below the flat cap for a model with a small output budget", () => {
+		// The catalog fraction (30% of 8,000 = 2,400) is smaller than the flat
+		// default, so the flat default applies here instead — the model's own
+		// output-budget cap (pushed separately below) is what then clamps the
+		// result down to what this model can actually emit (8,000), not the
+		// fraction shrinking the default further on top of that.
+		expect(
+			resolveGatewayRequestMaxTokens({
+				requestedMaxTokens: undefined,
+				model: { maxOutputTokens: 8_000, contextWindow: 200_000 },
+				estimatedInputTokens: 1_000,
+			}),
+		).toBe(8_000);
+	});
+
+	it("falls back to the flat default when the model advertises no output budget", () => {
+		expect(
+			resolveGatewayRequestMaxTokens({
+				requestedMaxTokens: undefined,
+				model: { contextWindow: 202_800 },
+				estimatedInputTokens: 1_000,
+			}),
 		).toBe(DEFAULT_GATEWAY_MAX_OUTPUT_TOKENS);
+	});
+
+	it("honors an explicit caller default over the catalog fraction", () => {
+		expect(
+			resolveGatewayRequestMaxTokens({
+				requestedMaxTokens: undefined,
+				defaultMaxOutputTokens: 16_000,
+				model: { maxOutputTokens: 202_800, contextWindow: 202_800 },
+				estimatedInputTokens: 1_000,
+			}),
+		).toBe(16_000);
 	});
 
 	it("lifts the default output cap above an explicit reasoning budget", () => {
 		expect(
 			resolveGatewayRequestMaxTokens({
 				requestedMaxTokens: undefined,
-				reasoningBudgetTokens: 50_000,
+				reasoningBudgetTokens: 70_000,
 				model: { maxOutputTokens: 202_800, contextWindow: 202_800 },
 				estimatedInputTokens: 1_000,
 				outputReserveTokens: 1_024,
 			}),
-		).toBe(51_024);
+		).toBe(71_024);
 
 		// Still clamped by the model's max output tokens.
 		expect(
@@ -523,10 +629,12 @@ describe("sdk-gateway", () => {
 		expect(estimatedTokens).toBeGreaterThan(4_000);
 	});
 
-	it("applies the old default output cap when the request omits max tokens", async () => {
+	it("defaults max tokens to a fraction of the model output budget", async () => {
 		const createProvider = vi.fn(() => ({
 			async *stream(request: { maxTokens?: number }) {
-				expect(request.maxTokens).toBe(DEFAULT_GATEWAY_MAX_OUTPUT_TOKENS);
+				expect(request.maxTokens).toBe(
+					Math.floor(202_800 * DEFAULT_GATEWAY_MAX_OUTPUT_FRACTION),
+				);
 				yield { type: "finish", reason: "stop" } satisfies AgentModelEvent;
 			},
 		}));
@@ -1300,6 +1408,44 @@ describe("sdk-gateway", () => {
 		});
 	});
 
+	it("includes the response x-request-id in stream error messages", async () => {
+		streamTextSpy.mockReturnValue({
+			fullStream: makeStreamParts([
+				{
+					type: "error",
+					error: new APICallError({
+						message: "Unauthorized",
+						url: "https://api.cline.bot/api/v1/chat/completions",
+						requestBodyValues: {},
+						statusCode: 401,
+						responseHeaders: { "X-Request-ID": "req_abc123" },
+						responseBody: JSON.stringify({
+							error: { message: "Unauthorized: re-authenticate" },
+						}),
+					}),
+				},
+			]),
+		});
+		const gateway = createGateway({
+			providerConfigs: [{ providerId: "openai-native", apiKey: "test" }],
+		});
+
+		const events = await collect(
+			await gateway.stream({
+				providerId: "openai-native",
+				modelId: "gpt-5-mini",
+				messages: baseMessages,
+			}),
+		);
+
+		expect(events.at(-1)).toMatchObject({
+			type: "finish",
+			reason: "error",
+			requestId: "req_abc123",
+			error: "Unauthorized: re-authenticate (Request ID: req_abc123)",
+		});
+	});
+
 	it("preserves valid mixed text when a generated image is rejected", async () => {
 		const oversized = "A".repeat(DEFAULT_MAX_IMAGE_ENCODED_BYTES + 4);
 		streamTextSpy.mockReturnValue({
@@ -1500,6 +1646,7 @@ describe("sdk-gateway", () => {
 				reason: "error",
 				error: `Image media exceeds the ${DEFAULT_MAX_IMAGE_ENCODED_BYTES} byte encoded limit`,
 				errorClass: "unknown",
+				errorRetryable: false,
 			},
 		]);
 	});
@@ -2333,6 +2480,7 @@ describe("sdk-gateway", () => {
 			reason: "error",
 			error: "OpenAI image generation tool returned no supported image output",
 			errorClass: "unknown",
+			errorRetryable: false,
 		});
 	});
 
@@ -2411,6 +2559,9 @@ describe("sdk-gateway", () => {
 								input: ["text", "image"],
 								output: ["text", "image"],
 							},
+							reasoningOptions: [
+								{ type: "budget_tokens", min: 128, max: 32_768 },
+							],
 						},
 					],
 				},
@@ -2548,6 +2699,7 @@ describe("sdk-gateway", () => {
 			reason: "error",
 			error: "Invalid API key",
 			errorClass: "unknown",
+			errorRetryable: false,
 		});
 	});
 
@@ -2695,6 +2847,47 @@ describe("sdk-gateway", () => {
 		expect(sdkErrors).toHaveLength(5);
 	});
 
+	it("rate-limits stream failures that differ only by request ID", async () => {
+		const { telemetry, capture } = createTelemetryMock();
+		const gateway = createGateway({
+			telemetry,
+			providerConfigs: [{ providerId: "openai-native", apiKey: "test" }],
+		});
+
+		for (let i = 0; i < 20; i++) {
+			const rawError = new APICallError({
+				message: "Unauthorized",
+				url: "https://api.cline.bot/api/v1/chat/completions",
+				requestBodyValues: {},
+				statusCode: 401,
+				responseHeaders: { "x-request-id": `req_${"abcdefghijklmnopqrst"[i]}` },
+			});
+			streamTextSpy.mockImplementation(
+				(input: { onError?: (event: { error: unknown }) => void }) => {
+					input.onError?.({ error: rawError });
+					return {
+						fullStream: makeStreamParts([{ type: "error", error: rawError }]),
+					};
+				},
+			);
+			await collect(
+				await gateway.stream({
+					providerId: "openai-native",
+					modelId: "gpt-5-mini",
+					messages: baseMessages,
+				}),
+			);
+		}
+
+		const sdkErrors = capture.mock.calls.filter(
+			([call]) => (call as { event: string }).event === "sdk.error",
+		);
+		expect(sdkErrors).toHaveLength(5);
+		expect(sdkErrors[0]?.[0]).toMatchObject({
+			properties: { error_message: "Unauthorized", requestId: "req_a" },
+		});
+	});
+
 	it("records the extracted cause when provider creation fails through a generic wrapper", async () => {
 		streamTextSpy.mockImplementation(() => {
 			throw new Error("No output generated. Check the stream for errors.", {
@@ -2763,6 +2956,7 @@ describe("sdk-gateway", () => {
 				reason: "error",
 				error: "Invalid API key",
 				errorClass: "unknown",
+				errorRetryable: false,
 			},
 		]);
 	});
@@ -2803,6 +2997,7 @@ describe("sdk-gateway", () => {
 			reason: "error",
 			error: "prompt is too long: 213462 tokens > 200000 maximum",
 			errorClass: "context_window_exceeded",
+			errorRetryable: false,
 		});
 	});
 
@@ -2839,6 +3034,7 @@ describe("sdk-gateway", () => {
 			reason: "error",
 			error: "Instructions are required",
 			errorClass: "unknown",
+			errorRetryable: false,
 		});
 	});
 
@@ -3399,6 +3595,7 @@ describe("sdk-gateway", () => {
 			fullStream: makeStreamParts([
 				{
 					type: "finish",
+					finishReason: "stop",
 					usage: {
 						prompt_tokens: 9125,
 						completion_tokens: 96,
@@ -3495,6 +3692,59 @@ describe("sdk-gateway", () => {
 				cacheReadTokens: 0,
 				cacheWriteTokens: 0,
 				totalCost: 0.009145675,
+			},
+		});
+	});
+
+	it.each([
+		"cline-pass",
+		"cline",
+	])("emits zero cost for included models on %s", async (providerId) => {
+		streamTextSpy.mockReturnValue({
+			fullStream: makeStreamParts([
+				{
+					type: "finish",
+					usage: {
+						prompt_tokens: 1000,
+						completion_tokens: 200,
+						cost: 0.5,
+						market_cost: 1,
+					},
+				},
+			]),
+		});
+		const gateway = createGateway({
+			providerConfigs: [
+				{
+					providerId,
+					apiKey: "test-key",
+					models: [
+						{
+							id: "included-model",
+							name: "Included Model",
+							metadata: {
+								pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+							},
+						},
+					],
+				},
+			],
+		});
+		const events = await collect(
+			await gateway.stream({
+				providerId,
+				modelId: "included-model",
+				messages: baseMessages,
+			}),
+		);
+		expect(events).toContainEqual({
+			type: "usage",
+			usage: {
+				inputTokens: 1000,
+				outputTokens: 200,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+				totalCost: 0,
 			},
 		});
 	});
@@ -5674,8 +5924,11 @@ describe("sdk-gateway", () => {
 		{
 			providerId: "vercel-ai-gateway",
 			modelId: "alibaba/qwen3.6-plus",
-			providerOptionsKey: "vercel-ai-gateway",
-			aliasKey: "vercelAiGateway",
+			// Hyphenated openai-compatible ids are written under the camelCase
+			// alias only; the raw name would trigger the AI SDK deprecation
+			// warning on every chunk.
+			providerOptionsKey: "vercelAiGateway",
+			aliasKey: undefined,
 		},
 	])("forwards Qwen prompt cache controls without Anthropic reasoning for $providerId", async ({
 		providerId,
@@ -6125,12 +6378,13 @@ describe("sdk-gateway", () => {
 					vercelAiGateway: expect.objectContaining({
 						reasoning: { exclude: true },
 					}),
-					"vercel-ai-gateway": expect.objectContaining({
-						reasoning: { exclude: true },
-					}),
 				}),
 			}),
 		);
+		expect(
+			(streamTextSpy.mock.calls[3]?.[0] as { providerOptions?: object })
+				.providerOptions,
+		).not.toHaveProperty("vercel-ai-gateway");
 		// Unlisted GLM ids route explicit enablement through the portable
 		// top-level reasoning option instead of the routed include shape.
 		expect(streamTextSpy).toHaveBeenNthCalledWith(

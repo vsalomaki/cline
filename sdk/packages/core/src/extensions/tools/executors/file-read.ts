@@ -8,8 +8,13 @@ import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
+import { Readable } from "node:stream";
 import type { AgentToolContext } from "@cline/shared";
 import { resolveExistingFilePath } from "@cline/shared/storage";
+import {
+	TOOL_RESULT_CACHE_MISS,
+	ToolResultCache,
+} from "../../../session/services/tool-result-cache";
 import type { ReadFileRequest } from "../schemas";
 import type { FileReadExecutor } from "../types";
 import { listDirectoryTopLevel } from "./list-files";
@@ -103,8 +108,7 @@ interface ReadWindowCaps {
 }
 
 async function readTextWindow(
-	filePath: string,
-	encoding: BufferEncoding,
+	stream: Readable,
 	includeLineNumbers: boolean,
 	startLine: number | null | undefined,
 	endLine: number | null | undefined,
@@ -112,6 +116,7 @@ async function readTextWindow(
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (signal?.aborted) {
+		stream.destroy();
 		throw getAbortError(signal);
 	}
 
@@ -133,7 +138,6 @@ async function readTextWindow(
 		? String(maxCapturedLineNumber).length + 3
 		: 0;
 
-	const stream = createReadStream(filePath, { encoding });
 	const reader = createInterface({
 		input: stream,
 		crlfDelay: Number.POSITIVE_INFINITY,
@@ -252,6 +256,20 @@ export function createFileReadExecutor(
 
 	return async (request: ReadFileRequest, context: AgentToolContext) => {
 		const { path: filePath, start_line, end_line } = request;
+		if (filePath.startsWith("cline://")) {
+			context.signal?.throwIfAborted();
+			const cache = context.metadata?.toolResultCache;
+			if (!(cache instanceof ToolResultCache))
+				throw new Error(TOOL_RESULT_CACHE_MISS);
+			return readTextWindow(
+				Readable.from([cache.read(filePath)]),
+				includeLineNumbers,
+				start_line,
+				end_line,
+				caps,
+				context.signal,
+			);
+		}
 		const initialPath = path.isAbsolute(filePath)
 			? path.normalize(filePath)
 			: path.resolve(process.cwd(), filePath);
@@ -303,8 +321,7 @@ export function createFileReadExecutor(
 		}
 
 		return readTextWindow(
-			resolvedPath,
-			encoding,
+			createReadStream(resolvedPath, { encoding }),
 			includeLineNumbers,
 			start_line,
 			end_line,
