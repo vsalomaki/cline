@@ -202,6 +202,15 @@ interface LoadedFiles {
 	eols: Record<string, LineEnding>;
 }
 
+async function fileExists(absolutePath: string): Promise<boolean> {
+	try {
+		await fs.access(absolutePath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function loadFiles(
 	lines: readonly string[],
 	cwd: string,
@@ -388,6 +397,17 @@ export async function computePatchChanges(
 	const { patch, fuzz } = parser.parse();
 	if (patch.warnings && patch.warnings.length > 0) {
 		throw new DiffError(formatSkippedHunkFailure(patch.warnings));
+	}
+	for (const [filePath, action] of Object.entries(patch.actions)) {
+		if (!action.movePath || action.movePath === filePath) {
+			continue;
+		}
+		const destination = resolveFilePath(cwd, action.movePath, restrictToCwd);
+		if (await fileExists(destination)) {
+			throw new DiffError(
+				`Move File Error: ${action.movePath} already exists`,
+			);
+		}
 	}
 
 	return { changes: patchToChanges(patch, loaded), fuzz };

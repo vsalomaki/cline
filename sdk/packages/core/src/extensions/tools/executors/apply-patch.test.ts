@@ -208,6 +208,35 @@ describe("createApplyPatchExecutor", () => {
 		).resolves.toBe("one\r\nTWO");
 	});
 
+	it("refuses to move a file onto an existing file", async () => {
+		await fs.writeFile(path.join(tempDir, "old.txt"), "one\ntwo", "utf-8");
+		await fs.writeFile(path.join(tempDir, "new.txt"), "keep", "utf-8");
+		const execute = createApplyPatchExecutor();
+
+		await expect(
+			execute(
+				{
+					input: [
+						"*** Update File: old.txt",
+						"*** Move to: new.txt",
+						"@@",
+						" one",
+						"-two",
+						"+TWO",
+					].join("\n"),
+				},
+				tempDir,
+				{} as never,
+			),
+		).rejects.toThrow("Move File Error: new.txt already exists");
+		await expect(
+			fs.readFile(path.join(tempDir, "new.txt"), "utf-8"),
+		).resolves.toBe("keep");
+		await expect(
+			fs.readFile(path.join(tempDir, "old.txt"), "utf-8"),
+		).resolves.toBe("one\ntwo");
+	});
+
 	it("updates a pure-LF file without introducing CRLF", async () => {
 		const filePath = path.join(tempDir, "lf.txt");
 		await fs.writeFile(filePath, "one\ntwo\nthree", "utf-8");
