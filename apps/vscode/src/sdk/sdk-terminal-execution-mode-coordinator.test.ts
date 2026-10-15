@@ -45,6 +45,15 @@ describe("SdkTerminalExecutionModeCoordinator", () => {
 		expect(options.rebuilds.request).toHaveBeenCalledWith("terminalExecutionMode", expect.any(Function))
 	})
 
+	it("schedules a rebuild when command timeouts change", () => {
+		const activeSession = makeActiveSession()
+		const { coordinator, options } = makeCoordinator({ activeSession })
+
+		coordinator.handleCommandTimeoutsChanged()
+
+		expect(options.rebuilds.request).toHaveBeenCalledWith("terminalExecutionMode", expect.any(Function))
+	})
+
 	it("does not replace a newer session that reused the same session ID", async () => {
 		const activeSession = makeActiveSession()
 		const newerSession = makeActiveSession({ isRunning: true })

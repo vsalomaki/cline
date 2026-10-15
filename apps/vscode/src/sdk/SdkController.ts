@@ -723,6 +723,10 @@ export class Controller {
 		this.terminalExecutionMode.handleTerminalExecutionModeChanged(previous, next)
 	}
 
+	handleCommandTimeoutsChanged(): void {
+		this.terminalExecutionMode.handleCommandTimeoutsChanged()
+	}
+
 	private handleSessionBecameIdle(): void {
 		this.sessionRebuilds?.sessionBecameIdle()
 	}

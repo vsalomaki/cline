@@ -62,6 +62,8 @@ export async function getStateToPostToWebview(controller: {
 	const shellIntegrationTimeout = stateManager.getGlobalSettingsKey("shellIntegrationTimeout")
 	const terminalReuseEnabled = stateManager.getGlobalStateKey("terminalReuseEnabled")
 	const vscodeTerminalExecutionMode = stateManager.getGlobalStateKey("vscodeTerminalExecutionMode")
+	const backgroundCommandTimeoutMs = stateManager.getGlobalStateKey("backgroundCommandTimeoutMs")
+	const foregroundCommandAutoProceedMs = stateManager.getGlobalStateKey("foregroundCommandAutoProceedMs")
 	const defaultTerminalProfile = stateManager.getGlobalSettingsKey("defaultTerminalProfile")
 	const isNewUser = stateManager.getGlobalStateKey("isNewUser")
 	const welcomeViewCompleted = !!stateManager.getGlobalStateKey("welcomeViewCompleted")
@@ -148,6 +150,8 @@ export async function getStateToPostToWebview(controller: {
 		shellIntegrationTimeout,
 		terminalReuseEnabled,
 		vscodeTerminalExecutionMode,
+		backgroundCommandTimeoutMs,
+		foregroundCommandAutoProceedMs,
 		defaultTerminalProfile,
 		isNewUser,
 		welcomeViewCompleted,

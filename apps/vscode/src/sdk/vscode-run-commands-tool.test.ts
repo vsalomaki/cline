@@ -11,12 +11,20 @@ import {
 	executeForeground,
 	FOREGROUND_COMMAND_AUTO_PROCEED_MS,
 	formatCommandForTerminal,
+	getForegroundRunCommandsTimeoutMs,
 	PROCEED_LOG_MAX_BYTES,
+	VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS,
 } from "./vscode-run-commands-tool"
 
 const mocks = vi.hoisted(() => ({
 	existsSync: vi.fn<(path: fs.PathLike) => boolean>(),
 	getGlobalSettingsKey: vi.fn(() => "default"),
+	createShellExecutor: vi.fn((_options?: { timeoutMs?: number }) => async () => "background-ok"),
+}))
+
+vi.mock("@cline/core", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@cline/core")>()),
+	createShellExecutor: mocks.createShellExecutor,
 }))
 
 vi.mock("fs", async (importOriginal) => ({
@@ -236,6 +244,40 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 		await new Promise((resolve) => setTimeout(resolve, 10))
 	}
 }
+
+describe("getForegroundRunCommandsTimeoutMs", () => {
+	it("keeps the one-hour tool timeout for the default auto-proceed delay", () => {
+		expect(getForegroundRunCommandsTimeoutMs()).toBe(VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS)
+	})
+
+	it("stays past an auto-proceed delay longer than an hour", () => {
+		const twoHours = 2 * 60 * 60 * 1000
+		expect(getForegroundRunCommandsTimeoutMs(twoHours)).toBeGreaterThan(twoHours)
+	})
+})
+
+describe("createVscodeRunCommandsTool — background timeout", () => {
+	it("gives the background shell executor the configured timeout", async () => {
+		const tool = createVscodeRunCommandsTool({
+			cwd: "/workspace",
+			getTerminalManager: () => {
+				throw new Error("Background mode must not use the terminal manager")
+			},
+			bashTimeoutMs: 120_000,
+			vscodeTerminalExecutionMode: "backgroundExec",
+		})
+
+		const results = await tool.execute(
+			{ commands: ["make build"] },
+			{ agentId: "agent-1", conversationId: "conversation-1", iteration: 1 },
+		)
+
+		// The executor kills the process at this timeout; without it, it would
+		// apply its own 30-second default regardless of the setting.
+		expect(mocks.createShellExecutor).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 120_000 }))
+		expect(results).toEqual([expect.objectContaining({ result: "background-ok", success: true })])
+	})
+})
 
 describe("formatCommandForTerminal", () => {
 	it.each([
@@ -499,6 +541,38 @@ describe("executeForeground", () => {
 })
 
 describe("executeForeground — Proceed While Running", () => {
+	it("automatically proceeds after a configured delay", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+		const { process, complete } = createControllableTerminalProcess()
+		const resultPromise = executeForeground(
+			"devserver",
+			"/workspace",
+			createFakeTerminalManager(process),
+			100_000,
+			undefined,
+			undefined,
+			undefined,
+			5_000,
+		)
+		await new Promise<void>((resolve) => setImmediate(resolve))
+
+		let settled = false
+		void resultPromise.then(() => {
+			settled = true
+		})
+		await vi.advanceTimersByTimeAsync(4_999)
+		expect(settled).toBe(false)
+
+		await vi.advanceTimersByTimeAsync(1)
+		const result = await resultPromise
+		expect(result).toContain("after 5 seconds")
+
+		const logFilePath = /redirected to this file[^:]*: (.+)$/m.exec(result)?.[1]?.trim()
+		vi.useRealTimers()
+		complete({ exitCode: 0 })
+		fs.rmSync(logFilePath!, { force: true })
+	})
+
 	it("automatically proceeds after 300 seconds instead of blocking the agent turn", async () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
 		const coordinator = new SdkForegroundCommandCoordinator()

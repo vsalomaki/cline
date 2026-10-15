@@ -36,6 +36,11 @@ export class SdkTerminalExecutionModeCoordinator {
 		this.requestRebuild(`Terminal execution mode changed: ${previous} -> ${next}`)
 	}
 
+	/** The run_commands tool captures its timeouts when built, so a change needs the same rebuild. */
+	handleCommandTimeoutsChanged(): void {
+		this.requestRebuild("Command timeout settings changed")
+	}
+
 	private requestRebuild(reason: string): void {
 		Logger.log(`[SdkController] ${reason}`)
 
