@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => {
 				}
 				return undefined
 			}),
+			getGlobalStateKey: vi.fn((_key: string): unknown => undefined),
 			setGlobalStateBatch: vi.fn(),
 			setGlobalState: vi.fn(),
 			setSecret: vi.fn(),
@@ -100,6 +101,7 @@ beforeEach(() => {
 		}
 		return undefined
 	})
+	mocks.stateManager.getGlobalStateKey.mockImplementation(() => undefined)
 	mocks.providerSettingsManager.getFilePath.mockReturnValue(path.join(tempDir, "settings", "providers.json"))
 	mocks.providerSettingsManager.getLastUsedProviderSettings.mockReturnValue(undefined)
 	mocks.providerSettingsManager.getProviderSettings.mockReturnValue(undefined)
@@ -416,6 +418,29 @@ describe("buildSessionConfig", () => {
 
 		expect(resolveApiKey("openai", {} as any)).toBe("migrated-openai-compatible-key")
 		expect(mocks.providerSettingsManager.getProviderSettings).toHaveBeenCalledWith("openai-compatible")
+	})
+
+	it("applies Agent Limits settings to the session config", async () => {
+		mocks.stateManager.getGlobalSettingsKey.mockImplementation((key: string) =>
+			key === "useAutoCondense" ? true : key === "subagentsEnabled" ? false : undefined,
+		)
+		mocks.stateManager.getGlobalStateKey.mockImplementation((key: string) =>
+			key === "agentLimitSettings"
+				? {
+						"tool.readLines": 500,
+						"timeout.ripgrep": 20_000,
+						"session.maxConsecutiveMistakes": 10,
+						"compaction.triggerPercent": 75,
+					}
+				: undefined,
+		)
+
+		const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+		expect(config.contextLimits).toEqual({ tool: { readLines: 500 } })
+		expect(config.toolTimeouts).toEqual({ ripgrepTimeoutMs: 20_000 })
+		expect(config.execution).toEqual({ maxConsecutiveMistakes: 10 })
+		expect(config.compaction).toMatchObject({ enabled: true, triggerRatio: 0.75 })
 	})
 
 	it("resolves the OpenAI Compatible base URL when the provider is stored under its SDK spelling", async () => {

@@ -1,5 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
+import { type AgentLimitValues, getAgentLimitValue } from "@/shared/AgentLimits"
 import { Logger } from "@/shared/services/Logger"
 import { version as clineVersion } from "../../../package.json"
 import { getDistinctId } from "../../services/logging/distinctId"
@@ -19,11 +20,19 @@ import {
 	UserPromptSubmitData,
 } from "../../shared/proto/cline/hooks"
 import { getAllHooksDirs, getWindowWorkspaceRoots } from "../storage/disk"
+import { StateManager } from "../storage/StateManager"
 import { HookExecutionError } from "./HookError"
 import { HookProcess } from "./HookProcess"
 
-// Hook execution timeout (30 seconds)
-const HOOK_EXECUTION_TIMEOUT_MS = 30000
+function getHookExecutionTimeoutMs(): number {
+	let settings: AgentLimitValues | undefined
+	try {
+		settings = StateManager.get().getGlobalStateKey("agentLimitSettings")
+	} catch {
+		// StateManager is not initialized in unit tests; keep the default.
+	}
+	return getAgentLimitValue(settings, "timeout.hook")
+}
 
 // Maximum size for context modification (to prevent prompt overflow)
 const MAX_CONTEXT_MODIFICATION_SIZE = 50000 // ~50KB
@@ -274,7 +283,7 @@ export type HookStreamCallback = (
  * Key features:
  * - Spawns the hook script and communicates via stdin/stdout/stderr
  * - Streams output line-by-line via callback for real-time UI updates
- * - Enforces 30-second timeout (configurable via HOOK_EXECUTION_TIMEOUT_MS)
+ * - Enforces the hook timeout from Agent limits settings (30 seconds by default)
  * - Supports cancellation via AbortSignal
  * - Parses JSON output from stdout, attempting to extract it even if mixed with debug output
  * - Truncates context modifications that exceed 50KB to prevent prompt overflow
@@ -338,7 +347,8 @@ class StdioHookRunner<Name extends HookName> extends HookRunner<Name> {
 		const inputJson = JSON.stringify(jsonObj)
 
 		// Create HookProcess for execution with streaming
-		const hookProcess = new HookProcess(this.scriptPath, HOOK_EXECUTION_TIMEOUT_MS, this.abortSignal, this.cwd)
+		const timeoutMs = getHookExecutionTimeoutMs()
+		const hookProcess = new HookProcess(this.scriptPath, timeoutMs, this.abortSignal, this.cwd)
 
 		// Set up streaming if callback is provided
 		if (this.streamCallback) {
@@ -609,7 +619,7 @@ class StdioHookRunner<Name extends HookName> extends HookRunner<Name> {
 						"HookFactory.exec.catch.timeout",
 					)
 				}
-				throw HookExecutionError.timeout(this.scriptPath, HOOK_EXECUTION_TIMEOUT_MS, stderr, this.hookName)
+				throw HookExecutionError.timeout(this.scriptPath, timeoutMs, stderr, this.hookName)
 			}
 
 			// Check for cancellation

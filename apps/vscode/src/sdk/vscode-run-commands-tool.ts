@@ -84,6 +84,8 @@ export interface VscodeRunCommandsToolOptions {
 	bashTimeoutMs?: number
 	/** Foreground auto-proceed delay; defaults to FOREGROUND_COMMAND_AUTO_PROCEED_MS. */
 	foregroundAutoProceedMs?: number
+	/** The session's resolved tool caps; must match what the builtin tools were built with. */
+	limits?: ToolContextLimits
 	/** Terminal execution mode captured when this session's tool set is built. */
 	vscodeTerminalExecutionMode?: VscodeTerminalExecutionMode
 	/**
@@ -548,7 +550,7 @@ function takeShellSnapshot(): ShellSnapshot {
  */
 export function createVscodeRunCommandsTool(options: VscodeRunCommandsToolOptions): AgentTool {
 	const state = { snapshot: takeShellSnapshot() }
-	const limits = resolveContextLimits().tool
+	const limits = options.limits ?? resolveContextLimits().tool
 	return createShellTool(createVscodeShellExecutor(options, state, limits), {
 		cwd: options.cwd,
 		bashTimeoutMs: options.bashTimeoutMs,

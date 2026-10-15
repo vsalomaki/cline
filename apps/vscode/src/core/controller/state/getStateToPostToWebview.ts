@@ -9,6 +9,7 @@ import { getHooksEnabledSafe } from "@core/hooks/hooks-utils"
 import type { ExtensionState, Platform } from "@shared/ExtensionMessage"
 import { ClineEnv } from "@/config"
 import { ExtensionRegistryInfo } from "@/registry"
+import { getAgentLimitsState } from "@/sdk/agent-limit-config"
 import { BannerService } from "@/services/banner/BannerService"
 import { featureFlagsService } from "@/services/feature-flags"
 import { getDistinctId } from "@/services/logging/distinctId"
@@ -64,6 +65,7 @@ export async function getStateToPostToWebview(controller: {
 	const vscodeTerminalExecutionMode = stateManager.getGlobalStateKey("vscodeTerminalExecutionMode")
 	const backgroundCommandTimeoutMs = stateManager.getGlobalStateKey("backgroundCommandTimeoutMs")
 	const foregroundCommandAutoProceedMs = stateManager.getGlobalStateKey("foregroundCommandAutoProceedMs")
+	const agentLimits = getAgentLimitsState(stateManager.getGlobalStateKey("agentLimitSettings"))
 	const defaultTerminalProfile = stateManager.getGlobalSettingsKey("defaultTerminalProfile")
 	const isNewUser = stateManager.getGlobalStateKey("isNewUser")
 	const welcomeViewCompleted = !!stateManager.getGlobalStateKey("welcomeViewCompleted")
@@ -152,6 +154,7 @@ export async function getStateToPostToWebview(controller: {
 		vscodeTerminalExecutionMode,
 		backgroundCommandTimeoutMs,
 		foregroundCommandAutoProceedMs,
+		agentLimits,
 		defaultTerminalProfile,
 		isNewUser,
 		welcomeViewCompleted,

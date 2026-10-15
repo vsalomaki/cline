@@ -51,6 +51,7 @@ import { Logger } from "@/shared/services/Logger"
 import { isClineManagedProvider } from "@/shared/utils/cline"
 import { arePathsEqual, getDesktopDir } from "@/utils/path"
 import { ClineAccountService } from "./account-service"
+import { resolveAgentToolLimits } from "./agent-limit-config"
 import { AuthService, LogoutReason } from "./auth-service"
 import { BUILTIN_SLASH_COMMANDS } from "./builtin-slash-commands"
 import { buildStartSessionInput, createHistoryItemFromSession } from "./cline-session-factory"
@@ -347,6 +348,8 @@ export class Controller {
 		this.diffEdits = new SdkDiffEditCoordinator({
 			getCwd: () => this.getWorkspaceRoot(),
 			isBackgroundEditEnabled: () => !!this.stateManager.getGlobalSettingsKey("backgroundEditEnabled"),
+			getEditorDiffLines: () =>
+				resolveAgentToolLimits(this.stateManager.getGlobalStateKey("agentLimitSettings")).editorDiffLines,
 		})
 		this.interactions = new SdkInteractionCoordinator({
 			messages: this.messages,
@@ -381,7 +384,10 @@ export class Controller {
 			applyPatchExecutor: (input, cwd, context) => this.diffEdits.executeApplyPatchTool(input, cwd, context),
 			// The SDK's built-in reader resolves relative paths against the extension
 			// host's process.cwd() (usually "/"); resolve them against the workspace instead.
-			readFileExecutor: createWorkspaceFileReadExecutor(() => this.getWorkspaceRoot()),
+			readFileExecutor: createWorkspaceFileReadExecutor(
+				() => this.getWorkspaceRoot(),
+				() => resolveAgentToolLimits(this.stateManager.getGlobalStateKey("agentLimitSettings")),
+			),
 			onSessionEvent: (event) => {
 				this.sessionEvents.handleSessionEvent(event).catch((err) => {
 					Logger.error("[SdkController] Failed to handle session event:", err)
@@ -725,6 +731,10 @@ export class Controller {
 
 	handleCommandTimeoutsChanged(): void {
 		this.terminalExecutionMode.handleCommandTimeoutsChanged()
+	}
+
+	handleAgentLimitsChanged(): void {
+		this.terminalExecutionMode.handleAgentLimitsChanged()
 	}
 
 	private handleSessionBecameIdle(): void {

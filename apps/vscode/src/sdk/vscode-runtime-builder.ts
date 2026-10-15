@@ -1,4 +1,4 @@
-import { createMcpTools } from "@cline/core"
+import { createMcpTools, type ToolContextLimits } from "@cline/core"
 import type { AgentTool, AgentToolContext } from "@cline/shared"
 import type { VscodeTerminalManager } from "@/hosts/vscode/terminal/VscodeTerminalManager"
 import type { McpHub } from "@/services/mcp/McpHub"
@@ -61,6 +61,7 @@ export interface VscodeExtraToolsOptions {
 	foregroundCommandAutoProceedMs?: number
 	/** Registry of in-flight foreground executions for "Proceed While Running". */
 	foregroundCommands?: SdkForegroundCommandCoordinator
+	toolLimits?: ToolContextLimits
 }
 
 export async function createVscodeExtraTools(mcpHub: McpHub, options?: VscodeExtraToolsOptions): Promise<AgentTool[]> {
@@ -108,6 +109,7 @@ export async function createVscodeExtraTools(mcpHub: McpHub, options?: VscodeExt
 				foregroundAutoProceedMs: options.foregroundCommandAutoProceedMs,
 				vscodeTerminalExecutionMode: executionMode,
 				foregroundCommands: options.foregroundCommands,
+				limits: options.toolLimits,
 			}),
 		)
 		Logger.log(

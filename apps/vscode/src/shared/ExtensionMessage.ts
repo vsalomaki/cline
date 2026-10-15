@@ -4,6 +4,7 @@ import type { GeneratedMedia } from "@cline/shared"
 import { WorkspaceRoot } from "@shared/multi-root/types"
 import { RemoteConfigFields } from "@shared/storage/state-keys"
 import type { Environment } from "../config"
+import type { AgentLimitsState } from "./AgentLimits"
 import { AutoApprovalSettings } from "./AutoApprovalSettings"
 import { ApiConfiguration } from "./api"
 import { BrowserSettings } from "./BrowserSettings"
@@ -93,6 +94,7 @@ export interface ExtensionState {
 	vscodeTerminalExecutionMode: string
 	backgroundCommandTimeoutMs?: number
 	foregroundCommandAutoProceedMs?: number
+	agentLimits?: AgentLimitsState
 	backgroundCommandRunning?: boolean
 	backgroundCommandTaskId?: string
 	/**
