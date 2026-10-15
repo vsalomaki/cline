@@ -6545,7 +6545,8 @@ describe("sdk-gateway", () => {
 		const customFetch = vi.fn() as unknown as typeof fetch;
 		const createProvider = vi.fn((config: { fetch?: typeof fetch }) => ({
 			async *stream() {
-				expect(config.fetch).toBe(customFetch);
+				await config.fetch?.("https://example.test");
+				expect(customFetch).toHaveBeenCalledOnce();
 				yield { type: "text-delta", text: "ok" } satisfies AgentModelEvent;
 				yield { type: "finish", reason: "stop" } satisfies AgentModelEvent;
 			},
@@ -6584,7 +6585,8 @@ describe("sdk-gateway", () => {
 		const fallbackFetch = vi.fn() as unknown as typeof fetch;
 		const createProvider = vi.fn((config: { fetch?: typeof fetch }) => ({
 			async *stream() {
-				expect(config.fetch).toBe(fallbackFetch);
+				await config.fetch?.("https://example.test");
+				expect(fallbackFetch).toHaveBeenCalledOnce();
 				yield { type: "text-delta", text: "ok" } satisfies AgentModelEvent;
 				yield { type: "finish", reason: "stop" } satisfies AgentModelEvent;
 			},
@@ -6805,7 +6807,7 @@ describe("sdk-gateway", () => {
 		}
 	});
 
-	it("does not wrap provider fetch when wire capture is disabled", async () => {
+	it("delegates straight to the provider fetch when wire capture is disabled", async () => {
 		const customFetch = vi.fn() as unknown as typeof fetch;
 		streamTextSpy.mockReturnValue({
 			fullStream: makeStreamParts([{ type: "finish", finishReason: "stop" }]),
@@ -6828,7 +6830,8 @@ describe("sdk-gateway", () => {
 		const config = openaiCompatibleFactorySpy.mock.calls[0]?.[0] as {
 			fetch?: typeof fetch;
 		};
-		expect(config.fetch).toBe(customFetch);
+		await config.fetch?.("https://example.test");
+		expect(customFetch).toHaveBeenCalledOnce();
 	});
 
 	it("adds OpenRouter session_id to JSON wire requests from request metadata", async () => {
@@ -7176,7 +7179,8 @@ describe("sdk-gateway", () => {
 		const config = openaiCompatibleFactorySpy.mock.calls[0]?.[0] as {
 			fetch?: typeof fetch;
 		};
-		expect(config.fetch).toBe(customFetch);
+		await config.fetch?.("https://example.test");
+		expect(customFetch).toHaveBeenCalledOnce();
 	});
 
 	it("wraps provider fetch for wire capture while delegating to the configured fetch", async () => {

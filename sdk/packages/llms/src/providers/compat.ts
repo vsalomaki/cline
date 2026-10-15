@@ -524,6 +524,7 @@ function buildGatewayConfig(config: ProviderConfig) {
 		baseUrl: config.baseUrl,
 		headers: config.headers,
 		timeoutMs: config.timeoutMs,
+		maxRetries: config.maxRetries,
 		fetch: config.fetch,
 		defaultModelId: config.modelId,
 		models: buildGatewayModels(providerId, config),

@@ -10,6 +10,75 @@ export function ensureFetch(fetchImpl?: typeof fetch): typeof fetch {
 	return resolved;
 }
 
+/**
+ * Time to wait for a provider response to start when no timeout is configured.
+ *
+ * Deliberately generous: Ollama holds `/api/chat` open while it cold-loads
+ * the model and only sends response headers once loading finishes, so with a
+ * large model the first request of a session routinely takes minutes before
+ * the stream starts, and hosted reasoning models can also sit on a request
+ * for a while. Unreachable servers are not this timeout's job: connection
+ * failures (refused, DNS) reject on their own immediately, and users can
+ * always cancel a request. This only bounds the accepted-but-silent case,
+ * and 5 minutes matches the header-timeout default other AI SDK-based agents
+ * use.
+ */
+export const DEFAULT_RESPONSE_TIMEOUT_MS = 300_000;
+
+/** The configured timeout, or the default for a missing, zero or invalid one. */
+export function resolveResponseTimeoutMs(
+	timeoutMs: number | undefined,
+): number {
+	return typeof timeoutMs === "number" &&
+		Number.isFinite(timeoutMs) &&
+		timeoutMs > 0
+		? Math.floor(timeoutMs)
+		: DEFAULT_RESPONSE_TIMEOUT_MS;
+}
+
+/**
+ * Wraps a fetch so the *response* must start within `timeoutMs`. Once headers
+ * arrive the timer is cleared, so streaming the body is never interrupted.
+ *
+ * A timeout rejects the way undici reports its own headers timeout — a
+ * `TypeError("fetch failed")` whose cause carries `UND_ERR_HEADERS_TIMEOUT` —
+ * so the AI SDK and the network-retry middleware retry it like any other
+ * dropped connection. An upstream abort still rejects as an abort.
+ */
+export function withResponseTimeout(
+	baseFetch: typeof fetch | undefined,
+	timeoutMs: number,
+): typeof fetch {
+	return (async (input, init) => {
+		const fetchImpl = ensureFetch(baseFetch);
+		const timeoutController = new AbortController();
+		const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
+		// AbortSignal.any keeps upstream cancellation live for the entire
+		// request, including body streaming after the timer is cleared.
+		const upstreamSignal =
+			init?.signal ?? (input instanceof Request ? input.signal : undefined);
+		const signal = upstreamSignal
+			? AbortSignal.any([upstreamSignal, timeoutController.signal])
+			: timeoutController.signal;
+		try {
+			return await fetchImpl(input, { ...init, signal });
+		} catch (error) {
+			if (timeoutController.signal.aborted && !upstreamSignal?.aborted) {
+				const cause = Object.assign(
+					new Error(
+						`Provider request timed out after ${timeoutMs / 1000} seconds without a response`,
+					),
+					{ code: "UND_ERR_HEADERS_TIMEOUT" },
+				);
+				throw new TypeError("fetch failed", { cause });
+			}
+			throw error;
+		} finally {
+			clearTimeout(timer);
+		}
+	}) as typeof fetch;
+}
+
 export async function resolveApiKey(
 	settings: GatewayProviderSettings,
 ): Promise<string | undefined> {

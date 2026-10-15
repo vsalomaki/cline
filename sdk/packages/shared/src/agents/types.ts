@@ -757,8 +757,9 @@ export interface AgentConfig {
 	 */
 	temperature?: number;
 	/**
-	 * Timeout for each API call in milliseconds
-	 * @default 180000 (3 minutes)
+	 * How long each API call may wait for the response to start, in
+	 * milliseconds. Used when `providerConfig.timeoutMs` is unset; otherwise
+	 * the provider default (5 minutes) applies.
 	 */
 	apiTimeoutMs?: number;
 	/**
@@ -934,7 +935,7 @@ export const AgentConfigSchema = z.object({
 	maxParallelToolCalls: z.number().int().positive().default(8),
 	maxTokensPerTurn: z.number().positive().optional(),
 	temperature: z.number().nonnegative().optional(),
-	apiTimeoutMs: z.number().positive().default(180000),
+	apiTimeoutMs: z.number().positive().optional(),
 	userFileContentLoader: z
 		.function()
 		.input([z.string()])

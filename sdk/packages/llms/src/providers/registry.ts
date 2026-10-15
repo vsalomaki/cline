@@ -9,6 +9,7 @@ import type {
 	GatewayResolvedModel,
 	GatewayResolvedProviderConfig,
 } from "@cline/shared";
+import { resolveResponseTimeoutMs, withResponseTimeout } from "./http";
 
 interface ProviderRecord {
 	manifest: GatewayProviderManifest;
@@ -167,6 +168,7 @@ export class GatewayRegistry {
 							? { ...registration.defaults.headers }
 							: undefined,
 						timeoutMs: registration.defaults.timeoutMs,
+						maxRetries: registration.defaults.maxRetries,
 						fetch: registration.defaults.fetch,
 						options: registration.defaults.options
 							? { ...registration.defaults.options }
@@ -190,6 +192,7 @@ export class GatewayRegistry {
 			baseUrl: config.baseUrl,
 			headers: config.headers ? { ...config.headers } : undefined,
 			timeoutMs: config.timeoutMs,
+			maxRetries: config.maxRetries,
 			fetch: config.fetch,
 			options: config.options ? { ...config.options } : undefined,
 			metadata: config.metadata ? { ...config.metadata } : undefined,
@@ -299,6 +302,7 @@ export class GatewayRegistry {
 			...(record.defaults?.options ?? {}),
 			...(config?.options ?? {}),
 		};
+		const timeoutMs = config?.timeoutMs ?? record.defaults?.timeoutMs;
 
 		return {
 			manifest,
@@ -316,8 +320,12 @@ export class GatewayRegistry {
 					...(record.defaults?.headers ?? {}),
 					...(config?.headers ?? {}),
 				},
-				timeoutMs: config?.timeoutMs ?? record.defaults?.timeoutMs,
-				fetch: config?.fetch ?? record.defaults?.fetch ?? this.fallbackFetch,
+				timeoutMs,
+				maxRetries: config?.maxRetries ?? record.defaults?.maxRetries,
+				fetch: withResponseTimeout(
+					config?.fetch ?? record.defaults?.fetch ?? this.fallbackFetch,
+					resolveResponseTimeoutMs(timeoutMs),
+				),
 				options,
 				metadata,
 			},

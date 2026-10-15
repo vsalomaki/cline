@@ -92,6 +92,58 @@ describe("createAgentModelFromConfig", () => {
 		);
 	});
 
+	it("forwards the provider timeout and retry count into the gateway", async () => {
+		const { createAgentModelFromConfig } = await import("./handler-factory");
+
+		createAgentModelFromConfig(
+			{
+				providerId: "anthropic",
+				modelId: "mock-model",
+				apiKey: "key",
+				systemPrompt: "",
+				tools: [],
+				apiTimeoutMs: 600_000,
+				providerConfig: {
+					providerId: "anthropic",
+					modelId: "mock-model",
+					timeoutMs: 120_000,
+					maxRetries: 5,
+				},
+			},
+			undefined,
+		);
+
+		expect(gatewayMock.createGateway).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				providerConfigs: [
+					expect.objectContaining({ timeoutMs: 120_000, maxRetries: 5 }),
+				],
+			}),
+		);
+	});
+
+	it("uses an explicit apiTimeoutMs when the provider config sets no timeout", async () => {
+		const { createAgentModelFromConfig } = await import("./handler-factory");
+
+		createAgentModelFromConfig(
+			{
+				providerId: "anthropic",
+				modelId: "mock-model",
+				apiKey: "key",
+				systemPrompt: "",
+				tools: [],
+				apiTimeoutMs: 600_000,
+			},
+			undefined,
+		);
+
+		expect(gatewayMock.createGateway).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				providerConfigs: [expect.objectContaining({ timeoutMs: 600_000 })],
+			}),
+		);
+	});
+
 	it("forwards a host-provided fetch into the gateway (top-level and per-provider)", async () => {
 		const { createAgentModelFromConfig } = await import("./handler-factory");
 		const hostFetch = vi.fn() as unknown as typeof fetch;

@@ -555,6 +555,33 @@ describe("createGatewayApiHandler.createMessage", () => {
 		expect(serializedMessages).not.toContain("drop me");
 	});
 
+	it("forwards a configured maxRetries to the model request", async () => {
+		streamTextSpy.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: "finish", finishReason: "stop" };
+			})(),
+			usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+		});
+
+		const handler = createGatewayApiHandler({
+			providerId: "openai-compatible",
+			modelId: "gpt-4.1",
+			apiKey: "test-key",
+			baseUrl: "https://example.test/v1",
+			maxRetries: 0,
+		});
+
+		for await (const _chunk of handler.createMessage("", [
+			{ role: "user", content: "Hello" },
+		])) {
+			// Drain the stream so the request is made.
+		}
+
+		expect(streamTextSpy).toHaveBeenLastCalledWith(
+			expect.objectContaining({ maxRetries: 0 }),
+		);
+	});
+
 	it("adds Azure API version to deployment-style OpenAI-compatible requests", async () => {
 		streamTextSpy.mockReturnValue({
 			fullStream: (async function* () {
@@ -594,7 +621,7 @@ describe("createGatewayApiHandler.createMessage", () => {
 
 		expect(providerFetch).toHaveBeenCalledWith(
 			"https://example.openai.azure.com/openai/deployments/gpt-4.1/chat/completions?api-version=2025-01-01-preview",
-			{ method: "POST" },
+			expect.objectContaining({ method: "POST" }),
 		);
 	});
 
@@ -635,7 +662,7 @@ describe("createGatewayApiHandler.createMessage", () => {
 
 		expect(providerFetch).toHaveBeenCalledWith(
 			"https://example.openai.azure.com/openai/v1/chat/completions",
-			{ method: "POST" },
+			expect.objectContaining({ method: "POST" }),
 		);
 	});
 

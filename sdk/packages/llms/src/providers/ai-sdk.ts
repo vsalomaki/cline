@@ -2000,12 +2000,14 @@ async function createProviderModule(
  * Applied as the *outermost* wrap so each retry re-runs the vendor's full
  * request pipeline, including any vendor-level middleware attached inside
  * `provider.operations.language(...)`. Vendors opt out or tune attempts through
- * `ProviderFactoryResult.retryEmptyResponses`.
+ * `ProviderFactoryResult.retryEmptyResponses`; a configured `maxRetries`
+ * overrides the attempt count.
  */
 export function withEmptyResponseRetry(
 	model: unknown,
 	retryEmptyResponses: ProviderFactoryResult["retryEmptyResponses"],
 	logger: GatewayProviderContext["logger"],
+	maxRetries?: number,
 ): unknown {
 	if (retryEmptyResponses === false) {
 		return model;
@@ -2014,9 +2016,21 @@ export function withEmptyResponseRetry(
 		model: model as LanguageModelV4,
 		middleware: createRetryEmptyResponseMiddleware({
 			...retryEmptyResponses,
+			...(maxRetries !== undefined ? { maxAttempts: maxRetries + 1 } : {}),
 			logger,
 		}),
 	});
+}
+
+/** A configured retry count as a non-negative integer, or undefined for the defaults. */
+export function resolveMaxRetries(
+	maxRetries: number | undefined,
+): number | undefined {
+	return typeof maxRetries === "number" &&
+		Number.isFinite(maxRetries) &&
+		maxRetries >= 0
+		? Math.floor(maxRetries)
+		: undefined;
 }
 
 function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
@@ -2190,6 +2204,7 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					messagesSystemPrompt,
 				);
 				const portableReasoning = resolvePortableReasoning(request);
+				const maxRetries = resolveMaxRetries(context.config.maxRetries);
 				const requestConfig = provider.buildStreamConfig
 					? provider.buildStreamConfig(request, context)
 					: buildAiSdkStreamConfig(request, context);
@@ -2214,7 +2229,10 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 								provider.operations.language(context.model.id),
 								provider.retryEmptyResponses,
 								context.logger,
+								maxRetries,
 							) as never,
+							// The AI SDK's own retry covers a request that fails to start.
+							...(maxRetries !== undefined ? { maxRetries } : {}),
 							messages: messages as never,
 							...(useSystemOption ? { system: systemPrompt } : {}),
 							...(tools ? { tools } : {}),
