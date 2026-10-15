@@ -30,6 +30,12 @@ beforeEach(() => {
 		IS_REACT_ACT_ENVIRONMENT: true,
 		ResizeObserver: ResizeObserverStub,
 	});
+	if (typeof window.localStorage.clear !== "function") {
+		Object.defineProperty(window, "localStorage", {
+			configurable: true,
+			value: window.sessionStorage,
+		});
+	}
 	window.localStorage.clear();
 	document.documentElement.style.removeProperty("font-size");
 	delete document.documentElement.dataset.clineFontSize;
@@ -54,7 +60,11 @@ describe("SettingsView font size", () => {
 
 		await act(async () => {
 			root.render(
-				<SettingsView onNavigateSection={vi.fn()} section="General" />,
+				<SettingsView
+					onExportDiagnostics={vi.fn()}
+					onNavigateSection={vi.fn()}
+					section="General"
+				/>,
 			);
 		});
 

@@ -44,7 +44,7 @@ export function createWorkspaceFileReadExecutor(
 	getReadFile()
 	return async (request, context) => {
 		const readFile = getReadFile()
-		if (path.isAbsolute(request.path)) {
+		if (request.path.startsWith("cline://cache/") || path.isAbsolute(request.path)) {
 			return readFile(request, context)
 		}
 		const workspaceRoot = await getWorkspaceRoot()

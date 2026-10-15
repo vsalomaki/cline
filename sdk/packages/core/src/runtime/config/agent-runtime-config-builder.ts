@@ -125,6 +125,7 @@ export function createAgentRuntimeConfig(
 				: (input.completionPolicy ?? agentConfig.completionPolicy),
 		maxIterations: agentConfig.maxIterations,
 		toolExecution,
+		providerErrorMaxRetries: resolveProviderErrorMaxRetries(agentConfig),
 		toolPolicies: agentConfig.toolPolicies,
 		toolContextMetadata: input.toolContextMetadata,
 		requestToolApproval: agentConfig.requestToolApproval,
@@ -182,6 +183,20 @@ export function buildMessageModelInfo(
 		provider: config.providerId,
 		family,
 	};
+}
+
+/** The provider's configured retry count also bounds turn-level retries. */
+export function resolveProviderErrorMaxRetries(
+	config: AgentConfig,
+): number | undefined {
+	const maxRetries = (
+		config.providerConfig as { maxRetries?: unknown } | undefined
+	)?.maxRetries;
+	return typeof maxRetries === "number" &&
+		Number.isFinite(maxRetries) &&
+		maxRetries >= 0
+		? Math.floor(maxRetries)
+		: undefined;
 }
 
 /**

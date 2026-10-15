@@ -45,7 +45,11 @@ import {
 	wrapLanguageModel,
 } from "ai";
 import { nanoid } from "nanoid";
-import { classifyProviderError } from "./error-classification";
+import type { AiSdkTelemetryDecision } from "../services/langfuse-telemetry";
+import {
+	classifyProviderError,
+	isRetryableBeyondSdkRetries,
+} from "./error-classification";
 import { extractErrorMessage } from "./format";
 import { createRetryEmptyResponseMiddleware } from "./middleware/retry-empty-response";
 import {
@@ -59,6 +63,11 @@ import {
 	wrapFetchForProviderRequestCapture,
 } from "./provider-request-capture";
 import {
+	appendRequestId,
+	extractResponseRequestId,
+	findRequestIdHeader,
+} from "./response-request-id";
+import {
 	applyPromptCacheToLastTextPart,
 	shouldApplyPromptCache,
 } from "./routing/anthropic-compatible";
@@ -66,7 +75,10 @@ import {
 	applyBedrockCachePointToLastUserMessage,
 	shouldApplyBedrockCachePoint,
 } from "./routing/bedrock-cache-point";
-import { resolvePortableReasoning } from "./routing/portable-reasoning";
+import {
+	reconcilePortableReasoning,
+	resolvePortableReasoning,
+} from "./routing/portable-reasoning";
 import {
 	type AiSdkProviderOptionsTarget,
 	composeAiSdkProviderOptions,
@@ -327,9 +339,9 @@ function summarizeProjectedMedia(media: readonly GeneratedMedia[]): unknown {
 
 export function buildAiSdkStreamConfig(
 	request: GatewayStreamRequest,
-	_context: GatewayProviderContext,
+	context: GatewayProviderContext,
 ): Partial<CallSettings> {
-	const reasoning = resolvePortableReasoning(request);
+	const reasoning = resolvePortableReasoning(request, { context });
 	return {
 		...(request.maxTokens !== undefined
 			? { maxOutputTokens: request.maxTokens }
@@ -590,15 +602,39 @@ function shouldIncludeReasoningHistory(
 	return !isCerebrasProvider(request, context);
 }
 
-async function ensureGatewayLangfuseTelemetry(
+async function resolveGatewayAiSdkTelemetry(
 	providerId: string,
-): Promise<boolean> {
+	request: GatewayStreamRequest,
+): Promise<AiSdkTelemetryDecision> {
 	try {
 		const runtime = await import("../services/langfuse-telemetry");
-		return runtime.ensureLangfuseTelemetry(providerId);
+		return await runtime.resolveAiSdkTelemetry(
+			providerId,
+			resolveTraceSamplingKey(request),
+		);
 	} catch {
-		return false;
+		return { isEnabled: false };
 	}
+}
+
+/**
+ * Whole-task sampling key: prefer the session/task id so every request in a
+ * task gets the same sampling decision and traces stay complete.
+ */
+function resolveTraceSamplingKey(
+	request: GatewayStreamRequest,
+): string | undefined {
+	const metadata =
+		request.metadata && typeof request.metadata === "object"
+			? (request.metadata as Record<string, unknown>)
+			: {};
+	for (const key of ["sessionId", "conversationId", "distinctId"]) {
+		const value = metadata[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value;
+		}
+	}
+	return undefined;
 }
 
 async function withAiSdkLangfuseTraceContext<T>(
@@ -621,10 +657,12 @@ async function withAiSdkLangfuseTraceContext<T>(
 	const sessionId =
 		typeof metadata.sessionId === "string" ? metadata.sessionId : undefined;
 
-	if (!enabled || (!distinctId && !sessionId && !tags?.length)) {
+	if (!enabled) {
 		return await callback();
 	}
 
+	// Operator env tags/metadata are merged inside the runtime, which also
+	// skips propagation when nothing at all is set.
 	const runtime = await import("../services/langfuse-telemetry");
 	return await runtime.withLangfuseTraceAttributes(
 		true,
@@ -990,20 +1028,22 @@ function resolveAiSdkSystemPrompt(
 		: request.systemPrompt;
 }
 
-function mapFinishReason(
-	value: unknown,
-	sawToolCalls: boolean,
-): AgentModelFinishReason {
-	if (value === "tool-calls" || value === "tool_calls" || sawToolCalls) {
-		return "tool-calls";
+function mapFinishReason(value: unknown): AgentModelFinishReason {
+	// Consume the AI SDK unified reason; raw provider values belong in diagnostics.
+	switch (value) {
+		case "stop":
+			return "stop";
+		case "tool-calls":
+			return "tool-calls";
+		case "length":
+			return "max-tokens";
+		case "content-filter":
+			return "content-filter";
+		case "error":
+			return "error";
+		default:
+			return "unknown";
 	}
-	if (value === "length" || value === "max_tokens") {
-		return "max-tokens";
-	}
-	if (value === "error") {
-		return "error";
-	}
-	return "stop";
 }
 
 function getUsageValue(
@@ -1054,12 +1094,31 @@ function getNestedUsageValue(
 	return getNumericValue(current) ?? 0;
 }
 
+/**
+ * AI SDK request-level retries for each model call (the SDK default is 2). The
+ * SDK retries the *initial* request on transient failures — 429/5xx/network —
+ * with exponential backoff that honors `retry-after` headers. It never sees an
+ * error the provider emits *mid-stream* (OpenRouter's "Provider returned error"
+ * arrives as a stream part after a 200), so the agent loop keeps its own
+ * turn-level retry for those.
+ *
+ * Each failure class has exactly one retrying layer, so the counts never
+ * multiply: request-start failures belong to this setting (a `RetryError` is
+ * terminal for the turn-level retry, see `isRetryableBeyondSdkRetries`);
+ * pre-output socket deaths and empty responses belong to
+ * `withEmptyResponseRetry`, which never sees request-start rejections; and
+ * mid-stream provider errors belong to the turn-level retry alone.
+ */
+const MODEL_REQUEST_MAX_RETRIES = 5;
+
 type UsagePath = readonly [string] | readonly [string, string];
 
 const REASONING_TOKEN_PATHS: UsagePath[] = [
 	["outputTokenDetails", "reasoningTokens"],
 	["output_tokens_details", "reasoning_tokens"],
 	["completion_tokens_details", "reasoning_tokens"],
+	// AI SDK v4's nested outputTokens shape ({ total, text, reasoning, ... }).
+	["outputTokens", "reasoning"],
 	["reasoningTokens"],
 	["reasoning_tokens"],
 ];
@@ -1162,6 +1221,7 @@ export function normalizeUsage(
 		| undefined,
 	providerMetadata?: unknown,
 	pricingValue?: unknown,
+	selection?: Pick<GatewayStreamRequest, "providerId" | "modelId">,
 ): GatewayNormalizedUsage {
 	const usage =
 		usageValue && typeof usageValue === "object"
@@ -1286,8 +1346,22 @@ export function normalizeUsage(
 		[usage, rawUsage, providerUsage ?? {}],
 		REASONING_TOKEN_PATHS,
 	);
-	const resolvedTotalCost =
-		totalCost !== undefined
+	const pricing = pricingValue as Record<string, unknown> | undefined;
+	// Cline's included models have no per-request charge, even when the
+	// response includes the upstream inference or market cost.
+	const includedClineUsage =
+		selection?.providerId === "cline-pass" ||
+		(selection?.providerId === "cline" &&
+			(selection.modelId.startsWith("cline-pass/") ||
+				selection.modelId.startsWith("cline-free/") ||
+				selection.modelId.endsWith(":free") ||
+				(pricing?.input === 0 &&
+					pricing?.output === 0 &&
+					(pricing.cacheRead ?? 0) === 0 &&
+					(pricing.cacheWrite ?? 0) === 0)));
+	const resolvedTotalCost = includedClineUsage
+		? 0
+		: totalCost !== undefined
 			? totalCost
 			: hasExplicitCost
 				? undefined
@@ -1295,6 +1369,19 @@ export function normalizeUsage(
 
 	return {
 		...normalizedUsage,
+		// Providers report reasoning tokens as a subset of outputTokens (e.g.
+		// OpenAI's completion_tokens_details.reasoning_tokens), not additional
+		// to it. Strip them back out here so outputTokens reflects the actual
+		// non-reasoning output, with reasoningTokenCount tracked separately —
+		// otherwise every downstream consumer (session totals, telemetry,
+		// Harbor's n_output_tokens) double-books reasoning as both its own
+		// count and part of "output". Cost above is computed from the
+		// pre-subtraction outputTokens, since reasoning tokens are still
+		// billed at the output rate.
+		outputTokens: Math.max(
+			0,
+			normalizedUsage.outputTokens - reasoningTokenCount,
+		),
 		...(reasoningTokenCount > 0 ? { reasoningTokenCount } : {}),
 		...(typeof resolvedTotalCost === "number"
 			? { totalCost: resolvedTotalCost }
@@ -1390,17 +1477,37 @@ interface CapturedStreamError {
 	message: string;
 	errorClass: ProviderErrorClass;
 	/**
+	 * Whether the agent loop's turn-level retry may re-run this turn, decided
+	 * while the structured error is still in hand and forwarded as
+	 * `errorRetryable` on the `finish` event (the flattened message the agent
+	 * loop receives cannot carry it). Transient by the AI SDK's own typed
+	 * `isRetryable` flag, except that a `RetryError` is terminal: the SDK
+	 * already spent its request-start retries, and the turn-level retry must
+	 * not multiply them.
+	 */
+	retryable: boolean;
+	/**
 	 * This layer already recorded `sdk.error` telemetry for the failure.
 	 * Forwarded as `errorReported` on the `finish` event so the agent loop
 	 * does not report the same failure a second time.
 	 */
 	reported?: boolean;
+	requestId?: string;
+	baseMessage: string;
 }
 
-function captureStreamError(error: unknown): CapturedStreamError {
+function captureStreamError(
+	error: unknown,
+	sdkMaxRetries?: number,
+): CapturedStreamError {
+	const requestId = extractResponseRequestId(error);
+	const baseMessage = extractErrorMessage(error);
 	return {
-		message: extractErrorMessage(error),
+		message: appendRequestId(baseMessage, requestId),
+		baseMessage,
 		errorClass: classifyProviderError(error),
+		retryable: isRetryableBeyondSdkRetries(error, sdkMaxRetries),
+		...(requestId ? { requestId } : {}),
 	};
 }
 
@@ -1412,9 +1519,9 @@ async function* emitAiSdkEvents(
 	capturedError?: { current: CapturedStreamError | undefined },
 	modelToolAdapters?: BuiltModelTools,
 ): AsyncIterable<AgentModelEvent> {
-	let sawToolCalls = false;
 	const emittedToolCallIds = new Set<string>();
 	let finishReason: unknown;
+	let requestId: string | undefined;
 	let streamError: CapturedStreamError | undefined;
 	let finishUsage: unknown;
 	let finishProviderMetadata: unknown;
@@ -1439,6 +1546,14 @@ async function* emitAiSdkEvents(
 	try {
 		if (stream.fullStream) {
 			for await (const part of stream.fullStream) {
+				if (part.type === "start-step") {
+					requestId = undefined;
+					continue;
+				}
+				if (part.type === "finish-step") {
+					requestId = findRequestIdHeader(part.response?.headers);
+					continue;
+				}
 				if (part.type === "text-delta") {
 					const text =
 						(part.textDelta as string | undefined) ??
@@ -1569,7 +1684,6 @@ async function* emitAiSdkEvents(
 						};
 						continue;
 					}
-					sawToolCalls = true;
 					sawVisibleContent = true;
 					const toolCallId =
 						(part.toolCallId as string | undefined) ??
@@ -1725,7 +1839,6 @@ async function* emitAiSdkEvents(
 							continue;
 						}
 					}
-					sawToolCalls = true;
 					const toolCallId =
 						(part.toolCallId as string | undefined) ??
 						(part.id as string | undefined) ??
@@ -1763,8 +1876,7 @@ async function* emitAiSdkEvents(
 				if (part.type === "finish") {
 					finishUsage = part.usage ?? part.totalUsage;
 					finishProviderMetadata = part.providerMetadata;
-					finishReason =
-						part.finishReason ?? part.rawFinishReason ?? part.reason;
+					finishReason = part.finishReason;
 				}
 
 				if (part.type === "error") {
@@ -1910,15 +2022,18 @@ async function* emitAiSdkEvents(
 	if (usageToEmit) {
 		yield {
 			type: "usage",
-			usage: normalizeUsage(usageToEmit, metadataToUse, pricingValue),
+			usage: normalizeUsage(usageToEmit, metadataToUse, pricingValue, request),
 		};
 	}
 
+	const finishRequestId = requestId ?? streamError?.requestId;
 	yield {
 		type: "finish",
-		reason: streamError ? "error" : mapFinishReason(finishReason, sawToolCalls),
+		reason: streamError ? "error" : mapFinishReason(finishReason),
+		...(finishRequestId ? { requestId: finishRequestId } : {}),
 		error: streamError?.message,
 		errorClass: streamError?.errorClass,
+		errorRetryable: streamError?.retryable,
 		errorReported: streamError?.reported,
 	};
 }
@@ -2053,11 +2168,18 @@ export function resolveMaxRetries(
 		: undefined;
 }
 
-function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
+function createAiSdkProvider(
+	defaultKind: ProviderModuleKind,
+): GatewayProviderFactory {
 	return async (config) => ({
 		async *stream(request, context) {
+			// Multi-protocol HTTP gateways declare model adapters in models.dev.
+			// Keep native and local CLI transports authoritative for their models.
+			const kind = resolveModelProviderKind(defaultKind, context);
 			const log = context.logger;
 			let stream: AiSdkStreamResult | undefined;
+			const configuredMaxRetries = resolveMaxRetries(context.config.maxRetries);
+			const sdkMaxRetries = configuredMaxRetries ?? MODEL_REQUEST_MAX_RETRIES;
 			const capturedError: { current: CapturedStreamError | undefined } = {
 				current: undefined,
 			};
@@ -2181,14 +2303,16 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 								result.usage as Record<string, unknown>,
 								result.providerMetadata,
 								context.model.metadata?.pricing,
+								request,
 							),
 						};
 					}
 					yield { type: "finish", reason: "stop" };
 					return;
 				}
-				const langfuse = await ensureGatewayLangfuseTelemetry(
+				const aiSdkTelemetry = await resolveGatewayAiSdkTelemetry(
 					config.providerId,
+					request,
 				);
 				const externalToolExecutionDisabled =
 					providerDisablesExternalToolExecution(context);
@@ -2223,11 +2347,15 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					context,
 					messagesSystemPrompt,
 				);
-				const portableReasoning = resolvePortableReasoning(request);
-				const maxRetries = resolveMaxRetries(context.config.maxRetries);
-				const requestConfig = provider.buildStreamConfig
-					? provider.buildStreamConfig(request, context)
-					: buildAiSdkStreamConfig(request, context);
+				const portableReasoning = reconcilePortableReasoning(
+					resolvePortableReasoning(request, { adapter: kind, context }),
+					providerOptions,
+				);
+				// Reasoning is decided once above, after provider options are known.
+				const { reasoning: _configReasoning, ...requestConfig } =
+					provider.buildStreamConfig
+						? provider.buildStreamConfig(request, context)
+						: buildAiSdkStreamConfig(request, context);
 				recordProviderRequestCapture({
 					stage: "ai_sdk_prompt",
 					request,
@@ -2241,7 +2369,7 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					},
 				});
 				stream = await withAiSdkLangfuseTraceContext(
-					langfuse,
+					aiSdkTelemetry.isEnabled,
 					request,
 					() =>
 						streamText({
@@ -2249,17 +2377,16 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 								provider.operations.language(context.model.id),
 								provider.retryEmptyResponses,
 								context.logger,
-								maxRetries,
+								configuredMaxRetries,
 							) as never,
-							// The AI SDK's own retry covers a request that fails to start.
-							...(maxRetries !== undefined ? { maxRetries } : {}),
 							messages: messages as never,
 							...(useSystemOption ? { system: systemPrompt } : {}),
 							...(tools ? { tools } : {}),
 							abortSignal: request.signal,
+							maxRetries: sdkMaxRetries,
 							experimental_repairToolCall: repairMalformedToolCall as never,
 							telemetry: {
-								isEnabled: langfuse,
+								...aiSdkTelemetry,
 								functionId: "cline-agent-turn",
 								includeRuntimeContext: {
 									distinctId: true,
@@ -2285,7 +2412,7 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 							...requestConfig,
 							...(portableReasoning ? { reasoning: portableReasoning } : {}),
 							onError: ({ error: streamError }) => {
-								const captured = captureStreamError(streamError);
+								const captured = captureStreamError(streamError, sdkMaxRetries);
 								const msg = captured.message;
 								capturedError.current = captured;
 								if (log?.error) {
@@ -2304,13 +2431,14 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 									component: "llms",
 									operation: "provider.stream",
 									error: streamError,
-									errorMessage: msg,
+									errorMessage: captured.baseMessage,
 									severity: "error",
 									handled: true,
 									context: {
 										providerId: request.providerId,
 										modelId: request.modelId,
 										providerKind: kind,
+										requestId: captured.requestId,
 									},
 								});
 							},
@@ -2335,7 +2463,8 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 				suppressDanglingStreamPromises(stream);
 				// Prefer the real provider error captured in onError over the generic
 				// NoOutputGeneratedError that the AI SDK throws when 0 steps are recorded.
-				const captured = capturedError.current ?? captureStreamError(error);
+				const captured =
+					capturedError.current ?? captureStreamError(error, sdkMaxRetries);
 				const msg = captured.message;
 				if (log?.error) {
 					log.error("[ai-sdk] provider error", {
@@ -2353,13 +2482,14 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					component: "llms",
 					operation: "provider.create_or_stream",
 					error,
-					errorMessage: msg,
+					errorMessage: captured.baseMessage,
 					severity: "error",
 					handled: true,
 					context: {
 						providerId: request.providerId,
 						modelId: request.modelId,
 						providerKind: kind,
+						requestId: captured.requestId,
 					},
 				});
 				yield {
@@ -2367,11 +2497,33 @@ function createAiSdkProvider(kind: ProviderModuleKind): GatewayProviderFactory {
 					reason: "error",
 					error: msg,
 					errorClass: captured.errorClass,
+					errorRetryable: captured.retryable,
 					errorReported: reported || captured.reported,
 				};
 			}
 		},
 	});
+}
+
+function resolveModelProviderKind(
+	defaultKind: ProviderModuleKind,
+	context: GatewayProviderContext,
+): ProviderModuleKind {
+	if (
+		defaultKind !== "openai-compatible" ||
+		!context.provider.metadata?.routing?.modelApiProtocol
+	)
+		return defaultKind;
+	switch (context.model.metadata?.apiProtocol) {
+		case "openai-responses":
+			return "openai";
+		case "anthropic":
+			return "anthropic";
+		case "gemini":
+			return "google";
+		default:
+			return defaultKind;
+	}
 }
 
 export const createOpenAIProvider = createAiSdkProvider("openai");

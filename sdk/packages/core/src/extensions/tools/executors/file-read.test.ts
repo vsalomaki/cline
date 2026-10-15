@@ -2,6 +2,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	prepareToolResultRecovery,
+	TOOL_RESULT_CACHE_MISS,
+	ToolResultCache,
+} from "../../../session/services/tool-result-cache";
 import { createFileReadExecutor } from "./file-read";
 
 describe("createFileReadExecutor", () => {
@@ -24,6 +29,105 @@ describe("createFileReadExecutor", () => {
 		}
 	});
 
+	it("caps a directory listing at the read output budget", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			for (let index = 0; index < 100; index++) {
+				await fs.writeFile(path.join(dir, `file-${index}.txt`), "");
+			}
+
+			const result = String(
+				await createFileReadExecutor({ maxReadOutputChars: 300 })(
+					{ path: dir },
+					{} as Parameters<ReturnType<typeof createFileReadExecutor>>[1],
+				),
+			);
+
+			expect(result.length).toBeLessThan(600);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("recovers multiline MCP payloads serialized as YAML, including late line ranges", async () => {
+		const payload = Array.from(
+			{ length: 200 },
+			(_, index) => `line ${index + 1}: ${"x".repeat(80)}`,
+		).join("\n");
+		const { text } = prepareToolResultRecovery({
+			content: [{ type: "text", text: payload }],
+			isError: false,
+		});
+		const cache = new ToolResultCache("session");
+		const uri = cache.store("mcp-call", text ?? "") ?? "";
+		const context = {
+			agentId: "agent",
+			iteration: 1,
+			metadata: { toolResultCache: cache },
+		};
+		const reader = createFileReadExecutor();
+		const output = String(await reader({ path: uri }, context));
+		expect(output).toContain("line 200:");
+		expect(output).not.toContain("[line truncated]");
+		const lastLine =
+			(text ?? "").split("\n").findIndex((line) => line.includes("line 200:")) +
+			1;
+		const lateRead = String(
+			await reader(
+				{ path: uri, start_line: lastLine, end_line: lastLine },
+				context,
+			),
+		);
+		expect(lateRead).toContain("line 200:");
+		expect(lateRead).not.toContain("line 1:");
+	});
+	it("reads cache URIs with the same inclusive ranges and line numbers", async () => {
+		const cache = new ToolResultCache("session");
+		const uri = cache.store("call", "alpha\nbeta\ngamma\ndelta") ?? "";
+		const context = {
+			agentId: "agent",
+			iteration: 1,
+			metadata: { toolResultCache: cache },
+		};
+		expect(
+			await createFileReadExecutor()(
+				{ path: uri, start_line: 2, end_line: 3 },
+				context,
+			),
+		).toBe("2 | beta\n3 | gamma");
+		cache.clear();
+		await expect(
+			createFileReadExecutor()({ path: uri }, context),
+		).rejects.toThrow(TOOL_RESULT_CACHE_MISS);
+	});
+
+	it("bounds cached line output and rejects cross-session or unavailable cache reads", async () => {
+		const cache = new ToolResultCache("session");
+		const uri = cache.store("call", `${"x".repeat(10000)}\nend`) ?? "";
+		const context = {
+			agentId: "agent",
+			iteration: 1,
+			metadata: { toolResultCache: cache },
+		};
+		const text = await createFileReadExecutor()({ path: uri }, context);
+		expect(String(text)).toContain("[line truncated]");
+		expect(String(text).length).toBeLessThan(2100);
+		await expect(
+			createFileReadExecutor()(
+				{ path: uri },
+				{
+					...context,
+					metadata: { toolResultCache: new ToolResultCache("other") },
+				},
+			),
+		).rejects.toThrow("for this session");
+		await expect(
+			createFileReadExecutor()(
+				{ path: uri },
+				{ agentId: "agent", iteration: 1 },
+			),
+		).rejects.toThrow(TOOL_RESULT_CACHE_MISS);
+	});
 	it("reads a file from an absolute path", async () => {
 		const result = await readTempFile("hello absolute path");
 		expect(result).toBe("1 | hello absolute path");
@@ -150,6 +254,27 @@ describe("createFileReadExecutor", () => {
 		expect(result).toContain("[line truncated]");
 		expect(result).toContain("end");
 		expect(result.length).toBeLessThan(2500);
+	});
+
+	it("keeps a single long line within the read output budget", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			const filePath = path.join(dir, "minified.js");
+			await fs.writeFile(filePath, "z".repeat(5000), "utf-8");
+			const readFile = createFileReadExecutor({
+				maxLineChars: 1_000_000,
+				maxReadOutputChars: 1000,
+			});
+			const result = (await readFile(
+				{ path: filePath },
+				{ agentId: "agent-1", conversationId: "conv-1", iteration: 1 },
+			)) as string;
+
+			expect(result).toContain("[line truncated]");
+			expect(result.length).toBeLessThan(1200);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("rejects very large text files instead of streaming them", async () => {

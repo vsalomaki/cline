@@ -9,7 +9,10 @@ import type {
 	ToolApprovalRequest,
 	ToolApprovalResult,
 } from "@cline/shared";
-import { SessionRuntime } from "../../../runtime/orchestration/session-runtime-orchestrator";
+import {
+	SessionRuntime,
+	type SessionRuntimeConfig,
+} from "../../../runtime/orchestration/session-runtime-orchestrator";
 import {
 	buildSubAgentSystemPrompt,
 	buildTeammateSystemPrompt,
@@ -56,6 +59,8 @@ export interface DelegatedAgentRuntimeConfig
 	 * delegated-agent telemetry (Langfuse `sessionId`) groups with it.
 	 */
 	sessionId?: string;
+	/** The parent's context limits, so delegated tools and requests share its budgets. */
+	contextLimits?: SessionRuntimeConfig["contextLimits"];
 }
 
 export interface DelegatedAgentConfigProvider {
@@ -119,7 +124,7 @@ export function createDelegatedAgentConfigProvider(
 
 export function buildDelegatedAgentConfig(
 	options: BuildDelegatedAgentConfigOptions,
-): AgentConfig & { role?: string } {
+): SessionRuntimeConfig & { role?: string } {
 	const runtimeConfig = options.configProvider.getRuntimeConfig();
 	const systemPrompt =
 		options.kind === "teammate"
@@ -142,6 +147,7 @@ export function buildDelegatedAgentConfig(
 		toolPolicies: options.toolPolicies,
 		requestToolApproval: options.requestToolApproval,
 		logger: runtimeConfig.logger,
+		contextLimits: runtimeConfig.contextLimits,
 		role: options.role,
 	};
 }

@@ -36,6 +36,25 @@ describe("applySessionToolOptions", () => {
 		expect("ripgrepTimeoutMs" in applied).toBe(false);
 	});
 
+	it("routes the web-fetch timeout to the web-fetch executor", () => {
+		const applied = applySessionToolOptions(
+			{ cwd: "/repo" },
+			{ webFetchTimeoutMs: 90_000 },
+		);
+
+		expect(applied.webFetchTimeoutMs).toBe(90_000);
+		expect(applied.executorOptions?.webFetch).toEqual({ timeoutMs: 90_000 });
+	});
+
+	it("keeps an explicit web-fetch executor timeout", () => {
+		const applied = applySessionToolOptions(
+			{ cwd: "/repo", executorOptions: { webFetch: { timeoutMs: 5_000 } } },
+			{ webFetchTimeoutMs: 90_000 },
+		);
+
+		expect(applied.executorOptions?.webFetch).toEqual({ timeoutMs: 5_000 });
+	});
+
 	it("lets explicit call options win over session options", () => {
 		const applied = applySessionToolOptions(
 			{ cwd: "/repo", searchTimeoutMs: 1_000 },

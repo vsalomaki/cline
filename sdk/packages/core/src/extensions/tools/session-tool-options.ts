@@ -23,8 +23,8 @@ export function resolveSessionToolOptions(
 }
 
 /**
- * Spreads session options into `createBuiltinTools` input, keeping the
- * ripgrep timeout with the search executor it configures.
+ * Spreads session options into `createBuiltinTools` input. The ripgrep and
+ * web-fetch timeouts also go to the executors, which enforce their own.
  */
 export function applySessionToolOptions(
 	options: CreateBuiltinToolsOptions,
@@ -34,18 +34,27 @@ export function applySessionToolOptions(
 		return options;
 	}
 	const { ripgrepTimeoutMs, ...toolOptions } = sessionOptions;
+	const webFetchTimeoutMs =
+		options.webFetchTimeoutMs ?? toolOptions.webFetchTimeoutMs;
+	const executorOptions = { ...options.executorOptions };
+	if (ripgrepTimeoutMs !== undefined) {
+		executorOptions.search = {
+			ripgrepTimeoutMs,
+			...options.executorOptions?.search,
+		};
+	}
+	if (webFetchTimeoutMs !== undefined) {
+		executorOptions.webFetch = {
+			timeoutMs: webFetchTimeoutMs,
+			...options.executorOptions?.webFetch,
+		};
+	}
 	return {
 		...toolOptions,
 		...options,
 		executorOptions:
-			ripgrepTimeoutMs === undefined
-				? options.executorOptions
-				: {
-						...options.executorOptions,
-						search: {
-							ripgrepTimeoutMs,
-							...options.executorOptions?.search,
-						},
-					},
+			Object.keys(executorOptions).length > 0
+				? executorOptions
+				: options.executorOptions,
 	};
 }

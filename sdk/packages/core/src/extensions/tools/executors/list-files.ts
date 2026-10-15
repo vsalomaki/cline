@@ -111,6 +111,7 @@ export function createListFilesExecutor(
 export async function listDirectoryTopLevel(
 	directory: string,
 	limit = 200,
+	maxOutputChars = MAX_SEARCH_OUTPUT_CHARS,
 ): Promise<string> {
 	const { entries, truncated, unreadable } = await collectEntries({
 		root: directory,
@@ -122,7 +123,7 @@ export async function listDirectoryTopLevel(
 	return formatListing(directory, entries, {
 		truncated,
 		limit,
-		maxOutputChars: MAX_SEARCH_OUTPUT_CHARS,
+		maxOutputChars,
 		unreadable,
 	});
 }
