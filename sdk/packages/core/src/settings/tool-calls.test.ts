@@ -10,32 +10,47 @@ describe("resolveToolCallSettings", () => {
 		expect(resolveToolCallSettings({}, {})).toEqual({
 			maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
 			parallelToolCalls: true,
+			readBeforeWrite: true,
 		});
 	});
 
 	it("uses session config when no env var is set", () => {
 		expect(
 			resolveToolCallSettings(
-				{ maxParallelToolCalls: 1, parallelToolCalls: false },
+				{
+					maxParallelToolCalls: 1,
+					parallelToolCalls: false,
+					readBeforeWrite: false,
+				},
 				{},
 			),
-		).toEqual({ maxParallelToolCalls: 1, parallelToolCalls: false });
+		).toEqual({
+			maxParallelToolCalls: 1,
+			parallelToolCalls: false,
+			readBeforeWrite: false,
+		});
 	});
 
 	it("lets env vars override session config", () => {
 		const env = {
 			CLINE_MAX_PARALLEL_TOOL_CALLS: "8",
 			CLINE_PARALLEL_TOOL_CALLS: "off",
+			CLINE_READ_BEFORE_WRITE: "false",
 		};
 		expect(
 			resolveToolCallSettings(
 				{ maxParallelToolCalls: 2, parallelToolCalls: true },
 				env,
 			),
-		).toEqual({ maxParallelToolCalls: 8, parallelToolCalls: false });
+		).toEqual({
+			maxParallelToolCalls: 8,
+			parallelToolCalls: false,
+			readBeforeWrite: false,
+		});
 		expect(getToolCallEnvSources(env)).toEqual({
 			maxParallelToolCalls: "CLINE_MAX_PARALLEL_TOOL_CALLS",
 			parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
+			readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
 		});
 	});
 
@@ -47,6 +62,7 @@ describe("resolveToolCallSettings", () => {
 		expect(resolveToolCallSettings({ maxParallelToolCalls: -3 }, env)).toEqual({
 			maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
 			parallelToolCalls: true,
+			readBeforeWrite: true,
 		});
 		expect(getToolCallEnvSources(env)).toEqual({});
 	});

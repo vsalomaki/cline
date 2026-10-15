@@ -9,6 +9,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
+import { getFileReadLedger } from "../../../session/services/file-read-ledger";
 import type { ApplyPatchInput } from "../schemas";
 import type { ApplyPatchExecutor } from "../types";
 import {
@@ -404,9 +405,7 @@ export async function computePatchChanges(
 		}
 		const destination = resolveFilePath(cwd, action.movePath, restrictToCwd);
 		if (await fileExists(destination)) {
-			throw new DiffError(
-				`Move File Error: ${action.movePath} already exists`,
-			);
+			throw new DiffError(`Move File Error: ${action.movePath} already exists`);
 		}
 	}
 
@@ -424,13 +423,35 @@ export function createApplyPatchExecutor(
 	return async (
 		input: ApplyPatchInput,
 		cwd: string,
-		_context: AgentToolContext,
+		context: AgentToolContext,
 	): Promise<string> => {
 		const { changes, fuzz } = await computePatchChanges(input.input, cwd, {
 			encoding,
 			restrictToCwd,
 		});
+		const ledger = getFileReadLedger(context.metadata);
+		if (ledger) {
+			for (const [filePath, change] of Object.entries(changes)) {
+				if (change.type === PatchActionType.ADD) {
+					continue;
+				}
+				const refusal = await ledger.checkEditable(
+					resolveFilePath(cwd, filePath, restrictToCwd),
+					filePath,
+				);
+				if (refusal) {
+					throw new DiffError(refusal);
+				}
+			}
+		}
 		const touched = await applyChanges(changes, cwd, encoding, restrictToCwd);
+		if (ledger) {
+			for (const [filePath, change] of Object.entries(changes)) {
+				await ledger.recordCurrent(
+					resolveFilePath(cwd, change.movePath ?? filePath, restrictToCwd),
+				);
+			}
+		}
 
 		const responseLines = [
 			"Successfully applied patch to the following files:",

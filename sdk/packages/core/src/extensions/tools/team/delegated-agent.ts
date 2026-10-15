@@ -37,6 +37,7 @@ export type DelegatedAgentConnectionConfig = Pick<
 	| "temperature"
 	| "maxParallelToolCalls"
 	| "parallelToolCalls"
+	| "readBeforeWrite"
 >;
 
 export interface DelegatedAgentRuntimeConfig
@@ -116,6 +117,7 @@ export function createDelegatedAgentConfigProvider(
 			temperature: runtimeConfig.temperature,
 			maxParallelToolCalls: runtimeConfig.maxParallelToolCalls,
 			parallelToolCalls: runtimeConfig.parallelToolCalls,
+			readBeforeWrite: runtimeConfig.readBeforeWrite,
 		}),
 		updateConnectionDefaults: (overrides) => {
 			runtimeConfig = {

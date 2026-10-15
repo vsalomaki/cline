@@ -121,6 +121,7 @@ cline doctor log
 | `CLINE_MESSAGE_BUILDER_*` | Caps on the text in each provider request ([Context limits](#context-limits)) |
 | `CLINE_MAX_PARALLEL_TOOL_CALLS` | Read-only tool calls run at once ([Tool calls](#tool-calls)) |
 | `CLINE_PARALLEL_TOOL_CALLS` | Whether the model may request several tool calls per response ([Tool calls](#tool-calls)) |
+| `CLINE_READ_BEFORE_WRITE` | Whether edits to unread or changed files are refused ([Tool calls](#tool-calls)) |
 | `CLINE_LOG_PATH` | CLI log file (default: `~/.cline/data/logs/cline.log`). `cline doctor log` opens it |
 
 ### CLINE_DATA_DIR
@@ -192,10 +193,14 @@ a time.
 |----------|---------|---------|
 | `CLINE_MAX_PARALLEL_TOOL_CALLS` | `4` | Read-only tool calls run at once; `1` runs every call in order |
 | `CLINE_PARALLEL_TOOL_CALLS` | `true` | `false` (or `0`, `off`) asks the provider for one tool call per response |
+| `CLINE_READ_BEFORE_WRITE` | `true` | Refuse `editor` and `apply_patch` changes to an existing file the agent has not read in this session, or that changed since it last read it |
 
-In the VS Code extension, both settings are under **Settings → Agent Limits → Tool calls**.
-The CLI also takes `--max-parallel-tool-calls <n>` and `--no-parallel-tool-calls`,
-and reads `maxParallelToolCalls` and `parallelToolCalls` from
+With read-before-write on, any successful `read_files` of a file counts, including a line range, and Cline's own edits keep the record current. The record is cleared when older history is compacted and starts empty in a resumed session, so the agent reads files again before editing them. Creating new files and `run_commands` are not checked.
+
+In the VS Code extension, these settings are under **Settings → Agent Limits → Tool calls**.
+The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls` and
+`--no-read-before-write`, and reads `maxParallelToolCalls`, `parallelToolCalls` and
+`readBeforeWrite` from
 `global-settings.json`. An env var wins over the flag and the file, and the flag wins
 over the file. Values that are not valid (a non-positive or non-integer count, an
 unrecognized boolean) are ignored.

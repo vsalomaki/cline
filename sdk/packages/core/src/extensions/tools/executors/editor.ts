@@ -7,6 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
+import { getFileReadLedger } from "../../../session/services/file-read-ledger";
 import { DEFAULT_CONTEXT_LIMITS } from "../../../settings/context-limits";
 import type { EditFileInput } from "../schemas";
 import type { EditorExecutor } from "../types";
@@ -228,13 +229,10 @@ export function createEditorExecutor(
 		maxDiffLines = DEFAULT_CONTEXT_LIMITS.tool.editorDiffLines,
 	} = options;
 
-	return async (
+	async function applyEdit(
 		input: EditFileInput,
-		cwd: string,
-		_context: AgentToolContext,
-	): Promise<string> => {
-		const filePath = resolveFilePath(cwd, input.path, restrictToCwd);
-
+		filePath: string,
+	): Promise<string> {
 		if (input.insert_line != null) {
 			return insertInFile(
 				filePath,
@@ -265,5 +263,23 @@ export function createEditorExecutor(
 			encoding,
 			maxDiffLines,
 		);
+	}
+
+	return async (
+		input: EditFileInput,
+		cwd: string,
+		context: AgentToolContext,
+	): Promise<string> => {
+		const filePath = resolveFilePath(cwd, input.path, restrictToCwd);
+		const ledger = getFileReadLedger(context.metadata);
+		if (ledger && (input.insert_line != null || input.old_text != null)) {
+			const refusal = await ledger.checkEditable(filePath, input.path);
+			if (refusal) {
+				throw new Error(refusal);
+			}
+		}
+		const result = await applyEdit(input, filePath);
+		await ledger?.recordCurrent(filePath);
+		return result;
 	};
 }

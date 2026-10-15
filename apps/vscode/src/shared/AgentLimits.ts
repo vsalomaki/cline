@@ -85,6 +85,18 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		envVar: "CLINE_PARALLEL_TOOL_CALLS",
 	},
 	{
+		id: "session.readBeforeWrite",
+		group: "toolCalls",
+		label: "Read before edit",
+		description:
+			"Refuse an edit to an existing file the agent has not read in this task, or that changed since it read it. The agent then reads the file and retries. Shell commands are not checked.",
+		unit: "toggle",
+		default: 1,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_READ_BEFORE_WRITE",
+	},
+	{
 		id: "tool.commandOutputChars",
 		group: "toolOutput",
 		label: "Command output",

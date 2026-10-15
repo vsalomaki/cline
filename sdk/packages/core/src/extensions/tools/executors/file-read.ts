@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import type { AgentToolContext } from "@cline/shared";
 import { resolveExistingFilePath } from "@cline/shared/storage";
+import { getFileReadLedger } from "../../../session/services/file-read-ledger";
 import {
 	TOOL_RESULT_CACHE_MISS,
 	ToolResultCache,
@@ -311,6 +312,7 @@ export function createFileReadExecutor(
 				throw new Error("Current model does not support image input");
 			}
 			const data = await fs.readFile(resolvedPath);
+			await getFileReadLedger(context.metadata)?.record(resolvedPath, stat);
 			return [
 				{
 					type: "text",
@@ -330,7 +332,7 @@ export function createFileReadExecutor(
 			);
 		}
 
-		return readTextWindow(
+		const text = await readTextWindow(
 			createReadStream(resolvedPath, { encoding }),
 			includeLineNumbers,
 			start_line,
@@ -338,5 +340,7 @@ export function createFileReadExecutor(
 			caps,
 			context.signal,
 		);
+		await getFileReadLedger(context.metadata)?.record(resolvedPath, stat);
+		return text;
 	};
 }

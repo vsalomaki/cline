@@ -48,6 +48,13 @@ export function resolveStartupParallelToolCalls(
 	return args.parallelToolCalls ?? settings.parallelToolCalls;
 }
 
+export function resolveStartupReadBeforeWrite(
+	args: Pick<ParsedArgs, "readBeforeWrite">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.readBeforeWrite ?? settings.readBeforeWrite;
+}
+
 /**
  * Returns undefined when neither a flag nor a persisted value exists, so
  * callers fall through to Core's compaction default.

@@ -56,6 +56,7 @@ import {
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
 	resolveStartupParallelToolCalls,
+	resolveStartupReadBeforeWrite,
 	resolveStartupToolAutoApprove,
 } from "./utils/startup-settings";
 import { rewriteTeamPrompt, TEAM_COMMAND_USAGE } from "./utils/team-command";
@@ -914,6 +915,10 @@ export async function runCli(): Promise<void> {
 		args,
 		persistedGlobalSettings,
 	);
+	const effectiveReadBeforeWrite = resolveStartupReadBeforeWrite(
+		args,
+		persistedGlobalSettings,
+	);
 
 	// Register the SDK early logger as early as possible — before any
 	// provider settings reads — so the full startup sequence is captured.
@@ -1091,6 +1096,7 @@ export async function runCli(): Promise<void> {
 			},
 			maxParallelToolCalls: effectiveMaxParallelToolCalls,
 			parallelToolCalls: effectiveParallelToolCalls,
+			readBeforeWrite: effectiveReadBeforeWrite,
 			checkpoint: CLI_DEFAULT_CHECKPOINT_CONFIG,
 			compaction: buildCliCompactionConfig(effectiveCompactionMode),
 			timeoutSeconds: args.timeoutSeconds,

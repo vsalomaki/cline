@@ -8,11 +8,14 @@ export const DEFAULT_MAX_PARALLEL_TOOL_CALLS = 4;
 export const TOOL_CALL_ENV = {
 	maxParallelToolCalls: "CLINE_MAX_PARALLEL_TOOL_CALLS",
 	parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
+	readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
 } as const;
 
 export interface ToolCallSettings {
 	maxParallelToolCalls: number;
 	parallelToolCalls: boolean;
+	/** Refuse edits to existing files that were not read, or changed since. */
+	readBeforeWrite: boolean;
 }
 
 function parsePositiveIntEnv(raw: string | undefined): number | undefined {
@@ -56,6 +59,10 @@ export function resolveToolCallSettings(
 			parseBooleanEnv(env[TOOL_CALL_ENV.parallelToolCalls]) ??
 			config.parallelToolCalls ??
 			true,
+		readBeforeWrite:
+			parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) ??
+			config.readBeforeWrite ??
+			true,
 	};
 }
 
@@ -71,6 +78,9 @@ export function getToolCallEnvSources(
 	}
 	if (parseBooleanEnv(env[TOOL_CALL_ENV.parallelToolCalls]) !== undefined) {
 		sources.parallelToolCalls = TOOL_CALL_ENV.parallelToolCalls;
+	}
+	if (parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) !== undefined) {
+		sources.readBeforeWrite = TOOL_CALL_ENV.readBeforeWrite;
 	}
 	return sources;
 }

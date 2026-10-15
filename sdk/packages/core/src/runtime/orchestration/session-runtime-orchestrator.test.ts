@@ -13,6 +13,9 @@
  *    mutate state;
  *  - `canStartRun` / `shutdown` guards enforce the lifecycle rules.
  */
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 import {
 	type AgentRuntime,
@@ -34,6 +37,7 @@ import {
 } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createContextCompactionPrepareTurn } from "../../extensions/context/compaction";
+import { FileReadLedger } from "../../session/services/file-read-ledger";
 import { MESSAGE_BUILDER_LIMIT_ENV } from "../../session/services/message-builder";
 import type { CoreCompactionContext } from "../../types/config";
 import {
@@ -888,6 +892,58 @@ describe("SessionRuntime message preparation", () => {
 
 		expect(prepareTurn).toHaveBeenCalledWith(
 			expect.objectContaining({ previousRequestInputTokens: 123_456 }),
+		);
+	});
+
+	it("shares a read ledger with tools and clears it when compaction completes", async () => {
+		const prepareTurn = vi.fn(
+			(context: { emitStatusNotice?: (...args: never[]) => void }) => {
+				(
+					context.emitStatusNotice as
+						| ((message: string, metadata?: Record<string, unknown>) => void)
+						| undefined
+				)?.("compacted", { phase: "completed" });
+				return undefined;
+			},
+		);
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(makeAgentConfig({ prepareTurn }), deps);
+		await session.run("go");
+
+		const ledger = configs[0]?.toolContextMetadata?.fileReadLedger;
+		expect(ledger).toBeInstanceOf(FileReadLedger);
+		const file = path.join(os.tmpdir(), `ledger-${process.pid}.txt`);
+		await fs.writeFile(file, "x");
+		try {
+			await (ledger as FileReadLedger).recordCurrent(file);
+			await configs[0]?.prepareTurn?.({
+				agentId: "agent-1",
+				conversationId: "conv-1",
+				parentAgentId: null,
+				iteration: 2,
+				messages: [],
+				systemPrompt: "system",
+				tools: [],
+				model: {},
+			});
+			await expect(
+				(ledger as FileReadLedger).checkEditable(file),
+			).resolves.toMatch(/has not been read/);
+		} finally {
+			await fs.rm(file, { force: true });
+		}
+	});
+
+	it("omits the read ledger when readBeforeWrite is off", async () => {
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(
+			makeAgentConfig({ readBeforeWrite: false }),
+			deps,
+		);
+		await session.run("go");
+
+		expect(configs[0]?.toolContextMetadata).not.toHaveProperty(
+			"fileReadLedger",
 		);
 	});
 
