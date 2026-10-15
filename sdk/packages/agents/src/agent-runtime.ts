@@ -39,6 +39,7 @@ import {
 	mergeModelOptions,
 	normalizeJsonLikeStringsForSchema,
 	omitUndefinedValues,
+	suggestToolForUnknownName,
 	TASK_CANCELLED_EVENT,
 	TASK_FIRST_CHUNK_RECEIVED_EVENT,
 	TASK_PROVIDER_REQUEST_STARTED_EVENT,
@@ -1827,8 +1828,15 @@ export class AgentRuntime {
 				isError: true,
 			};
 		} else if (!prepared.tool) {
+			const available = [...this.tools.keys()];
+			const hint = suggestToolForUnknownName(
+				prepared.toolCall.toolName,
+				available,
+			);
 			result = {
-				output: { error: `Unknown tool: ${prepared.toolCall.toolName}` },
+				output: {
+					error: `Unknown tool: ${prepared.toolCall.toolName}. Available tools: ${available.join(", ")}.${hint ? ` ${hint}` : ""}`,
+				},
 				isError: true,
 			};
 		} else {

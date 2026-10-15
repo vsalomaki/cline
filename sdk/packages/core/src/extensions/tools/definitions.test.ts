@@ -4,6 +4,7 @@ import {
 	buildRunCommandsDescription,
 	createDefaultTools,
 	createEditorTool,
+	createListFilesTool,
 	createReadFilesTool,
 	createSearchTool,
 	createShellTool,
@@ -411,6 +412,55 @@ describe("default search_codebase tool", () => {
 	});
 });
 
+describe("default list_files tool", () => {
+	const context = {
+		agentId: "agent-1",
+		conversationId: "conv-1",
+		iteration: 1,
+	};
+
+	it("passes the request and cwd to the executor", async () => {
+		const execute = vi.fn(async () => "/repo\nsrc/");
+		const tool = createListFilesTool(execute, { cwd: "/repo" });
+
+		const result = await tool.execute(
+			{ path: "src", recursive: true, max_depth: 2 },
+			context,
+		);
+
+		expect(result).toBe("/repo\nsrc/");
+		expect(execute).toHaveBeenCalledWith(
+			{ path: "src", recursive: true, max_depth: 2 },
+			"/repo",
+			context,
+		);
+	});
+
+	it("accepts other agents' input shapes and defaults to the working directory", async () => {
+		const execute = vi.fn(async () => "ok");
+		const tool = createListFilesTool(execute, { cwd: "/repo" });
+
+		await tool.execute({ dir_path: "/repo/docs", depth: 2 } as never, context);
+		await tool.execute({} as never, context);
+
+		expect(execute).toHaveBeenNthCalledWith(
+			1,
+			{ path: "/repo/docs", max_depth: 2 },
+			"/repo",
+			context,
+		);
+		expect(execute).toHaveBeenNthCalledWith(2, { path: "." }, "/repo", context);
+	});
+
+	it("is part of the default tool set", () => {
+		const tools = createDefaultTools({
+			executors: { listFiles: vi.fn(async () => "") },
+		});
+
+		expect(tools.map((tool) => tool.name)).toContain("list_files");
+	});
+});
+
 describe("default apply_patch tool", () => {
 	it("is included only when enabled with an applyPatch executor", () => {
 		const toolsWithoutExecutor = createDefaultTools({
@@ -498,6 +548,29 @@ describe("run_commands tool description", () => {
 		expect(description).toContain("bash in WSL");
 		expect(description).toContain("/mnt/<drive>");
 		expect(description).not.toContain("PowerShell");
+	});
+
+	it("points listing at list_files only when the session has it", () => {
+		expect(
+			buildRunCommandsDescription("posix", false, undefined, true),
+		).toContain("To list a directory, use list_files instead.");
+		const withoutListFiles = buildRunCommandsDescription("posix", false);
+		expect(withoutListFiles).toContain("Use for listing files");
+		expect(withoutListFiles).not.toContain("list_files");
+	});
+
+	it("lists list_files in run_commands guidance only when list_files is enabled", () => {
+		const shellDescription = (enableListFiles: boolean) =>
+			createDefaultTools({
+				enableListFiles,
+				executors: {
+					bash: vi.fn(async () => ""),
+					listFiles: vi.fn(async () => ""),
+				},
+			}).find((tool) => tool.name === "run_commands")?.description;
+
+		expect(shellDescription(true)).toContain("use list_files instead");
+		expect(shellDescription(false)).not.toContain("list_files");
 	});
 
 	it("notes the Windows host for POSIX shells on Windows only", () => {

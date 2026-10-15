@@ -5,6 +5,25 @@ import { describe, expect, it } from "vitest";
 import { createFileReadExecutor } from "./file-read";
 
 describe("createFileReadExecutor", () => {
+	it("returns a directory's top-level listing instead of failing", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agents-file-read-"));
+		try {
+			await fs.writeFile(path.join(dir, "a.txt"), "a");
+			await fs.mkdir(path.join(dir, "sub"));
+
+			const result = await createFileReadExecutor()(
+				{ path: dir },
+				{} as Parameters<ReturnType<typeof createFileReadExecutor>>[1],
+			);
+
+			expect(result).toBe(
+				`${dir} is a directory, so here is its listing. Use list_files for recursive listings.\n${dir}\na.txt\nsub/`,
+			);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("reads a file from an absolute path", async () => {
 		const result = await readTempFile("hello absolute path");
 		expect(result).toBe("1 | hello absolute path");

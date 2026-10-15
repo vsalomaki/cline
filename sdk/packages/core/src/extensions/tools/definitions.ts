@@ -43,6 +43,9 @@ import {
 	type EditFileInput,
 	type FetchWebContentInput,
 	FetchWebContentInputSchema,
+	type ListFilesInput,
+	ListFilesInputSchema,
+	normalizeListFilesInput,
 	type ReadFileRequest,
 	type ReadFilesInput,
 	ReadFilesInputSchema,
@@ -63,6 +66,7 @@ import type {
 	DefaultToolsConfig,
 	EditorExecutor,
 	FileReadExecutor,
+	ListFilesExecutor,
 	SearchExecutor,
 	ShellExecutor,
 	SkillsExecutorWithMetadata,
@@ -285,6 +289,7 @@ export function createReadFilesTool(
 			"When you already know multiple files you need, read them together in one call, and call this tool in the same response as other independent tool calls. " +
 			`Each read returns at most ${limits.readLines} lines / ~${Math.round(limits.readOutputChars / 1024)}k characters; longer files report their total line count, page through them with start_line/end_line on that file's entry. ` +
 			"Binary files that are not image and large files are not supported. " +
+			"A directory path returns its top-level listing; use list_files to list directories. " +
 			"Returns file contents or error messages for each path. ",
 		inputSchema: zodToJsonSchema(ReadFilesInputSchema),
 		timeoutMs: timeoutMs * 2, // Account for multiple files
@@ -426,8 +431,48 @@ export function createSearchTool(
 	});
 }
 
-const RUN_COMMANDS_SHARED_INSTRUCTIONS =
-	"Use for listing files, checking git status, running builds, executing tests, etc. " +
+/**
+ * Create the list_files tool
+ *
+ * Lists a directory through the filesystem API, so it is shell-independent
+ * and can be auto-approved like other reads.
+ */
+export function createListFilesTool(
+	executor: ListFilesExecutor,
+	config: Pick<DefaultToolsConfig, "cwd" | "searchTimeoutMs"> = {},
+): AgentTool<ListFilesInput, string> {
+	const timeoutMs = config.searchTimeoutMs ?? 30000;
+	const cwd = config.cwd ?? process.cwd();
+
+	return createTool<ListFilesInput, string>({
+		name: "list_files",
+		description:
+			"List the files and subdirectories in a directory; directories end with `/`. " +
+			"Lists the top level only unless recursive is set (max_depth controls how deep, default 3). " +
+			"Recursive listings skip .gitignored entries and show dependency or VCS directories such as node_modules without their contents. " +
+			"Returns at most `limit` entries (default 200). Use this instead of ls, find, or dir through run_commands.",
+		inputSchema: zodToJsonSchema(ListFilesInputSchema),
+		timeoutMs,
+		retryable: true,
+		maxRetries: 1,
+		execute: async (input, context) => {
+			const request = validateWithZod(
+				ListFilesInputSchema,
+				normalizeListFilesInput(input),
+			);
+			return withTimeout(
+				executor(request, cwd, context),
+				timeoutMs,
+				`Listing timed out after ${timeoutMs}ms`,
+			);
+		},
+	});
+}
+
+const runCommandsSharedInstructions = (listFilesAvailable: boolean) =>
+	(listFilesAvailable
+		? "Use for checking git status, running builds, executing tests, etc. To list a directory, use list_files instead. "
+		: "Use for listing files, checking git status, running builds, executing tests, etc. ") +
 	"Commands must be non-interactive. Commands that require follow-up input like pagers should be skipped or used with supported flags/env (e.g. git --no-pager, --non-interactive) to bypass the interaction steps. ";
 
 /**
@@ -440,13 +485,15 @@ export function buildRunCommandsDescription(
 	shellKind: ShellKind,
 	isWindows: boolean,
 	limits: ToolContextLimits = DEFAULT_CONTEXT_LIMITS.tool,
+	listFilesAvailable = false,
 ): string {
+	const sharedInstructions = runCommandsSharedInstructions(listFilesAvailable);
 	if (shellKind === "powershell" || shellKind === "cmd") {
 		const shellName = shellKind === "powershell" ? "PowerShell" : "cmd.exe";
 		const sequencingOperator = shellKind === "powershell" ? "';'" : "'&&'";
 		return (
 			"Run non-interactive shell commands from the root of the workspace in Windows environment. " +
-			RUN_COMMANDS_SHARED_INSTRUCTIONS +
+			sharedInstructions +
 			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved); filter output when you need specific sections. ` +
 			`Commands run through ${shellName}; quote paths and arguments for ${shellName} and use ${sequencingOperator} to sequence commands. ` +
 			"Include multiple commands in the same call when they are independent and safe to run concurrently. When independent reads, searches, or edits are also needed, call those tools in the same response."
@@ -461,7 +508,7 @@ export function buildRunCommandsDescription(
 				: "";
 	return (
 		"Run non-interactive shell commands from the root of the workspace. " +
-		RUN_COMMANDS_SHARED_INSTRUCTIONS +
+		sharedInstructions +
 		environmentNote +
 		"Commands should be properly shell-escaped and targeted to avoid error or timeout. Include multiple commands in the same call when they are independent complete shell commands and safe to run concurrently; multiline scripts and heredocs must be a single command string. When independent reads, searches, or edits are also needed, call those tools in the same response. " +
 		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved); pipe through grep/head/tail when you need specific sections of large output. ` +
@@ -491,6 +538,8 @@ export function createShellTool(
 		"cwd" | "bashTimeoutMs" | "telemetry" | "limits"
 	> & {
 		shell?: string | (() => string);
+		/** Point directory listing at list_files; only when the session has it. */
+		listFilesAvailable?: boolean;
 	} = {},
 ): AgentTool<unknown, ToolOperationResult[]> {
 	const timeoutMs = config.bashTimeoutMs ?? 30000;
@@ -511,6 +560,7 @@ export function createShellTool(
 			getShellKind(resolveShell()),
 			isWindows,
 			limits,
+			config.listFilesAvailable,
 		);
 
 	const tool = createTool<unknown, ToolOperationResult[]>({
@@ -929,6 +979,7 @@ export function createDefaultTools(
 		executors,
 		enableReadFiles = true,
 		enableSearch = true,
+		enableListFiles = true,
 		enableBash = true,
 		enableWebFetch = true,
 		enableApplyPatch = false,
@@ -951,9 +1002,19 @@ export function createDefaultTools(
 		tools.push(createSearchTool(executors.search, config));
 	}
 
+	if (enableListFiles && executors.listFiles) {
+		tools.push(createListFilesTool(executors.listFiles, config));
+	}
+
 	// Add run_commands tool if enabled and executor provided
 	if (enableBash && executors.bash) {
-		tools.push(createShellTool(executors.bash, config));
+		tools.push(
+			createShellTool(executors.bash, {
+				...config,
+				listFilesAvailable:
+					enableListFiles && executors.listFiles !== undefined,
+			}),
+		);
 	}
 
 	// Add fetch_web_content tool if enabled and executor provided

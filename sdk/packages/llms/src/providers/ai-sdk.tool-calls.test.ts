@@ -36,6 +36,16 @@ const RUN_COMMANDS_TOOL: AgentToolDefinition = {
 	},
 };
 
+const LIST_FILES_TOOL: AgentToolDefinition = {
+	name: "list_files",
+	description: "List a directory",
+	inputSchema: {
+		type: "object",
+		properties: { path: { type: "string" }, recursive: { type: "boolean" } },
+		required: ["path"],
+	},
+};
+
 const READ_FILES_TOOL: AgentToolDefinition = {
 	name: "read_files",
 	description: "Read files",
@@ -223,6 +233,38 @@ describe("ai-sdk adapter malformed tool calls", () => {
 
 		expect(findParseError(events)).toContain("unavailable tool 'editor'");
 	});
+
+	it("runs another agent's listing tool as list_files", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall("list_directory", '{"dir_path": "/repo"}'),
+			[LIST_FILES_TOOL, RUN_COMMANDS_TOOL],
+		);
+
+		expect(findParseError(events)).toBeUndefined();
+		const call = events.find((event) => event.type === "tool-call-delta");
+		expect(call).toMatchObject({ toolName: "list_files" });
+		expect(findToolInput(events)).toEqual({ dir_path: "/repo" });
+	});
+
+	it("names the tool to use instead of an unknown one", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall("read_file", '{"path": "/repo/a.ts"}'),
+			[RUN_COMMANDS_TOOL, READ_FILES_TOOL],
+		);
+
+		expect(findParseError(events)).toContain("Use read_files instead.");
+	});
+
+	it("explains that edits are unavailable when no edit tool exists", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall("editor", '{"path": "/tmp/a.txt", "new_text": "x"}'),
+			[RUN_COMMANDS_TOOL, READ_FILES_TOOL],
+		);
+
+		expect(findParseError(events)).toContain(
+			"File edits are not available in this mode",
+		);
+	});
 });
 
 describe("repairMalformedToolCall", () => {
@@ -263,6 +305,30 @@ describe("repairMalformedToolCall", () => {
 			error: new Error("Type validation failed"),
 		});
 		expect(repaired).toBeNull();
+	});
+
+	it("renames a listing alias only when list_files exists", async () => {
+		const call = {
+			toolCallId: "call_1",
+			toolName: "LS",
+			input: '{"path": "/repo"}',
+		};
+		const error = new NoSuchToolError({ toolName: "LS" });
+
+		expect(
+			await repairMalformedToolCall({
+				toolCall: call,
+				tools: { list_files: {} },
+				error,
+			}),
+		).toEqual({ ...call, toolName: "list_files" });
+		expect(
+			await repairMalformedToolCall({
+				toolCall: call,
+				tools: { run_commands: {} },
+				error,
+			}),
+		).toBeNull();
 	});
 
 	it("returns null for unknown-tool errors", async () => {

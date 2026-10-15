@@ -17,6 +17,10 @@ import {
 	createFileReadExecutor,
 	type FileReadExecutorOptions,
 } from "./file-read";
+import {
+	createListFilesExecutor,
+	type ListFilesExecutorOptions,
+} from "./list-files";
 import { createSearchExecutor, type SearchExecutorOptions } from "./search";
 import {
 	createWebFetchExecutor,
@@ -42,6 +46,12 @@ export {
 	type FileReadExecutorOptions,
 } from "./file-read";
 export {
+	createListFilesExecutor,
+	DEFAULT_LIST_EXCLUDE_DIRS,
+	type ListFilesExecutorOptions,
+	listDirectoryTopLevel,
+} from "./list-files";
+export {
 	RunCommandExecutionController,
 	type RunningCommandRegistration,
 } from "./run-command-execution-controller";
@@ -57,6 +67,7 @@ export {
 export interface DefaultExecutorsOptions {
 	fileRead?: FileReadExecutorOptions;
 	search?: SearchExecutorOptions;
+	listFiles?: ListFilesExecutorOptions;
 	bash?: ShellExecutorOptions;
 	webFetch?: WebFetchExecutorOptions;
 	applyPatch?: ApplyPatchExecutorOptions;
@@ -98,6 +109,7 @@ export function createDefaultExecutors(
 	return {
 		readFile: createFileReadExecutor(options.fileRead),
 		search: createSearchExecutor(options.search),
+		listFiles: createListFilesExecutor(options.listFiles),
 		bash: createDefaultShellExecutor(options.bash),
 		webFetch: createWebFetchExecutor(options.webFetch),
 		applyPatch: createApplyPatchExecutor(options.applyPatch),

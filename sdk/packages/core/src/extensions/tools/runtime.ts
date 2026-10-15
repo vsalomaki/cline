@@ -60,9 +60,15 @@ const BASE_TOOL_CATALOG: readonly RuntimeToolCatalogEntry[] = [
 		headlessToolNames: ["search_codebase"],
 	},
 	{
+		id: "list_files",
+		description:
+			"List the entries of a directory, optionally recursively, respecting .gitignore.",
+		headlessToolNames: ["list_files"],
+	},
+	{
 		id: "run_commands",
 		description:
-			"Run shell commands from the root of the workspace for listing files, checking git status, builds, tests, and similar tasks.",
+			"Run shell commands from the root of the workspace for checking git status, builds, tests, and similar tasks.",
 		headlessToolNames: ["run_commands"],
 	},
 	{
@@ -117,6 +123,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 			DefaultToolsConfig,
 			| "enableReadFiles"
 			| "enableSearch"
+			| "enableListFiles"
 			| "enableBash"
 			| "enableWebFetch"
 			| "enableApplyPatch"
@@ -129,6 +136,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 > = {
 	read_files: "enableReadFiles",
 	search_codebase: "enableSearch",
+	list_files: "enableListFiles",
 	run_commands: "enableBash",
 	fetch_web_content: "enableWebFetch",
 	apply_patch: "enableApplyPatch",
@@ -147,6 +155,7 @@ type ResolvedToolFlags = Pick<
 	DefaultToolsConfig,
 	| "enableReadFiles"
 	| "enableSearch"
+	| "enableListFiles"
 	| "enableBash"
 	| "enableWebFetch"
 	| "enableApplyPatch"

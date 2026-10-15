@@ -65,9 +65,11 @@ describe("buildClineSystemPrompt task discipline", () => {
 		expect(prompt).toContain("not on memory of earlier turns");
 	});
 
-	it("points directory listing at run_commands", () => {
+	it("points directory listing at list_files", () => {
 		expect(prompt).toContain("Call only the tools you are given");
-		expect(prompt).toContain("list files with run_commands");
+		expect(prompt).toContain(
+			"List directories with list_files when it is available, otherwise with run_commands",
+		);
 	});
 
 	it("asks for the files and verification in a plan", () => {
