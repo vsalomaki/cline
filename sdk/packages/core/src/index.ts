@@ -949,6 +949,13 @@ export {
 	TOOL_LIMIT_ENV,
 	type ToolContextLimits,
 } from "./settings/context-limits";
+export {
+	DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+	getToolCallEnvSources,
+	resolveToolCallSettings,
+	TOOL_CALL_ENV,
+	type ToolCallSettings,
+} from "./settings/tool-calls";
 export * from "./tasks";
 export type {
 	ChatMessage,

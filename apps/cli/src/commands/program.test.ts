@@ -6,7 +6,7 @@ import {
 } from "@cline/shared/storage";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CLI_DEFAULT_MAX_CONSECUTIVE_MISTAKES } from "../runtime/defaults";
-import { createProgram } from "./program";
+import { commanderToParsedArgs, createProgram } from "./program";
 
 /** Render an absolute path under `home` the way help text does: `~/...`. */
 function tildePath(absolutePath: string, home: string): string {
@@ -76,5 +76,39 @@ describe("root option help text", () => {
 		expect(() => program.parse(["--retries"], { from: "user" })).toThrow(
 			/argument missing/,
 		);
+	});
+});
+
+describe("tool-call options", () => {
+	function parse(argv: string[]) {
+		const program = createProgram().configureOutput({ writeErr: () => {} });
+		program.parse(argv, { from: "user" });
+		return commanderToParsedArgs(program);
+	}
+
+	it("leaves both settings undefined when no flag is given", () => {
+		const args = parse([]);
+		expect(args.maxParallelToolCalls).toBeUndefined();
+		expect(args.parallelToolCalls).toBeUndefined();
+		expect(args.invalidMaxParallelToolCalls).toBeUndefined();
+	});
+
+	it("parses --max-parallel-tool-calls", () => {
+		expect(parse(["--max-parallel-tool-calls", "8"]).maxParallelToolCalls).toBe(
+			8,
+		);
+	});
+
+	it("flags an invalid --max-parallel-tool-calls value", () => {
+		for (const raw of ["0", "-2", "abc", "1.5"]) {
+			const args = parse(["--max-parallel-tool-calls", raw]);
+			expect(args.maxParallelToolCalls).toBeUndefined();
+			expect(args.invalidMaxParallelToolCalls).toBe(raw);
+		}
+	});
+
+	it("parses --no-parallel-tool-calls and --parallel-tool-calls", () => {
+		expect(parse(["--no-parallel-tool-calls"]).parallelToolCalls).toBe(false);
+		expect(parse(["--parallel-tool-calls"]).parallelToolCalls).toBe(true);
 	});
 });

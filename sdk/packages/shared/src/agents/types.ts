@@ -753,10 +753,17 @@ export interface AgentConfig {
 	 */
 	maxIterations?: number;
 	/**
-	 * Maximum number of tool calls to execute concurrently in a single iteration.
-	 * @default 8
+	 * Maximum number of tools marked `executionMode: "parallel"` that run at
+	 * once. 1 runs every call in order.
+	 * @default 4
 	 */
 	maxParallelToolCalls?: number;
+	/**
+	 * Whether the model may return several tool calls in one response. `false`
+	 * asks providers that support it for at most one call per response.
+	 * @default true
+	 */
+	parallelToolCalls?: boolean;
 	/**
 	 * Maximum output tokens per API call
 	 */
@@ -941,7 +948,8 @@ export const AgentConfigSchema = z.object({
 	tools: z.array(z.custom<AgentTool>()),
 	modelTools: z.array(z.custom<ModelTool>()).optional(),
 	maxIterations: z.number().positive().optional(),
-	maxParallelToolCalls: z.number().int().positive().default(8),
+	maxParallelToolCalls: z.number().int().positive().optional(),
+	parallelToolCalls: z.boolean().optional(),
 	maxTokensPerTurn: z.number().positive().optional(),
 	temperature: z.number().nonnegative().optional(),
 	apiTimeoutMs: z.number().positive().optional(),

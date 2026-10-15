@@ -23,6 +23,11 @@ let activeInlineStream: "text" | "reasoning" | undefined;
 let inlineStreamHasOutput = false;
 let shouldPrefixNextTextWithBlankLine = false;
 
+// Concurrent tools finish in completion order, so a result may belong to a
+// header other than the last one printed.
+let lastToolHeaderId: string | undefined;
+const toolHeaders = new Map<string, string>();
+
 // Prefix for result rows
 const HOOK = "⎿ ";
 const TEAM_RUN_ACTIVE_SUFFIX = `${c.dim} ...${c.reset}`;
@@ -146,9 +151,12 @@ export function handleEvent(event: AgentEvent, config: Config): void {
 					if (toolName === "ask_question") {
 						break;
 					}
-					write(
-						`${c.cyan}[${toolName}]${c.reset}${inputStr ? ` ${inputStr}` : ""}\n`,
-					);
+					const header = `${c.cyan}[${toolName}]${c.reset}${inputStr ? ` ${inputStr}` : ""}\n`;
+					write(header);
+					lastToolHeaderId = event.toolCallId;
+					if (event.toolCallId) {
+						toolHeaders.set(event.toolCallId, header);
+					}
 					break;
 				}
 			}
@@ -164,6 +172,16 @@ export function handleEvent(event: AgentEvent, config: Config): void {
 					closeInlineStreamIfNeeded();
 					if (event.toolName === "ask_question") {
 						break;
+					}
+					if (event.toolCallId) {
+						if (event.toolCallId !== lastToolHeaderId) {
+							write(
+								toolHeaders.get(event.toolCallId) ??
+									`${c.cyan}[${event.toolName ?? "unknown_tool"}]${c.reset}\n`,
+							);
+							lastToolHeaderId = event.toolCallId;
+						}
+						toolHeaders.delete(event.toolCallId);
 					}
 					if (event.error) {
 						write(

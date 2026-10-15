@@ -287,6 +287,7 @@ export function createReadFilesTool(
 
 	return createTool<ReadFilesInput, ToolOperationResult[]>({
 		name: "read_files",
+		executionMode: "parallel",
 		description:
 			"Read the content of text or image files at the provided absolute paths, or return only an inclusive one-based line range when start_line/end_line are provided on the same file entry as its path. " +
 			"When you already know multiple files you need, read them together in one call, and call this tool in the same response as other independent tool calls. " +
@@ -386,6 +387,7 @@ export function createSearchTool(
 
 	return createTool<SearchCodebaseInput, ToolOperationResult[]>({
 		name: "search_codebase",
+		executionMode: "parallel",
 		description:
 			"Perform regex pattern searches across the codebase. " +
 			"Supports multiple parallel searches. When several search patterns could be useful and do not depend on each other, run them together in one call, and call this tool in the same response as other independent tool calls. " +
@@ -449,6 +451,7 @@ export function createListFilesTool(
 
 	return createTool<ListFilesInput, string>({
 		name: "list_files",
+		executionMode: "parallel",
 		description:
 			"List the files and subdirectories in a directory; directories end with `/`. " +
 			"Lists the top level only unless recursive is set (max_depth controls how deep, default 3). " +
@@ -636,6 +639,7 @@ export function createWebFetchTool(
 
 	return createTool<FetchWebContentInput, ToolOperationResult[]>({
 		name: "fetch_web_content",
+		executionMode: "parallel",
 		description:
 			"Fetch content from URLs and analyze them using the provided prompts. " +
 			"Use for retrieving documentation, API references, or any web content. " +
@@ -857,6 +861,7 @@ export function createSkillsTool(
 
 	const tool = createTool<SkillsInput, string>({
 		name: "skills",
+		executionMode: "parallel",
 		description: baseDescription,
 		inputSchema: zodToJsonSchema(SkillsInputSchema),
 		timeoutMs,

@@ -1,7 +1,6 @@
 /**
  * Unit tests for `createAgentRuntimeConfig` and its small pure
- * helpers (`buildModelOptions`, `buildMessageModelInfo`,
- * `resolveToolExecution`).
+ * helpers (`buildModelOptions`, `buildMessageModelInfo`).
  *
  */
 
@@ -19,7 +18,6 @@ import {
 	buildModelOptions,
 	createAgentRuntimeConfig,
 	resolveProviderErrorMaxRetries,
-	resolveToolExecution,
 } from "./agent-runtime-config-builder";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +49,15 @@ const nullModel: AgentModel = {
 describe("buildModelOptions", () => {
 	it("returns undefined when no reasoning/budget fields are set", () => {
 		expect(buildModelOptions(makeAgentConfig())).toBeUndefined();
+	});
+
+	it("forwards parallelToolCalls only when it is off", () => {
+		expect(
+			buildModelOptions(makeAgentConfig({ parallelToolCalls: true })),
+		).toBeUndefined();
+		expect(
+			buildModelOptions(makeAgentConfig({ parallelToolCalls: false })),
+		).toEqual({ parallelToolCalls: false });
 	});
 
 	it("collects all provided fields", () => {
@@ -106,10 +113,6 @@ describe("buildMessageModelInfo", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// resolveToolExecution
-// ---------------------------------------------------------------------------
-
 describe("resolveProviderErrorMaxRetries", () => {
 	it("uses the provider's configured retry count", () => {
 		const config = (maxRetries?: unknown) =>
@@ -118,21 +121,6 @@ describe("resolveProviderErrorMaxRetries", () => {
 		expect(resolveProviderErrorMaxRetries(config(0))).toBe(0);
 		expect(resolveProviderErrorMaxRetries(config(undefined))).toBeUndefined();
 		expect(resolveProviderErrorMaxRetries(config(-1))).toBeUndefined();
-	});
-});
-
-describe("resolveToolExecution", () => {
-	it("returns undefined when unset", () => {
-		expect(resolveToolExecution(undefined)).toBeUndefined();
-	});
-
-	it("returns 'sequential' for 1", () => {
-		expect(resolveToolExecution(1)).toBe("sequential");
-	});
-
-	it("returns 'parallel' for >= 2", () => {
-		expect(resolveToolExecution(2)).toBe("parallel");
-		expect(resolveToolExecution(8)).toBe("parallel");
 	});
 });
 
@@ -190,7 +178,8 @@ describe("createAgentRuntimeConfig", () => {
 		});
 		expect(runtimeConfig.tools).toBe(tools);
 		expect(runtimeConfig.maxIterations).toBe(7);
-		expect(runtimeConfig.toolExecution).toBe("parallel");
+		expect(runtimeConfig.toolExecution).toBeUndefined();
+		expect(runtimeConfig.maxParallelToolCalls).toBe(4);
 		expect(runtimeConfig.completionPolicy).toEqual({
 			requireCompletionTool: true,
 		});

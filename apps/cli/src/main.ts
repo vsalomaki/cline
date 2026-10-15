@@ -53,7 +53,9 @@ import {
 import { resolveCliReasoning } from "./utils/reasoning";
 import {
 	resolveStartupCompactionMode,
+	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
+	resolveStartupParallelToolCalls,
 	resolveStartupToolAutoApprove,
 } from "./utils/startup-settings";
 import { rewriteTeamPrompt, TEAM_COMMAND_USAGE } from "./utils/team-command";
@@ -779,6 +781,11 @@ export async function runCli(): Promise<void> {
 			`${c.dim}[warn] ignoring invalid --retries value "${args.invalidRetries}" (expected integer >= 1)${c.reset}`,
 		);
 	}
+	if (args.invalidMaxParallelToolCalls) {
+		writeln(
+			`${c.dim}[warn] ignoring invalid --max-parallel-tool-calls value "${args.invalidMaxParallelToolCalls}" (expected integer >= 1)${c.reset}`,
+		);
+	}
 	if (args.hooksDir?.trim()) {
 		process.env.CLINE_HOOKS_DIR = args.hooksDir.trim();
 	}
@@ -895,6 +902,15 @@ export async function runCli(): Promise<void> {
 	};
 	const effectiveMode = resolveStartupMode(args, persistedGlobalSettings);
 	const effectiveCompactionMode = resolveStartupCompactionMode(
+		args,
+		persistedGlobalSettings,
+	);
+
+	const effectiveMaxParallelToolCalls = resolveStartupMaxParallelToolCalls(
+		args,
+		persistedGlobalSettings,
+	);
+	const effectiveParallelToolCalls = resolveStartupParallelToolCalls(
 		args,
 		persistedGlobalSettings,
 	);
@@ -1073,6 +1089,8 @@ export async function runCli(): Promise<void> {
 				maxConsecutiveMistakes:
 					args.retries ?? CLI_DEFAULT_MAX_CONSECUTIVE_MISTAKES,
 			},
+			maxParallelToolCalls: effectiveMaxParallelToolCalls,
+			parallelToolCalls: effectiveParallelToolCalls,
 			checkpoint: CLI_DEFAULT_CHECKPOINT_CONFIG,
 			compaction: buildCliCompactionConfig(effectiveCompactionMode),
 			timeoutSeconds: args.timeoutSeconds,

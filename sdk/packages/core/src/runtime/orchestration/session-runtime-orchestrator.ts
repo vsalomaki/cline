@@ -422,6 +422,7 @@ export class SessionRuntime {
 	private activeTrackerWork: Promise<void> = Promise.resolve();
 	/** True when tracker logic has issued an abort for the active run. */
 	private trackerAbortInFlight = false;
+	private pendingLoopNotice: string | undefined;
 	private readonly handleExternalAbort = (): void => {
 		this.abort(this.config.abortSignal?.reason);
 	};
@@ -617,6 +618,7 @@ export class SessionRuntime {
 		this.messageBuilder.resetConversationState();
 		this.mistakeTracker.reset();
 		this.loopTracker.reset();
+		this.pendingLoopNotice = undefined;
 	}
 
 	// -------------------------------------------------------------------
@@ -1016,7 +1018,10 @@ export class SessionRuntime {
 				.map((tool) => tool.name.toLowerCase()),
 		);
 		const runtimeConfig = createAgentRuntimeConfig({
-			agentConfig: this.config,
+			agentConfig: {
+				...this.config,
+				consumePendingUserMessage: () => this.consumePendingUserMessage(),
+			},
 			sessionId: this.config.sessionId,
 			agentId: this.agentId,
 			conversationId,
@@ -1466,8 +1471,8 @@ export class SessionRuntime {
 	 * Feed the `LoopDetectionTracker` with a tool-call and react to
 	 * the returned verdict. Parity with pre-Step-9 agent.ts L917-954:
 	 *
-	 *   - `"soft"`  → append a recovery notice telling the model to
-	 *                 change approach;
+	 *   - `"soft"`  → queue a recovery notice for the next model request
+	 *                 telling the model to change approach;
 	 *   - `"hard"`  → feed `MistakeTracker.record` with
 	 *                 `forceAtLimit:true`. When the tracker returns
 	 *                 `action: "stop"`, append the stop notice and
@@ -1486,12 +1491,7 @@ export class SessionRuntime {
 			return;
 		}
 		if (verdict.kind === "soft") {
-			if (verdict.message) {
-				this.conversation.appendMessage({
-					role: "user",
-					content: [{ type: "text", text: verdict.message }],
-				});
-			}
+			this.pendingLoopNotice = verdict.message;
 			return;
 		}
 		// Hard escalation.
@@ -1503,6 +1503,18 @@ export class SessionRuntime {
 				verdict.message ??
 				`Detected repeated tool calls to \`${toolName}\`; stopping to avoid a loop.`,
 		});
+	}
+
+	/**
+	 * The conversation store is rebuilt from runtime snapshots, so a loop
+	 * notice reaches the model only as a runtime pending message, which lands
+	 * after the tool results.
+	 */
+	private consumePendingUserMessage(): string | undefined {
+		const notice = this.pendingLoopNotice;
+		this.pendingLoopNotice = undefined;
+		const steer = this.config.consumePendingUserMessage?.();
+		return [notice, steer].filter(Boolean).join("\n\n") || undefined;
 	}
 
 	/**

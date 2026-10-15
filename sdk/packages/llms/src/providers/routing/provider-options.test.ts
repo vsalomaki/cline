@@ -126,6 +126,7 @@ function makeRequest(overrides: RequestOverrides): GatewayStreamRequest {
 		reasoning: overrides.reasoning,
 		signal: overrides.signal,
 		tools: overrides.tools,
+		parallelToolCalls: overrides.parallelToolCalls,
 	};
 }
 
@@ -2688,5 +2689,66 @@ describe("composeAiSdkProviderOptions: ClinePass bucket normalization", () => {
 		);
 		expect(result).not.toHaveProperty("cline-pass");
 		expect(result).not.toHaveProperty("clinePass");
+	});
+});
+
+describe("composeAiSdkProviderOptions: single tool call per response", () => {
+	const tools = [
+		{
+			name: "read_files",
+			description: "Read files",
+			inputSchema: { type: "object" },
+		},
+	];
+
+	function compose(
+		providerId: string,
+		modelId: string,
+		overrides: Partial<GatewayStreamRequest> = {},
+	) {
+		return composeAiSdkProviderOptions(
+			makeRequest({
+				providerId,
+				modelId,
+				tools,
+				parallelToolCalls: false,
+				...overrides,
+			}),
+			makeContext({ providerId, modelId }),
+		);
+	}
+
+	it.each([
+		["anthropic", "claude-sonnet-4-5"],
+		["bedrock", "anthropic.claude-sonnet-4-5"],
+	])("disables parallel tool use for %s", (providerId, modelId) => {
+		expect(compose(providerId, modelId).anthropic).toEqual(
+			expect.objectContaining({ disableParallelToolUse: true }),
+		);
+	});
+
+	it("sets parallelToolCalls for the OpenAI adapter", () => {
+		expect(compose("openai-native", "gpt-5.4").openai).toEqual(
+			expect.objectContaining({ parallelToolCalls: false }),
+		);
+	});
+
+	it("sends the raw parallel_tool_calls flag to OpenAI-compatible providers", () => {
+		const result = compose("lmstudio", "qwen3-coder-next");
+		expect(result.lmstudio).toEqual(
+			expect.objectContaining({ parallel_tool_calls: false }),
+		);
+		expect(result.openaiCompatible).not.toHaveProperty("parallel_tool_calls");
+	});
+
+	it("sends nothing when parallel calls are allowed or no tools are sent", () => {
+		for (const result of [
+			compose("lmstudio", "qwen3-coder-next", { parallelToolCalls: undefined }),
+			compose("lmstudio", "qwen3-coder-next", { tools: undefined }),
+		]) {
+			expect(JSON.stringify(result)).not.toMatch(
+				/parallel_tool_calls|parallelToolCalls|disableParallelToolUse/,
+			);
+		}
 	});
 });

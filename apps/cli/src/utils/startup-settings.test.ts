@@ -2,7 +2,9 @@ import type { GlobalSettings } from "@cline/core";
 import { describe, expect, it } from "vitest";
 import {
 	resolveStartupCompactionMode,
+	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
+	resolveStartupParallelToolCalls,
 	resolveStartupToolAutoApprove,
 } from "./startup-settings";
 
@@ -112,5 +114,61 @@ describe("resolveStartupCompactionMode", () => {
 				makeSettings({ compactionEnabled: false }),
 			),
 		).toBe("agentic");
+	});
+});
+
+describe("resolveStartupMaxParallelToolCalls", () => {
+	it("returns undefined so Core's env/default applies when nothing is set", () => {
+		expect(
+			resolveStartupMaxParallelToolCalls({}, makeSettings()),
+		).toBeUndefined();
+	});
+
+	it("restores the persisted value", () => {
+		expect(
+			resolveStartupMaxParallelToolCalls(
+				{},
+				makeSettings({ maxParallelToolCalls: 8 }),
+			),
+		).toBe(8);
+	});
+
+	it("prefers the flag over the persisted value", () => {
+		expect(
+			resolveStartupMaxParallelToolCalls(
+				{ maxParallelToolCalls: 1 },
+				makeSettings({ maxParallelToolCalls: 8 }),
+			),
+		).toBe(1);
+	});
+});
+
+describe("resolveStartupParallelToolCalls", () => {
+	it("returns undefined so Core's env/default applies when nothing is set", () => {
+		expect(resolveStartupParallelToolCalls({}, makeSettings())).toBeUndefined();
+	});
+
+	it("restores a persisted false", () => {
+		expect(
+			resolveStartupParallelToolCalls(
+				{},
+				makeSettings({ parallelToolCalls: false }),
+			),
+		).toBe(false);
+	});
+
+	it("prefers the flag over the persisted value, including false", () => {
+		expect(
+			resolveStartupParallelToolCalls(
+				{ parallelToolCalls: true },
+				makeSettings({ parallelToolCalls: false }),
+			),
+		).toBe(true);
+		expect(
+			resolveStartupParallelToolCalls(
+				{ parallelToolCalls: false },
+				makeSettings({ parallelToolCalls: true }),
+			),
+		).toBe(false);
 	});
 });

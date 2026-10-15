@@ -307,6 +307,18 @@ export interface CoreSessionConfig
 	checkpoint?: CoreCheckpointConfig;
 	/** Caps on tool and provider-request text. Matching env vars take precedence. */
 	contextLimits?: ContextLimitOverrides;
+	/**
+	 * Read-only tools that run at once when the model asks for several in one
+	 * response; 1 runs every call in order. `CLINE_MAX_PARALLEL_TOOL_CALLS` takes precedence.
+	 * @default 4
+	 */
+	maxParallelToolCalls?: number;
+	/**
+	 * `false` asks the provider for at most one tool call per response.
+	 * `CLINE_PARALLEL_TOOL_CALLS` takes precedence.
+	 * @default true
+	 */
+	parallelToolCalls?: boolean;
 	toolTimeouts?: CoreToolTimeouts;
 	onTeamEvent?: (event: TeamEvent) => void;
 	onConsecutiveMistakeLimitReached?: (

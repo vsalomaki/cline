@@ -94,6 +94,9 @@ export interface ParsedArgs {
 	id?: string;
 	retries?: number;
 	invalidRetries?: string;
+	maxParallelToolCalls?: number;
+	invalidMaxParallelToolCalls?: string;
+	parallelToolCalls?: boolean;
 	cwd?: string;
 	teamName?: string;
 	defaultToolAutoApprove: boolean;

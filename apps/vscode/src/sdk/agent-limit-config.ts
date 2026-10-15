@@ -3,8 +3,10 @@ import {
 	type CoreSessionConfig,
 	type CoreToolTimeouts,
 	getContextLimitEnvSources,
+	getToolCallEnvSources,
 	type MessageContextLimits,
 	resolveContextLimits,
+	resolveToolCallSettings,
 	type ToolContextLimits,
 } from "@cline/core"
 import {
@@ -24,7 +26,10 @@ const TIMEOUT_FIELDS = {
 	"timeout.applyPatch": "applyPatchTimeoutMs",
 } as const satisfies Partial<Record<AgentLimitId, keyof CoreToolTimeouts>>
 
-export type AgentLimitSessionConfig = Pick<CoreSessionConfig, "contextLimits" | "toolTimeouts" | "execution"> & {
+export type AgentLimitSessionConfig = Pick<
+	CoreSessionConfig,
+	"contextLimits" | "toolTimeouts" | "execution" | "maxParallelToolCalls" | "parallelToolCalls"
+> & {
 	compaction?: Pick<NonNullable<CoreSessionConfig["compaction"]>, "triggerRatio" | "preserveRecentTokens">
 	providerConfig?: { timeoutMs?: number; maxRetries?: number }
 }
@@ -79,6 +84,13 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 		config.toolTimeouts = toolTimeouts
 	}
 
+	if (values?.["session.maxParallelToolCalls"] !== undefined) {
+		config.maxParallelToolCalls = values["session.maxParallelToolCalls"]
+	}
+	if (values?.["api.parallelToolCalls"] !== undefined) {
+		config.parallelToolCalls = values["api.parallelToolCalls"] !== 0
+	}
+
 	const execution: NonNullable<CoreSessionConfig["execution"]> = {}
 	if (values?.["session.maxConsecutiveMistakes"] !== undefined) {
 		execution.maxConsecutiveMistakes = values["session.maxConsecutiveMistakes"]
@@ -130,6 +142,9 @@ export function getAgentLimitsState(
 ): AgentLimitsState {
 	const resolved = resolveContextLimits(toContextLimitOverrides(values), env)
 	const envSources = getContextLimitEnvSources(env)
+	const sessionConfig = buildAgentLimitSessionConfig(values)
+	const toolCalls = resolveToolCallSettings(sessionConfig, env)
+	const toolCallEnvSources = getToolCallEnvSources(env)
 	const effective: AgentLimitsState["effective"] = {}
 	const envOverrides: AgentLimitsState["envOverrides"] = {}
 
@@ -150,6 +165,14 @@ export function getAgentLimitsState(
 		} else {
 			effective[definition.id] = getAgentLimitValue(values, definition.id)
 		}
+	}
+	effective["session.maxParallelToolCalls"] = toolCalls.maxParallelToolCalls
+	effective["api.parallelToolCalls"] = toolCalls.parallelToolCalls ? 1 : 0
+	if (toolCallEnvSources.maxParallelToolCalls) {
+		envOverrides["session.maxParallelToolCalls"] = toolCallEnvSources.maxParallelToolCalls
+	}
+	if (toolCallEnvSources.parallelToolCalls) {
+		envOverrides["api.parallelToolCalls"] = toolCallEnvSources.parallelToolCalls
 	}
 	const soft = getAgentLimitValue(values, "session.loopSoftThreshold")
 	if (getAgentLimitValue(values, "session.loopHardThreshold") <= soft) {

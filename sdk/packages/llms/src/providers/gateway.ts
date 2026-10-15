@@ -184,6 +184,9 @@ class GatewayModelAdapter implements AgentModel {
 				legacyReasoning,
 				requestedReasoning,
 			),
+			parallelToolCalls: request.options?.parallelToolCalls as
+				| boolean
+				| undefined,
 			signal: request.signal ?? this.defaults?.signal,
 		});
 	}

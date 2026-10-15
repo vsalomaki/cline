@@ -304,6 +304,31 @@ describe("global-settings", () => {
 		});
 	});
 
+	it("normalizes the persisted tool-call settings", () => {
+		expect(
+			GlobalSettingsSchema.parse({
+				maxParallelToolCalls: 8,
+				parallelToolCalls: false,
+			}),
+		).toEqual({
+			autoUpdateEnabled: true,
+			maxParallelToolCalls: 8,
+			parallelToolCalls: false,
+			telemetryOptOut: false,
+		});
+		for (const maxParallelToolCalls of [0, -1, 1.5, "4"]) {
+			expect(
+				GlobalSettingsSchema.parse({
+					maxParallelToolCalls,
+					parallelToolCalls: "no",
+				}),
+			).toEqual({
+				autoUpdateEnabled: true,
+				telemetryOptOut: false,
+			});
+		}
+	});
+
 	it("reads and writes the plan/act mode globally", async () => {
 		const root = await mkdtemp(join(tmpdir(), "core-global-settings-"));
 		try {

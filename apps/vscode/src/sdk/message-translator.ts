@@ -118,6 +118,20 @@ function normalizeUsageEvent(usageEvent: {
 // State tracking for partial messages
 // ---------------------------------------------------------------------------
 
+/** Key for tool events that carry no toolCallId. */
+const NO_TOOL_CALL_ID = ""
+
+interface StreamingToolCall {
+	/** Row timestamp, shared by the partial and final messages. */
+	ts: number
+	/** Name from content_start — content_end may omit it. */
+	name?: string
+	/** Input from content_start — content_end doesn't carry it. */
+	input?: unknown
+	/** Output snapshot for a command tool's partial row. */
+	commandOutput?: { text: string; totalChars: number }
+}
+
 /**
  * Tracks the state of streaming content to properly handle
  * partial message updates.
@@ -131,14 +145,8 @@ export class MessageTranslatorState {
 	private streamingReasoningTs: number | undefined
 	/** Accumulated streaming reasoning text (SDK reasoning events are deltas) */
 	private streamingReasoningText = ""
-	/** Current streaming tool message timestamp */
-	private streamingToolTs: number | undefined
-	/** Stored tool input from content_start — used at content_end which doesn't carry input */
-	private streamingToolInput: unknown | undefined
-	/** Stored tool name from content_start — used at content_end for consistency */
-	private streamingToolName: string | undefined
-	/** Output snapshot for the active command tool's partial row. */
-	private streamingCommandOutput: { toolCallId: string | undefined; text: string; totalChars: number } | undefined
+	/** In-flight tool calls keyed by toolCallId; parallel tools overlap between content_start and content_end. */
+	private streamingTools = new Map<string, StreamingToolCall>()
 	/** Approved tool-call ids mapped to the approval row that should be updated in place. */
 	private approvedToolMessageTsByCallId = new Map<string, number>()
 	/**
@@ -266,19 +274,38 @@ export class MessageTranslatorState {
 		return ts
 	}
 
-	/** Get streaming tool ts */
-	getStreamingToolTs(): number {
-		if (!this.streamingToolTs) {
-			this.streamingToolTs = this.nextTs()
+	/** An id-less event addresses the only in-flight call, so producers that omit ids on updates still match. */
+	private streamingToolKey(toolCallId: string | undefined): string {
+		if (toolCallId !== undefined) {
+			return toolCallId
 		}
-		return this.streamingToolTs
+		if (this.streamingTools.size === 1 && !this.streamingTools.has(NO_TOOL_CALL_ID)) {
+			return this.streamingTools.keys().next().value ?? NO_TOOL_CALL_ID
+		}
+		return NO_TOOL_CALL_ID
+	}
+
+	private getOrCreateStreamingTool(toolCallId: string | undefined): StreamingToolCall {
+		const key = this.streamingToolKey(toolCallId)
+		let call = this.streamingTools.get(key)
+		if (!call) {
+			call = { ts: this.nextTs() }
+			this.streamingTools.set(key, call)
+		}
+		return call
+	}
+
+	/** Get the streaming tool ts for a call, minting one on first use */
+	getStreamingToolTs(toolCallId?: string): number {
+		return this.getOrCreateStreamingTool(toolCallId).ts
 	}
 
 	/** Store tool input from content_start for use at content_end */
 	setStreamingToolContext(toolName: string, toolCallId: string | undefined, input: unknown): void {
-		this.streamingToolName = toolName
-		this.streamingToolInput = input
-		this.streamingCommandOutput = { toolCallId, text: "", totalChars: 0 }
+		const call = this.getOrCreateStreamingTool(toolCallId)
+		call.name = toolName
+		call.input = input
+		call.commandOutput = { text: "", totalChars: 0 }
 	}
 
 	/** Remember the approval prompt row for a tool call after the user approves it. */
@@ -327,24 +354,24 @@ export class MessageTranslatorState {
 		return messageTs
 	}
 
-	/** Force the active tool stream to update a known row instead of minting a new row. */
-	setStreamingToolTs(ts: number): void {
-		this.streamingToolTs = ts
+	/** Force a tool call to update a known row instead of minting a new row. */
+	setStreamingToolTs(toolCallId: string | undefined, ts: number): void {
+		this.getOrCreateStreamingTool(toolCallId).ts = ts
 	}
 
 	/** Get the stored tool input (from content_start) */
-	getStreamingToolInput(): unknown | undefined {
-		return this.streamingToolInput
+	getStreamingToolInput(toolCallId: string | undefined): unknown | undefined {
+		return this.streamingTools.get(this.streamingToolKey(toolCallId))?.input
 	}
 
 	/** Get the stored tool name (from content_start) */
-	getStreamingToolName(): string | undefined {
-		return this.streamingToolName
+	getStreamingToolName(toolCallId: string | undefined): string | undefined {
+		return this.streamingTools.get(this.streamingToolKey(toolCallId))?.name
 	}
 
 	appendStreamingCommandOutput(toolCallId: string | undefined, chunk: string): string | undefined {
-		const output = this.streamingCommandOutput
-		if (!output || (toolCallId !== undefined && toolCallId !== output.toolCallId)) {
+		const output = this.streamingTools.get(this.streamingToolKey(toolCallId))?.commandOutput
+		if (!output) {
 			return undefined
 		}
 		output.totalChars += chunk.length
@@ -354,21 +381,17 @@ export class MessageTranslatorState {
 		return output.text
 	}
 
+	/** Whether the call's open row was started under a different tool name. */
 	isMismatchedStreamingCommand(toolName: string, toolCallId: string | undefined): boolean {
-		const output = this.streamingCommandOutput
-		return (
-			output !== undefined &&
-			(this.streamingToolName !== toolName || (toolCallId !== undefined && toolCallId !== output.toolCallId))
-		)
+		const name = this.streamingTools.get(this.streamingToolKey(toolCallId))?.name
+		return name !== undefined && name !== toolName
 	}
 
-	/** Clear streaming tool */
-	clearStreamingTool(): number {
-		const ts = this.streamingToolTs ?? this.nextTs()
-		this.streamingToolTs = undefined
-		this.streamingToolInput = undefined
-		this.streamingToolName = undefined
-		this.streamingCommandOutput = undefined
+	/** Clear a streaming tool call and return its row ts */
+	clearStreamingTool(toolCallId?: string): number {
+		const key = this.streamingToolKey(toolCallId)
+		const ts = this.streamingTools.get(key)?.ts ?? this.nextTs()
+		this.streamingTools.delete(key)
 		return ts
 	}
 
@@ -546,10 +569,7 @@ export class MessageTranslatorState {
 		this.streamingTextTs = undefined
 		this.streamingText = ""
 		this.streamingReasoningTs = undefined
-		this.streamingToolTs = undefined
-		this.streamingToolInput = undefined
-		this.streamingToolName = undefined
-		this.streamingCommandOutput = undefined
+		this.streamingTools.clear()
 		this.clearApprovedToolMessageTs()
 		this.deniedToolApprovalsByCallId.clear()
 		this.clearSpawnAgents()
@@ -1408,7 +1428,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					state.setStreamingToolContext(toolName, event.toolCallId, input)
 					const approvedToolMessageTs = state.consumeApprovedToolMessageTs(event.toolCallId)
 					if (approvedToolMessageTs !== undefined) {
-						state.setStreamingToolTs(approvedToolMessageTs)
+						state.setStreamingToolTs(event.toolCallId, approvedToolMessageTs)
 					}
 
 					// ask_question (and ask_followup_question) is NOT a visual tool row: the
@@ -1428,7 +1448,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 						state.setAttemptCompletionSeen()
 						const resultText = getCompletionResultText(input)
 						messages.push({
-							ts: state.getStreamingToolTs(),
+							ts: state.getStreamingToolTs(event.toolCallId),
 							type: "say",
 							say: "completion_result",
 							text: resultText,
@@ -1446,7 +1466,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 						// marker on the running row so it reflects the executing state. content_end
 						// rebuilds the full text (command + marker + output) and sets commandCompleted.
 						messages.push({
-							ts: state.getStreamingToolTs(),
+							ts: state.getStreamingToolTs(event.toolCallId),
 							type: "say",
 							say: "command",
 							text: `${commandText}\n${COMMAND_OUTPUT_STRING}`,
@@ -1480,8 +1500,6 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 							partial: true,
 						})
 
-						// Clear the generic streaming tool so it doesn't also emit say:"tool"
-						state.clearStreamingTool()
 						break
 					}
 
@@ -1492,7 +1510,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					if (mcpInfo) {
 						const mcpPayload = buildMcpToolPayload(mcpInfo, input)
 						messages.push({
-							ts: state.getStreamingToolTs(),
+							ts: state.getStreamingToolTs(event.toolCallId),
 							type: "say",
 							say: "use_mcp_server" as ClineSay,
 							text: mcpPayload,
@@ -1509,7 +1527,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// reproduce for files ≥2, orphaning those partial rows (cline#9904).
 					const sayTool = toDisplaySayTool(sdkToolToClineSayTool(toolName, input), state.currentCwd())
 					messages.push({
-						ts: state.getStreamingToolTs(),
+						ts: state.getStreamingToolTs(event.toolCallId),
 						type: "say",
 						say: "tool",
 						text: JSON.stringify(sayTool),
@@ -1522,11 +1540,11 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 		}
 
 		case "content_update": {
-			const updateToolName = event.toolName ?? state.getStreamingToolName()
+			const updateToolName = event.toolName ?? state.getStreamingToolName(event.toolCallId)
 			if (updateToolName === "run_commands" || updateToolName === "execute_command") {
 				const update = event.update
 				if (
-					state.getStreamingToolName() !== updateToolName ||
+					state.getStreamingToolName(event.toolCallId) !== updateToolName ||
 					!update ||
 					typeof update !== "object" ||
 					Array.isArray(update) ||
@@ -1541,10 +1559,10 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					break
 				}
 				messages.push({
-					ts: state.getStreamingToolTs(),
+					ts: state.getStreamingToolTs(event.toolCallId),
 					type: "say",
 					say: "command",
-					text: `${extractCommandText(state.getStreamingToolInput())}\n${COMMAND_OUTPUT_STRING}\n${output}`,
+					text: `${extractCommandText(state.getStreamingToolInput(event.toolCallId))}\n${COMMAND_OUTPUT_STRING}\n${output}`,
 					partial: true,
 				})
 				break
@@ -1638,7 +1656,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					break
 				}
 				case "tool": {
-					const toolName = event.toolName ?? state.getStreamingToolName() ?? "unknown"
+					const toolName = event.toolName ?? state.getStreamingToolName(event.toolCallId) ?? "unknown"
 					if (state.isMismatchedStreamingCommand(toolName, event.toolCallId)) {
 						break
 					}
@@ -1648,13 +1666,14 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					state.clearTurnFinalText()
 
 					if (state.checkDeniedToolApproval(event.toolCallId) || isKnownToolApprovalDenial(event.error)) {
-						state.clearStreamingTool()
+						state.clearStreamingTool(event.toolCallId)
 						break
 					}
 
 					// ask_question is serviced by the interaction coordinator (see content_start);
 					// it produces no transcript row of its own, so its content_end is a no-op.
 					if (toolName === "ask_question" || toolName === "ask_followup_question") {
+						state.clearStreamingTool(event.toolCallId)
 						break
 					}
 
@@ -1722,8 +1741,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 							})
 						}
 
-						// Don't clear the generic streaming tool — spawn_agent
-						// didn't use it (we cleared it at content_start)
+						state.clearStreamingTool(event.toolCallId)
 						break
 					}
 
@@ -1731,8 +1749,8 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// completion box. The partial say:"completion_result" was emitted at
 					// content_start; here we emit the non-partial version.
 					if (isCompletionTool(toolName)) {
-						const storedInput = state.getStreamingToolInput()
-						const ts = state.clearStreamingTool()
+						const storedInput = state.getStreamingToolInput(event.toolCallId)
+						const ts = state.clearStreamingTool(event.toolCallId)
 						const resultText = getCompletionResultText(storedInput)
 						// Finalize the say:"completion_result" (non-partial)
 						// This renders the green completion box.
@@ -1756,10 +1774,10 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// in-place, so it doesn't disappear (command_output rows are filtered out
 					// by combineCommandSequences in the chat pipeline).
 					if (toolName === "run_commands" || toolName === "execute_command") {
-						const storedInput = state.getStreamingToolInput()
+						const storedInput = state.getStreamingToolInput(event.toolCallId)
 						const commandText = extractCommandText(storedInput)
 						const outputStr = event.error ? `Error: ${event.error}` : extractToolOutputText(event.output)
-						const ts = state.clearStreamingTool()
+						const ts = state.clearStreamingTool(event.toolCallId)
 						messages.push({
 							ts,
 							type: "say",
@@ -1780,8 +1798,8 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// so we emit the finalized tool call + response together.
 					const mcpInfoEnd = parseMcpToolName(toolName)
 					if (mcpInfoEnd) {
-						const storedMcpInput = state.getStreamingToolInput()
-						const mcpTs = state.clearStreamingTool()
+						const storedMcpInput = state.getStreamingToolInput(event.toolCallId)
+						const mcpTs = state.clearStreamingTool(event.toolCallId)
 						const mcpPayload = buildMcpToolPayload(mcpInfoEnd, storedMcpInput)
 
 						// Finalize the use_mcp_server message (non-partial)
@@ -1810,8 +1828,8 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// All other tools → finalize the say="tool" message
 					// Use the stored input from content_start since content_end
 					// doesn't carry the input (S6-24 fix)
-					const storedInput = state.getStreamingToolInput()
-					const ts = state.clearStreamingTool()
+					const storedInput = state.getStreamingToolInput(event.toolCallId)
+					const ts = state.clearStreamingTool(event.toolCallId)
 
 					// Special handling: read_files may read multiple files in one tool call.
 					// Emit one readFile UI message per file so the tool group summary and

@@ -267,6 +267,8 @@ export interface GatewayStreamRequest {
 		effort?: ReasoningEffort;
 		budgetTokens?: number;
 	};
+	/** `false` asks the provider for at most one tool call per response. */
+	parallelToolCalls?: boolean;
 	signal?: AbortSignal;
 }
 
