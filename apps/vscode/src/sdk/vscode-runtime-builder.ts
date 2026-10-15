@@ -5,7 +5,7 @@ import type { McpHub } from "@/services/mcp/McpHub"
 import { resolveMcpServerTimeoutMs } from "@/services/mcp/timeout"
 import { Logger } from "@/shared/services/Logger"
 import type { SdkForegroundCommandCoordinator } from "./sdk-foreground-command-coordinator"
-import { createVscodeRunCommandsTool, VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS } from "./vscode-run-commands-tool"
+import { createVscodeRunCommandsTool, getForegroundRunCommandsTimeoutMs } from "./vscode-run-commands-tool"
 
 interface McpToolDescriptor {
 	name: string
@@ -55,6 +55,10 @@ export interface VscodeExtraToolsOptions {
 	getTerminalManager?: () => VscodeTerminalManager
 	/** Current VS Code terminal execution mode, captured when the session tools are built. */
 	vscodeTerminalExecutionMode?: "vscodeTerminal" | "backgroundExec"
+	/** Background Exec kill timeout in ms; undefined keeps the SDK default. */
+	backgroundCommandTimeoutMs?: number
+	/** VS Code Terminal auto-proceed delay in ms; undefined keeps the default. */
+	foregroundCommandAutoProceedMs?: number
 	/** Registry of in-flight foreground executions for "Proceed While Running". */
 	foregroundCommands?: SdkForegroundCommandCoordinator
 }
@@ -92,17 +96,22 @@ export async function createVscodeExtraTools(mcpHub: McpHub, options?: VscodeExt
 	// tool executor capabilities in VscodeSessionHost.
 	if (options?.getTerminalManager) {
 		const executionMode = options.vscodeTerminalExecutionMode ?? "vscodeTerminal"
+		const bashTimeoutMs =
+			executionMode === "vscodeTerminal"
+				? getForegroundRunCommandsTimeoutMs(options.foregroundCommandAutoProceedMs)
+				: options.backgroundCommandTimeoutMs
 		tools.push(
 			createVscodeRunCommandsTool({
 				cwd: options.cwd ?? process.cwd(),
 				getTerminalManager: options.getTerminalManager,
-				bashTimeoutMs: executionMode === "vscodeTerminal" ? VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS : undefined,
+				bashTimeoutMs,
+				foregroundAutoProceedMs: options.foregroundCommandAutoProceedMs,
 				vscodeTerminalExecutionMode: executionMode,
 				foregroundCommands: options.foregroundCommands,
 			}),
 		)
 		Logger.log(
-			`[VscodeRuntimeTools] Added custom run_commands tool (mode=${executionMode}, timeoutMs=${executionMode === "vscodeTerminal" ? VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS : "default"})`,
+			`[VscodeRuntimeTools] Added custom run_commands tool (mode=${executionMode}, timeoutMs=${bashTimeoutMs ?? "default"})`,
 		)
 	}
 

@@ -91,6 +91,8 @@ export interface ExtensionState {
 	terminalReuseEnabled?: boolean
 	defaultTerminalProfile?: string
 	vscodeTerminalExecutionMode: string
+	backgroundCommandTimeoutMs?: number
+	foregroundCommandAutoProceedMs?: number
 	backgroundCommandRunning?: boolean
 	backgroundCommandTaskId?: string
 	/**

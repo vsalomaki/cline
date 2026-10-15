@@ -33,6 +33,7 @@ import {
 	type ITerminalProcess,
 	type TerminalCompletionDetails,
 } from "@/integrations/terminal/types"
+import { DEFAULT_FOREGROUND_COMMAND_AUTO_PROCEED_MS } from "@/shared/CommandTimeouts"
 import { Logger } from "@/shared/services/Logger"
 import { getShellForProfile } from "@/utils/shell"
 import type { SdkForegroundCommandCoordinator } from "./sdk-foreground-command-coordinator"
@@ -47,8 +48,19 @@ type VscodeTerminalExecutionMode = "vscodeTerminal" | "backgroundExec"
 /** Foreground VS Code terminals cannot be forcibly terminated; give long-running commands room to finish. */
 export const VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS = 60 * 60 * 1000
 
-/** Release the agent turn if a foreground command is still running after 300 seconds. */
-export const FOREGROUND_COMMAND_AUTO_PROCEED_MS = 300 * 1000
+/** Release the agent turn if a foreground command is still running after 300 seconds, unless configured otherwise. */
+export const FOREGROUND_COMMAND_AUTO_PROCEED_MS = DEFAULT_FOREGROUND_COMMAND_AUTO_PROCEED_MS
+
+/** How far the foreground tool timeout stays beyond the auto-proceed delay, which must fire first. */
+const FOREGROUND_TIMEOUT_HEADROOM_MS = 60 * 1000
+
+/**
+ * Tool timeout for foreground mode: at least VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS,
+ * and always past the auto-proceed delay so a long configured delay is not cut short.
+ */
+export function getForegroundRunCommandsTimeoutMs(autoProceedMs = FOREGROUND_COMMAND_AUTO_PROCEED_MS): number {
+	return Math.max(VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS, autoProceedMs + FOREGROUND_TIMEOUT_HEADROOM_MS)
+}
 
 /**
  * Cap on the "Proceed While Running" log file. A detached devserver can log
@@ -65,8 +77,13 @@ export interface VscodeRunCommandsToolOptions {
 	cwd: string
 	/** Lazy factory for the VscodeTerminalManager. Called once on first foreground use. */
 	getTerminalManager: () => VscodeTerminalManager
-	/** Timeout passed to the SDK shell tool wrapper and timeout telemetry. */
+	/**
+	 * Timeout passed to the SDK shell tool wrapper and timeout telemetry. In
+	 * background mode it is also the shell executor's kill timeout.
+	 */
 	bashTimeoutMs?: number
+	/** Foreground auto-proceed delay; defaults to FOREGROUND_COMMAND_AUTO_PROCEED_MS. */
+	foregroundAutoProceedMs?: number
 	/** Terminal execution mode captured when this session's tool set is built. */
 	vscodeTerminalExecutionMode?: VscodeTerminalExecutionMode
 	/**
@@ -205,11 +222,11 @@ function createDetachedCommandLog(terminalCommand: string, existingLines: string
 
 type DetachReason = "user" | "timeout"
 
-function formatDetachedResult(logFilePath: string, output: string, reason: DetachReason): string {
+function formatDetachedResult(logFilePath: string, output: string, reason: DetachReason, autoProceedMs: number): string {
 	return [
 		reason === "user"
 			? "The user chose to proceed while the command is starting or still running in their terminal."
-			: `The command was still starting or running after ${FOREGROUND_COMMAND_AUTO_PROCEED_MS / 1000} seconds, so Cline automatically proceeded while leaving it running in the terminal.`,
+			: `The command was still starting or running after ${autoProceedMs / 1000} seconds, so Cline automatically proceeded while leaving it running in the terminal.`,
 		`This is partial output; further output is being redirected to this file, which you can read to check progress: ${logFilePath}`,
 		output.length > 0 ? `Output so far:\n${output}` : "No output so far.",
 	].join("\n")
@@ -226,12 +243,14 @@ export async function executeForeground(
 	abortSignal?: AbortSignal,
 	foregroundCommands?: SdkForegroundCommandCoordinator,
 	terminalProfileId?: string,
+	autoProceedMs: number = FOREGROUND_COMMAND_AUTO_PROCEED_MS,
 ): Promise<string> {
 	const terminalCommand = formatCommandForTerminal(command)
 
 	// "Proceed While Running": register a per-invocation handle so the user can
-	// detach this command. If they do not act, automatically detach after 300
-	// seconds so a long-running command cannot block the agent turn indefinitely.
+	// detach this command. If they do not act, automatically detach after
+	// autoProceedMs (300 seconds by default) so a long-running command cannot
+	// block the agent turn indefinitely.
 	// Detaching redirects the remaining output to a log file and resolves the
 	// awaited promise; the command keeps running in the user's terminal (and the
 	// terminal stays busy until it completes).
@@ -265,7 +284,7 @@ export async function executeForeground(
 	const unregister = foregroundCommands?.register({
 		detach: () => requestDetach("user"),
 	})
-	const autoProceedTimer = setTimeout(() => requestDetach("timeout"), FOREGROUND_COMMAND_AUTO_PROCEED_MS)
+	const autoProceedTimer = setTimeout(() => requestDetach("timeout"), autoProceedMs)
 	const onAbort = (): void => {
 		if (state.phase === "waiting") {
 			state.phase = "aborted"
@@ -327,7 +346,7 @@ export async function executeForeground(
 				throw new Error("Detached command log was not initialized")
 			}
 			void acquisition.then((outcome) => finishDetachedAcquisition(outcome, log))
-			return formatDetachedResult(log.path, "", detachReason ?? "timeout")
+			return formatDetachedResult(log.path, "", detachReason ?? "timeout", autoProceedMs)
 		}
 
 		// Acquisition and a user action can resolve in the same microtask turn.
@@ -344,7 +363,7 @@ export async function executeForeground(
 				throw new Error("Detached command log was not initialized")
 			}
 			finishDetachedAcquisition(firstOutcome, log)
-			return formatDetachedResult(log.path, "", detachReason ?? "timeout")
+			return formatDetachedResult(log.path, "", detachReason ?? "timeout", autoProceedMs)
 		}
 		if (firstOutcome.type === "error") {
 			throw firstOutcome.error
@@ -434,7 +453,7 @@ export async function executeForeground(
 			})
 
 			if (detachedLog !== undefined) {
-				return formatDetachedResult(detachedLog.path, output, detachReason ?? "timeout")
+				return formatDetachedResult(detachedLog.path, output, detachReason ?? "timeout", autoProceedMs)
 			}
 
 			const completionDetails = process.getCompletionDetails?.()
@@ -571,6 +590,9 @@ function createVscodeShellExecutor(
 				bgExecutor = createShellExecutor({
 					shell,
 					maxOutputChars: limits.commandOutputChars,
+					// Kill at the same timeout the tool wrapper enforces; the
+					// executor would otherwise apply its own 30-second default.
+					timeoutMs: options.bashTimeoutMs,
 					// Set SHELL env to match the shell we're spawning so child
 					// processes see the correct value instead of the inherited parent's.
 					env: { SHELL: shell },
@@ -607,6 +629,7 @@ function createVscodeShellExecutor(
 			context.signal,
 			options.foregroundCommands,
 			profileId,
+			options.foregroundAutoProceedMs,
 		)
 	}
 }

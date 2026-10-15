@@ -79,6 +79,10 @@ const GLOBAL_STATE_FIELDS = {
 		// chose either mode keep their saved preference.
 		default: "vscodeTerminal" as "vscodeTerminal" | "backgroundExec",
 	},
+	// run_commands limits per execution mode, in ms (see shared/CommandTimeouts.ts).
+	// Unset keeps the built-in default.
+	backgroundCommandTimeoutMs: { default: undefined as number | undefined },
+	foregroundCommandAutoProceedMs: { default: undefined as number | undefined },
 	isNewUser: { default: true as boolean },
 	welcomeViewCompleted: { default: undefined as boolean | undefined },
 	mcpDisplayMode: { default: DEFAULT_MCP_DISPLAY_MODE as McpDisplayMode },

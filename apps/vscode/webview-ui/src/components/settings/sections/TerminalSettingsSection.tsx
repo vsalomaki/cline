@@ -1,6 +1,12 @@
+import {
+	DEFAULT_BACKGROUND_COMMAND_TIMEOUT_MS,
+	DEFAULT_FOREGROUND_COMMAND_AUTO_PROCEED_MS,
+	MAX_COMMAND_TIMEOUT_MS,
+	MIN_COMMAND_TIMEOUT_MS,
+} from "@shared/CommandTimeouts"
 import { UpdateTerminalConnectionTimeoutResponse } from "@shared/proto/index.cline"
 import { VSCodeCheckbox, VSCodeDropdown, VSCodeOption, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { PlatformType } from "@/config/platform.config"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import { usePlatform } from "@/context/PlatformContext"
@@ -12,6 +18,88 @@ interface TerminalSettingsSectionProps {
 	renderSectionHeader: (tabId: string) => JSX.Element | null
 }
 
+interface CommandTimeoutFieldProps {
+	id: string
+	label: string
+	description: string
+	setting: "backgroundCommandTimeoutMs" | "foregroundCommandAutoProceedMs"
+	valueMs: number | undefined
+	defaultMs: number
+}
+
+const toSecondsText = (ms: number | undefined) => (ms === undefined ? "" : (ms / 1000).toString())
+
+const validateSecondsText = (text: string): string | null => {
+	const trimmed = text.trim()
+	if (trimmed === "") {
+		return null
+	}
+	const seconds = Number(trimmed)
+	if (!Number.isFinite(seconds) || seconds < MIN_COMMAND_TIMEOUT_MS / 1000 || seconds > MAX_COMMAND_TIMEOUT_MS / 1000) {
+		return `Enter ${MIN_COMMAND_TIMEOUT_MS / 1000}-${MAX_COMMAND_TIMEOUT_MS / 1000} seconds, or leave empty for the default`
+	}
+	return null
+}
+
+/**
+ * Seconds input for a run_commands timeout. Saves on blur or Enter rather than
+ * per keystroke, since each change rebuilds the active session's tools. An
+ * empty field resets the setting to its default.
+ */
+const CommandTimeoutField: React.FC<CommandTimeoutFieldProps> = ({ id, label, description, setting, valueMs, defaultMs }) => {
+	const [text, setText] = useState(toSecondsText(valueMs))
+	const [error, setError] = useState<string | null>(null)
+
+	useEffect(() => {
+		setText(toSecondsText(valueMs))
+		setError(null)
+	}, [valueMs])
+
+	const handleChange = (event: Event) => {
+		const value = (event.target as HTMLInputElement).value
+		setText(value)
+		setError(validateSecondsText(value))
+	}
+
+	const handleBlur = () => {
+		if (error) {
+			setText(toSecondsText(valueMs))
+			setError(null)
+			return
+		}
+		const trimmed = text.trim()
+		const nextMs = trimmed === "" ? undefined : Math.round(Number(trimmed) * 1000)
+		if (nextMs !== valueMs) {
+			updateSetting(setting, nextMs ?? 0)
+		}
+	}
+
+	return (
+		<div className="mb-4">
+			<div className="mb-2">
+				<label className="font-medium block mb-1" htmlFor={id}>
+					{label}
+				</label>
+				<VSCodeTextField
+					className="w-full"
+					id={id}
+					onBlur={handleBlur}
+					onChange={(event) => handleChange(event as Event)}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") {
+							;(event.target as HTMLElement).blur()
+						}
+					}}
+					placeholder={`Default: ${defaultMs / 1000}`}
+					value={text}
+				/>
+				{error && <div className="text-(--vscode-errorForeground) text-xs mt-1">{error}</div>}
+			</div>
+			<p className="text-xs text-(--vscode-descriptionForeground)">{description}</p>
+		</div>
+	)
+}
+
 const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = ({ renderSectionHeader }) => {
 	const {
 		shellIntegrationTimeout,
@@ -19,6 +107,8 @@ const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = ({ rende
 		defaultTerminalProfile,
 		availableTerminalProfiles,
 		vscodeTerminalExecutionMode,
+		backgroundCommandTimeoutMs,
+		foregroundCommandAutoProceedMs,
 	} = useExtensionState()
 	const platformConfig = usePlatform()
 	const isVsCodePlatform = platformConfig.type === PlatformType.VSCODE
@@ -111,8 +201,28 @@ const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = ({ rende
 						</div>
 					)}
 
+					{(!isVsCodePlatform || isBackgroundExec) && (
+						<CommandTimeoutField
+							defaultMs={DEFAULT_BACKGROUND_COMMAND_TIMEOUT_MS}
+							description={`Commands still running after this long are stopped. Leave empty for the default (${DEFAULT_BACKGROUND_COMMAND_TIMEOUT_MS / 1000} seconds).`}
+							id="background-command-timeout"
+							label="Command timeout (seconds)"
+							setting="backgroundCommandTimeoutMs"
+							valueMs={backgroundCommandTimeoutMs}
+						/>
+					)}
+
 					{isVsCodePlatform && !isBackgroundExec && (
 						<>
+							<CommandTimeoutField
+								defaultMs={DEFAULT_FOREGROUND_COMMAND_AUTO_PROCEED_MS}
+								description={`If a command is still running after this long, Cline continues the task and leaves the command running in the terminal. Leave empty for the default (${DEFAULT_FOREGROUND_COMMAND_AUTO_PROCEED_MS / 1000} seconds).`}
+								id="foreground-command-auto-proceed"
+								label="Proceed while running after (seconds)"
+								setting="foregroundCommandAutoProceedMs"
+								valueMs={foregroundCommandAutoProceedMs}
+							/>
+
 							<div className="mb-4">
 								<div className="mb-2">
 									<label className="font-medium block mb-1">Shell integration timeout (seconds)</label>

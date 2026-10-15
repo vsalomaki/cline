@@ -5,6 +5,7 @@ import { convertProtoToApiProvider } from "@shared/proto-conversions/models/api-
 import { OpenaiReasoningEffort } from "@shared/storage/types"
 import { TelemetrySetting } from "@shared/TelemetrySetting"
 import { ClineEnv } from "@/config"
+import { normalizeCommandTimeoutMs } from "@/shared/CommandTimeouts"
 import { McpDisplayMode } from "@/shared/McpDisplayMode"
 import { Logger } from "@/shared/services/Logger"
 import { telemetryService } from "../../../services/telemetry"
@@ -126,6 +127,24 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			const nextMode = request.vscodeTerminalExecutionMode === "backgroundExec" ? "backgroundExec" : "vscodeTerminal"
 			controller.stateManager.setGlobalState("vscodeTerminalExecutionMode", nextMode)
 			controller.handleTerminalExecutionModeChanged(previousMode, nextMode)
+		}
+
+		// Update run_commands timeouts (0 resets to the default)
+		let commandTimeoutsChanged = false
+		if (request.backgroundCommandTimeoutMs !== undefined) {
+			const previous = controller.stateManager.getGlobalStateKey("backgroundCommandTimeoutMs")
+			const next = normalizeCommandTimeoutMs(request.backgroundCommandTimeoutMs)
+			controller.stateManager.setGlobalState("backgroundCommandTimeoutMs", next)
+			commandTimeoutsChanged ||= previous !== next
+		}
+		if (request.foregroundCommandAutoProceedMs !== undefined) {
+			const previous = controller.stateManager.getGlobalStateKey("foregroundCommandAutoProceedMs")
+			const next = normalizeCommandTimeoutMs(request.foregroundCommandAutoProceedMs)
+			controller.stateManager.setGlobalState("foregroundCommandAutoProceedMs", next)
+			commandTimeoutsChanged ||= previous !== next
+		}
+		if (commandTimeoutsChanged) {
+			controller.handleCommandTimeoutsChanged()
 		}
 
 		if (request.hooksEnabled !== undefined) {
