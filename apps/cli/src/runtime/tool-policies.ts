@@ -4,6 +4,7 @@ const SAFE_AUTO_APPROVE_TOOL_NAMES = [
 	"ask_followup_question",
 	"ask_question",
 	"fetch_web_content",
+	"list_files",
 	"read_files",
 	"search_codebase",
 	"skills",

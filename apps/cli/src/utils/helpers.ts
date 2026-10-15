@@ -193,6 +193,11 @@ export function formatToolInput(toolName: string, input: unknown): string {
 				return truncate(obj.queries.join(", "), 120);
 			}
 			break;
+		case "list_files":
+			if (typeof obj.path === "string") {
+				return truncate(obj.path, 120);
+			}
+			break;
 		case "fetch_web_content":
 			if (Array.isArray(obj.requests)) {
 				return truncate(

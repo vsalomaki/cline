@@ -4,6 +4,7 @@ import { formatToolInput } from "../utils/helpers";
 const TOOL_KIND_MAP: Record<string, ToolKind> = {
 	Read: "read",
 	read_files: "read",
+	list_files: "read",
 	Glob: "search",
 	Grep: "search",
 	search_codebase: "search",
