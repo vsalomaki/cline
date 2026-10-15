@@ -25,6 +25,7 @@ describe("tool policy helpers", () => {
 			ask_followup_question: { autoApprove: true },
 			ask_question: { autoApprove: true },
 			fetch_web_content: { autoApprove: true },
+			list_files: { autoApprove: true },
 			run_commands: { autoApprove: false, enabled: true },
 			read_files: { autoApprove: true, enabled: true },
 			search_codebase: { autoApprove: true },

@@ -112,6 +112,72 @@ export const ReadFilesInputUnionSchema = z.union([
 ]);
 
 /**
+ * Schema for list_files tool input
+ */
+export const ListFilesInputSchema = z.object({
+	path: z
+		.string()
+		.min(1)
+		.describe(
+			"Directory to list: an absolute path, or one relative to the working directory",
+		),
+	recursive: z
+		.boolean()
+		.optional()
+		.describe("Also list subdirectories. Defaults to the top level only."),
+	max_depth: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(10)
+		.optional()
+		.describe("Levels to descend when listing recursively. Defaults to 3."),
+	limit: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(1000)
+		.optional()
+		.describe("Maximum entries to return. Defaults to 200."),
+});
+
+/**
+ * Accepts the shapes other agents' listing tools use (`dir_path`,
+ * `directory`, a bare string, no path at all) and maps them onto
+ * `ListFilesInputSchema`. A missing path lists the working directory.
+ */
+export function normalizeListFilesInput(input: unknown): unknown {
+	if (typeof input === "string") {
+		return { path: input };
+	}
+	if (input === null || typeof input !== "object" || Array.isArray(input)) {
+		return input;
+	}
+	const record = input as Record<string, unknown>;
+	const pathValue = [
+		record.path,
+		record.dir_path,
+		record.directory,
+		record.dir,
+		record.directory_path,
+		record.target_directory,
+		record.relative_workspace_path,
+	].find((value) => typeof value === "string" && value.trim() !== "");
+	return {
+		path: pathValue ?? ".",
+		...(typeof record.recursive === "boolean"
+			? { recursive: record.recursive }
+			: {}),
+		...(record.max_depth !== undefined
+			? { max_depth: record.max_depth }
+			: record.depth !== undefined
+				? { max_depth: record.depth }
+				: {}),
+		...(record.limit !== undefined ? { limit: record.limit } : {}),
+	};
+}
+
+/**
  * Schema for search_codebase tool input
  */
 export const SearchCodebaseInputSchema = z.object({
@@ -327,6 +393,11 @@ export type ReadFilesInput = z.infer<typeof ReadFilesInputSchema>;
  * Input for the search_codebase tool
  */
 export type SearchCodebaseInput = z.infer<typeof SearchCodebaseInputSchema>;
+
+/**
+ * Input for the list_files tool
+ */
+export type ListFilesInput = z.infer<typeof ListFilesInputSchema>;
 
 /**
  * Input for the run_commands tool

@@ -12,6 +12,7 @@ import type { AgentToolContext } from "@cline/shared";
 import { resolveExistingFilePath } from "@cline/shared/storage";
 import type { ReadFileRequest } from "../schemas";
 import type { FileReadExecutor } from "../types";
+import { listDirectoryTopLevel } from "./list-files";
 import {
 	MAX_LINE_CHARS,
 	MAX_READ_LINES,
@@ -264,6 +265,10 @@ export function createFileReadExecutor(
 		// Check if file exists
 		const stat = await fs.stat(resolvedPath);
 
+		if (stat.isDirectory()) {
+			const listing = await listDirectoryTopLevel(resolvedPath);
+			return `${resolvedPath} is a directory, so here is its listing. Use list_files for recursive listings.\n${listing}`;
+		}
 		if (!stat.isFile()) {
 			throw new Error(`Path is not a file: ${resolvedPath}`);
 		}

@@ -197,7 +197,7 @@ export function normalizeToolName(toolName: string): string {
 
 export function classifyTool(toolName: string): ToolKind {
 	const name = normalizeToolName(toolName);
-	if (name === "read_files") return "read";
+	if (name === "read_files" || name === "list_files") return "read";
 	if (name === "editor" || name === "apply_patch") return "edit";
 	if (name === "run_commands") return "command";
 	if (name === "search_codebase") return "search";

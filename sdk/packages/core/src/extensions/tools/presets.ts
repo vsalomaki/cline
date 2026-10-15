@@ -25,6 +25,7 @@ export const ToolPresets = {
 	act: {
 		enableReadFiles: true,
 		enableSearch: true,
+		enableListFiles: true,
 		enableBash: true,
 		enableWebFetch: true,
 		enableApplyPatch: false,
@@ -45,6 +46,7 @@ export const ToolPresets = {
 	plan: {
 		enableReadFiles: true,
 		enableSearch: true,
+		enableListFiles: true,
 		enableBash: true,
 		enableWebFetch: true,
 		enableApplyPatch: false,
@@ -63,6 +65,7 @@ export const ToolPresets = {
 	search: {
 		enableReadFiles: true,
 		enableSearch: true,
+		enableListFiles: true,
 		enableBash: false,
 		enableWebFetch: false,
 		enableApplyPatch: false,
@@ -80,6 +83,7 @@ export const ToolPresets = {
 	minimal: {
 		enableReadFiles: false,
 		enableSearch: false,
+		enableListFiles: false,
 		enableBash: true,
 		enableWebFetch: false,
 		enableApplyPatch: false,
@@ -98,6 +102,7 @@ export const ToolPresets = {
 	yolo: {
 		enableReadFiles: true,
 		enableSearch: false,
+		enableListFiles: false,
 		enableBash: true,
 		enableWebFetch: false,
 		enableApplyPatch: false,

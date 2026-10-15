@@ -14,6 +14,7 @@ import type { ToolContextLimits } from "../../settings/context-limits";
 import type {
 	ApplyPatchInput,
 	EditFileInput,
+	ListFilesInput,
 	ReadFileRequest,
 	StructuredCommandInput,
 } from "./schemas";
@@ -66,6 +67,22 @@ export type FileReadExecutor = (
  */
 export type SearchExecutor = (
 	query: string,
+	cwd: string,
+	context: AgentToolContext,
+) => Promise<string>;
+
+export type ListFilesRequest = ListFilesInput;
+
+/**
+ * Executor for listing a directory
+ *
+ * @param request - Directory, depth and entry limit
+ * @param cwd - Directory that relative paths resolve against
+ * @param context - Tool execution context
+ * @returns The listing as a formatted string
+ */
+export type ListFilesExecutor = (
+	request: ListFilesRequest,
 	cwd: string,
 	context: AgentToolContext,
 ) => Promise<string>;
@@ -202,6 +219,8 @@ export interface ToolExecutors {
 	readFile?: FileReadExecutor;
 	/** Codebase search implementation */
 	search?: SearchExecutor;
+	/** Directory listing implementation */
+	listFiles?: ListFilesExecutor;
 	/** Shell command execution implementation */
 	bash?: ShellExecutor;
 	/** Web content fetching implementation */
@@ -228,6 +247,7 @@ export interface ToolExecutors {
 export type DefaultToolName =
 	| "read_files"
 	| "search_codebase"
+	| "list_files"
 	| "run_commands"
 	| "fetch_web_content"
 	| "apply_patch"
@@ -265,6 +285,12 @@ export interface DefaultToolsConfig {
 	 * @default true
 	 */
 	enableSearch?: boolean;
+
+	/**
+	 * Enable the list_files tool
+	 * @default true
+	 */
+	enableListFiles?: boolean;
 
 	/**
 	 * Enable the run_commands tool

@@ -23,10 +23,12 @@ import {
 	formatMessagesForAiSdk,
 	GeneratedMediaSchema,
 	generatedMediaModalityFromMediaType,
+	LIST_FILES_ALIASES,
 	modelProducesImages,
 	modelSupportsToolCalling,
 	parseJsonStream,
 	sanitizeSurrogates,
+	suggestToolForUnknownName,
 	usesImageGenerationOperation,
 	validateAndReserveBase64Media,
 	validateAndReserveImageMedia,
@@ -862,21 +864,31 @@ interface RepairableToolCall {
 }
 
 /**
- * Last-chance repair for tool calls whose arguments are not valid JSON
- * (truncated payloads, single quotes, unescaped newlines — common with
- * weaker models). Runs the raw argument text through the shared jsonrepair
- * strategies; unknown tool names and already-valid JSON are not repairable
- * here, and returning null preserves the AI SDK's original error behavior.
+ * Last-chance repair for a tool call the AI SDK rejected.
+ *
+ * A directory-listing call under another agent's name (`list_directory`,
+ * `ls`, …) is renamed to `list_files` when the session has it; it still runs
+ * through that tool's approval and mode policies. Arguments that are not
+ * valid JSON (truncated payloads, single quotes, unescaped newlines — common
+ * with weaker models) go through the shared jsonrepair strategies. Any other
+ * unknown tool name, and already-valid JSON, is left alone: returning null
+ * keeps the AI SDK's original error.
  */
 export async function repairMalformedToolCall<T extends RepairableToolCall>({
 	toolCall,
+	tools,
 	error,
 }: {
 	toolCall: T;
+	tools?: Record<string, unknown>;
 	error: unknown;
 }): Promise<T | null> {
 	if (NoSuchToolError.isInstance(error)) {
-		return null;
+		return LIST_FILES_ALIASES.has(toolCall.toolName.toLowerCase()) &&
+			tools !== undefined &&
+			Object.hasOwn(tools, "list_files")
+			? { ...toolCall, toolName: "list_files" }
+			: null;
 	}
 	if (typeof toolCall.input !== "string" || toolCall.input.trim() === "") {
 		return null;
@@ -952,9 +964,17 @@ function buildRecoverableToolErrorMetadata(input: {
 	context: GatewayProviderContext;
 	toolName: string;
 }): Record<string, unknown> {
+	// Matched on the AI SDK's message: `NoSuchToolError.isInstance` does not
+	// hold for the error carried on a tool-error stream part.
+	const hint = input.errorMessage.includes("unavailable tool")
+		? suggestToolForUnknownName(
+				input.toolName,
+				(input.request.tools ?? []).map((tool) => tool.name),
+			)
+		: undefined;
 	return buildToolCallMetadata({
 		metadata: mergeToolCallMetadata(extractGoogleThoughtMetadata(input.part), {
-			inputParseError: `Tool call ${input.toolName} was rejected before execution: ${input.errorMessage}`,
+			inputParseError: `Tool call ${input.toolName} was rejected before execution: ${input.errorMessage}${hint ? ` ${hint}` : ""}`,
 			aiSdkToolError: input.errorMessage,
 		}),
 		request: input.request,

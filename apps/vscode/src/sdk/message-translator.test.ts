@@ -3990,6 +3990,17 @@ describe("tool display paths are relativized to the cwd", () => {
 		expect(parseTool(result.messages[0].text).path).toBe("project")
 	})
 
+	it("renders a list_files call renamed from another agent's listing tool", () => {
+		const state = stateWithCwd()
+		const result = translateSessionEvent(
+			toolEvent("content_start", "list_files", { dir_path: `${CWD}/src`, depth: 2 }),
+			state,
+		)
+		const tool = parseTool(result.messages[0].text)
+		expect(tool.tool).toBe("listFilesRecursive")
+		expect(tool.path).toBe("src")
+	})
+
 	it("relativizes editor and delete_file paths", () => {
 		const editState = stateWithCwd()
 		const editResult = translateSessionEvent(

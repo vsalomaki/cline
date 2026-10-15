@@ -555,6 +555,8 @@ export function createVscodeRunCommandsTool(options: VscodeRunCommandsToolOption
 		cwd: options.cwd,
 		bashTimeoutMs: options.bashTimeoutMs,
 		limits,
+		// Extension sessions run the plan or act preset, which both include list_files.
+		listFilesAvailable: true,
 		shell: () => {
 			state.snapshot = takeShellSnapshot()
 			return state.snapshot.shell

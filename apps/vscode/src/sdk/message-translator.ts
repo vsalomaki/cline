@@ -666,8 +666,16 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 		}
 
 		case "list_files": {
-			const dirPath = getStringField(parsedInput, "path") ?? ""
-			const recursive = getBooleanField(parsedInput, "recursive") ?? false
+			// Calls renamed from other agents' listing tools keep their own input keys.
+			const dirPath =
+				getStringField(parsedInput, "path") ??
+				getStringField(parsedInput, "dir_path") ??
+				getStringField(parsedInput, "directory") ??
+				""
+			const recursive =
+				(getBooleanField(parsedInput, "recursive") ?? false) ||
+				parsedInput?.max_depth !== undefined ||
+				parsedInput?.depth !== undefined
 			return {
 				tool: recursive ? "listFilesRecursive" : "listFilesTopLevel",
 				path: dirPath,
