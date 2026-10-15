@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => {
 				actModeApiModelId: "claude-sonnet-4-6",
 				apiKey: "test-key",
 			})),
-			getGlobalSettingsKey: vi.fn((key: string): boolean | undefined => {
+			getGlobalSettingsKey: vi.fn((key: string): boolean | number | undefined => {
 				if (key === "subagentsEnabled" || key === "useAutoCondense") {
 					return false
 				}
@@ -418,6 +418,20 @@ describe("buildSessionConfig", () => {
 
 		expect(resolveApiKey("openai", {} as any)).toBe("migrated-openai-compatible-key")
 		expect(mocks.providerSettingsManager.getProviderSettings).toHaveBeenCalledWith("openai-compatible")
+	})
+
+	it("applies the Model API limits to every provider's config", async () => {
+		mocks.stateManager.getGlobalSettingsKey.mockImplementation((key: string) =>
+			key === "requestTimeoutMs" ? 120_000 : key === "subagentsEnabled" || key === "useAutoCondense" ? false : undefined,
+		)
+		mocks.stateManager.getGlobalStateKey.mockImplementation((key: string) =>
+			key === "agentLimitSettings" ? { "api.maxRetries": 4 } : undefined,
+		)
+
+		const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+		expect(config.providerId).toBe("anthropic")
+		expect(config.providerConfig).toMatchObject({ timeoutMs: 120_000, maxRetries: 4 })
 	})
 
 	it("applies Agent Limits settings to the session config", async () => {

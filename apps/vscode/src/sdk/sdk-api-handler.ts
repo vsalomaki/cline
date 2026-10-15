@@ -11,7 +11,10 @@ import { type ApiHandler, createHandler, type ProviderConfig } from "@cline/llms
 import type { ApiConfiguration } from "@shared/api"
 import type { Mode } from "@shared/storage/types"
 import { reasoningEffortFromThinkingBudget } from "@shared/utils/reasoning-support"
+import { StateManager } from "@/core/storage/StateManager"
+import type { AgentLimitValues } from "@/shared/AgentLimits"
 import { fetch } from "@/shared/net"
+import { buildAgentLimitSessionConfig, readAgentLimitValues } from "./agent-limit-config"
 import { buildBedrockProviderConfig } from "./bedrock-config"
 import {
 	resolveApiKey,
@@ -48,6 +51,20 @@ export interface BuildApiHandlerOptions {
  * Legacy thinking budgets persisted by older versions are honored by mapping
  * them onto the effort scale when no explicit effort is stored.
  */
+/** The response timeout and retry count from Agent Limits, as provider config. */
+function readProviderLimits(configuration: ApiConfiguration): Partial<ProviderConfig> {
+	let agentLimitSettings: AgentLimitValues | undefined
+	try {
+		agentLimitSettings = StateManager.get().getGlobalStateKey("agentLimitSettings")
+	} catch {
+		// StateManager is not initialized in unit tests; only the timeout applies.
+	}
+	return (
+		buildAgentLimitSessionConfig(readAgentLimitValues(agentLimitSettings, configuration.requestTimeoutMs)).providerConfig ??
+		{}
+	)
+}
+
 export function buildSdkProviderConfig(
 	configuration: ApiConfiguration,
 	mode: Mode,
@@ -77,11 +94,11 @@ export function buildSdkProviderConfig(
 		// Bedrock needs its region + structured AWS auth options forwarded to the
 		// SDK gateway. Without these, a pasted Bedrock API key / region is dropped.
 		...(providerId === "bedrock" ? buildBedrockProviderConfig(configuration, mode) : {}),
-		// Ollama carries the user's request timeout and context window
-		// (`num_ctx`) on the provider config; without this, standalone callers
-		// ignore an explicit Request Timeout setting and load models with
-		// Ollama's 4096-token server default.
+		// Ollama carries the user's context window (`num_ctx`) on the provider
+		// config; without it, standalone callers load models with Ollama's
+		// 4096-token server default.
 		...(providerId === "ollama" ? resolveOllamaProviderConfig(configuration, modelId) : {}),
+		...readProviderLimits(configuration),
 	}
 
 	if (options?.disableReasoning) {

@@ -14,6 +14,7 @@ function makeController(initial: Record<string, unknown> = {}) {
 		handleAgentLimitsChanged: vi.fn(),
 		stateManager: {
 			getGlobalStateKey: vi.fn((key: string) => state[key]),
+			getGlobalSettingsKey: vi.fn((key: string) => state[key]),
 			setGlobalState: vi.fn((key: string, value: unknown) => {
 				state[key] = value
 			}),
@@ -49,5 +50,26 @@ describe("updateSettings — agent limits", () => {
 		await updateSettings(controller, UpdateSettingsRequest.create({ agentLimitUpdates: { "tool.readLines": 500 } }))
 
 		expect(mocks.handleAgentLimitsChanged).not.toHaveBeenCalled()
+	})
+
+	it("stores the response timeout in the requestTimeoutMs setting", async () => {
+		const { controller, mocks, state } = makeController({ agentLimitSettings: { "tool.readLines": 500 } })
+
+		await updateSettings(
+			controller,
+			UpdateSettingsRequest.create({ agentLimitUpdates: { "api.requestTimeout": 120_000, "api.maxRetries": 4 } }),
+		)
+
+		expect(state.requestTimeoutMs).toBe(120_000)
+		expect(state.agentLimitSettings).toEqual({ "tool.readLines": 500, "api.maxRetries": 4 })
+		expect(mocks.handleAgentLimitsChanged).toHaveBeenCalledOnce()
+	})
+
+	it("clears requestTimeoutMs when the response timeout is reset", async () => {
+		const { controller, state } = makeController({ requestTimeoutMs: 120_000 })
+
+		await updateSettings(controller, UpdateSettingsRequest.create({ agentLimitUpdates: { "api.requestTimeout": -1 } }))
+
+		expect(state.requestTimeoutMs).toBeUndefined()
 	})
 })
