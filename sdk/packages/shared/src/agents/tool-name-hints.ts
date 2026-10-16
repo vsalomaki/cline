@@ -38,7 +38,18 @@ const TOOL_NAME_ALIASES = {
 		"terminal",
 	],
 	fetch_web_content: ["web_fetch", "webfetch", "fetch", "fetch_url"],
+	editor: ["edit"],
 } as const satisfies Record<string, readonly string[]>;
+
+/**
+ * Argument renames for aliases whose fields our tool names differently. Applied
+ * when the call is renamed, so approval previews and the UI see our fields.
+ */
+const ALIAS_INPUT_KEYS: Readonly<
+	Record<string, Readonly<Record<string, string>>>
+> = {
+	editor: { file_path: "path", old_string: "old_text", new_string: "new_text" },
+};
 
 const CANONICAL_BY_ALIAS: ReadonlyMap<string, string> = new Map(
 	Object.entries(TOOL_NAME_ALIASES).flatMap(([canonical, aliases]) =>
@@ -52,6 +63,37 @@ const CANONICAL_BY_ALIAS: ReadonlyMap<string, string> = new Map(
  */
 export function canonicalToolForAlias(toolName: string): string | undefined {
 	return CANONICAL_BY_ALIAS.get(toolName.trim().toLowerCase());
+}
+
+/**
+ * The JSON arguments of an aliased call with their fields renamed to
+ * `canonical`'s, or `input` unchanged when nothing needs renaming.
+ */
+export function canonicalInputForAlias(
+	canonical: string,
+	input: string,
+): string {
+	const keys = ALIAS_INPUT_KEYS[canonical];
+	if (keys === undefined) {
+		return input;
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(input);
+	} catch {
+		return input;
+	}
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return input;
+	}
+	const record: Record<string, unknown> = { ...parsed };
+	for (const [alias, target] of Object.entries(keys)) {
+		if (alias in record) {
+			record[target] ??= record[alias];
+			delete record[alias];
+		}
+	}
+	return JSON.stringify(record);
 }
 
 const EDIT_TOOLS = ["editor", "apply_patch"];

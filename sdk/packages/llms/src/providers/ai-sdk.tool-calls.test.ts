@@ -46,6 +46,20 @@ const LIST_FILES_TOOL: AgentToolDefinition = {
 	},
 };
 
+const EDITOR_TOOL: AgentToolDefinition = {
+	name: "editor",
+	description: "Edit a file",
+	inputSchema: {
+		type: "object",
+		properties: {
+			path: { type: "string" },
+			old_text: { type: "string" },
+			new_text: { type: "string" },
+		},
+		required: ["path", "new_text"],
+	},
+};
+
 const READ_FILES_TOOL: AgentToolDefinition = {
 	name: "read_files",
 	description: "Read files",
@@ -272,6 +286,25 @@ describe("ai-sdk adapter malformed tool calls", () => {
 		expect(call).toMatchObject({ toolName: "read_files" });
 	});
 
+	it("runs a Claude Code Edit call as editor with the editor's fields", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall(
+				"Edit",
+				'{"file_path": "/repo/a.ts", "old_string": "a", "new_string": "b"}',
+			),
+			[EDITOR_TOOL, READ_FILES_TOOL],
+		);
+
+		expect(findParseError(events)).toBeUndefined();
+		const call = events.find((event) => event.type === "tool-call-delta");
+		expect(call).toMatchObject({ toolName: "editor" });
+		expect(findToolInput(events)).toEqual({
+			path: "/repo/a.ts",
+			old_text: "a",
+			new_text: "b",
+		});
+	});
+
 	it("names the tool to use instead of an unknown one", async () => {
 		const events = await streamToolCallEvents(
 			sseToolCall("bash", '{"command": "ls", "cwd": "/elsewhere"}'),
@@ -380,18 +413,43 @@ describe("repairMalformedToolCall", () => {
 		}
 	});
 
-	it("does not rename edit tools", async () => {
-		expect(
-			await repairMalformedToolCall({
-				toolCall: {
-					toolCallId: "call_1",
-					toolName: "Edit",
-					input: '{"file_path": "/repo/a.ts"}',
-				},
-				tools: { editor: {}, read_files: {} },
-				error: new NoSuchToolError({ toolName: "Edit" }),
-			}),
-		).toBeNull();
+	it("renames Edit to editor along with its fields", async () => {
+		const repaired = await repairMalformedToolCall({
+			toolCall: {
+				toolCallId: "call_1",
+				toolName: "Edit",
+				input:
+					'{"file_path": "/repo/a.ts", "old_string": "a", "new_string": "b"}',
+			},
+			tools: { editor: {}, read_files: {} },
+			error: new NoSuchToolError({ toolName: "Edit" }),
+		});
+		expect(repaired?.toolName).toBe("editor");
+		expect(JSON.parse(repaired?.input ?? "")).toEqual({
+			path: "/repo/a.ts",
+			old_text: "a",
+			new_text: "b",
+		});
+	});
+
+	it("does not rename Edit without an editor, or other edit tools", async () => {
+		for (const [toolName, tools] of [
+			["Edit", { apply_patch: {}, read_files: {} }],
+			["Write", { editor: {}, read_files: {} }],
+			["MultiEdit", { editor: {}, read_files: {} }],
+		] as const) {
+			expect(
+				await repairMalformedToolCall({
+					toolCall: {
+						toolCallId: "call_1",
+						toolName,
+						input: '{"file_path": "/repo/a.ts"}',
+					},
+					tools,
+					error: new NoSuchToolError({ toolName }),
+				}),
+			).toBeNull();
+		}
 	});
 
 	it("returns null for unknown-tool errors", async () => {
