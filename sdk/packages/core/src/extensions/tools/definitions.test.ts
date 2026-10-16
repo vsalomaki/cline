@@ -9,6 +9,7 @@ import {
 	createSearchTool,
 	createShellTool,
 	createSkillsTool,
+	createWebFetchTool,
 } from "./definitions";
 import { CommandExitError } from "./executors/bash";
 import { RUN_COMMAND_QUERY_PREVIEW_LIMIT, TimeoutError } from "./helpers";
@@ -450,6 +451,36 @@ describe("default list_files tool", () => {
 			context,
 		);
 		expect(execute).toHaveBeenNthCalledWith(2, { path: "." }, "/repo", context);
+	});
+
+	it("maps glob tools' argument shapes onto pattern and path", async (_request: unknown) => {
+		const execute = vi.fn(async (_request: unknown) => "ok");
+		const tool = createListFilesTool(execute, { cwd: "/repo" });
+
+		await tool.execute({ pattern: "**/*.ts", path: "src" }, context);
+		await tool.execute(
+			{ pattern: "*.md", dir_path: "/repo/docs" } as never,
+			context,
+		);
+		await tool.execute(
+			{ pattern: "*.md", directory: "docs" } as never,
+			context,
+		);
+		await tool.execute({ glob: "*.json" } as never, context);
+		await tool.execute(
+			{ glob_pattern: "*.py", target_directory: "x" } as never,
+			context,
+		);
+		await tool.execute({ pattern: "  " } as never, context);
+
+		expect(execute.mock.calls.map(([request]) => request)).toEqual([
+			{ path: "src", pattern: "**/*.ts" },
+			{ path: "/repo/docs", pattern: "*.md" },
+			{ path: "docs", pattern: "*.md" },
+			{ path: ".", pattern: "*.json" },
+			{ path: "x", pattern: "*.py" },
+			{ path: "." },
+		]);
 	});
 
 	it("is part of the default tool set", () => {
@@ -2262,5 +2293,144 @@ describe("default editor tool", () => {
 		}
 		expect(result.error).toContain(`over the ${EDITOR_INPUT_CHAR_LIMIT} limit`);
 		expect(execute).not.toHaveBeenCalled();
+	});
+});
+
+describe("other agents' tool input shapes", () => {
+	const context = {
+		agentId: "agent-1",
+		conversationId: "conv-1",
+		iteration: 1,
+	};
+
+	it("reads Claude Code, Gemini and Cursor read requests", async () => {
+		const execute = vi.fn(async (_request: unknown) => "content");
+		const tool = createReadFilesTool(execute);
+
+		await tool.execute(
+			{ file_path: "/tmp/a.ts", offset: 10, limit: 5 } as never,
+			context,
+		);
+		await tool.execute(
+			{ absolute_path: "/tmp/b.ts", offset: 0, limit: 20 } as never,
+			context,
+		);
+		await tool.execute(
+			{
+				target_file: "src/c.ts",
+				start_line_one_indexed: 4,
+				end_line_one_indexed_inclusive: 9,
+				should_read_entire_file: false,
+			} as never,
+			context,
+		);
+		await tool.execute(
+			{ file_path: "/tmp/d.ts", limit: "50" } as never,
+			context,
+		);
+		await tool.execute(
+			{ paths: ["/tmp/e.ts", "/tmp/f.ts"], include: ["*.ts"] } as never,
+			context,
+		);
+
+		expect(execute.mock.calls.map(([request]) => request)).toEqual([
+			{ path: "/tmp/a.ts", start_line: 10, end_line: 15 },
+			{ path: "/tmp/b.ts", start_line: 1, end_line: 20 },
+			{ path: "src/c.ts", start_line: 4, end_line: 9 },
+			{ path: "/tmp/d.ts", start_line: 1, end_line: 50 },
+			{ path: "/tmp/e.ts" },
+			{ path: "/tmp/f.ts" },
+		]);
+	});
+
+	it("keeps explicit start_line/end_line over offset/limit", async () => {
+		const execute = vi.fn(async () => "content");
+		const tool = createReadFilesTool(execute);
+
+		await tool.execute(
+			{
+				files: [{ path: "/tmp/a.ts", start_line: 2, offset: 30, limit: 5 }],
+			} as never,
+			context,
+		);
+
+		expect(execute).toHaveBeenCalledWith(
+			{ path: "/tmp/a.ts", start_line: 2 },
+			expect.anything(),
+		);
+	});
+
+	it("searches with pattern, query or regex and ignores other fields", async () => {
+		const execute = vi.fn(async (_query: string) => "matches");
+		const tool = createSearchTool(execute);
+
+		await tool.execute(
+			{
+				pattern: "foo",
+				path: "src",
+				glob: "*.ts",
+				output_mode: "content",
+			} as never,
+			context,
+		);
+		await tool.execute(
+			{ query: "bar", include_pattern: "*.ts" } as never,
+			context,
+		);
+		await tool.execute(
+			{ regex: "baz", file_pattern: "*.ts" } as never,
+			context,
+		);
+
+		expect(execute.mock.calls.map(([query]) => query)).toEqual([
+			"foo",
+			"bar",
+			"baz",
+		]);
+	});
+
+	it("runs a single shell command with extra fields stripped", async () => {
+		const execute = vi.fn(async (_command: unknown) => "ok");
+		const tool = createShellTool(execute);
+
+		await tool.execute(
+			{ command: "ls -la", description: "List", timeout: 5000 } as never,
+			context,
+		);
+		await tool.execute(
+			{
+				command: "git status",
+				is_background: false,
+				explanation: "x",
+			} as never,
+			context,
+		);
+
+		expect(execute.mock.calls.map(([command]) => command)).toEqual([
+			"ls -la",
+			"git status",
+		]);
+	});
+
+	it("fetches url and urls shapes, defaulting a missing prompt", async () => {
+		const execute = vi.fn(async (_url: string, _prompt: string) => "page");
+		const tool = createWebFetchTool(execute);
+
+		await tool.execute(
+			{ url: "https://a.example", prompt: "Find the API" } as never,
+			context,
+		);
+		await tool.execute({ url: "https://b.example" } as never, context);
+		await tool.execute(
+			{ urls: ["https://c.example", "https://d.example"] } as never,
+			context,
+		);
+
+		expect(execute.mock.calls.map(([url, prompt]) => [url, prompt])).toEqual([
+			["https://a.example", "Find the API"],
+			["https://b.example", "Return the main content of the page."],
+			["https://c.example", "Return the main content of the page."],
+			["https://d.example", "Return the main content of the page."],
+		]);
 	});
 });

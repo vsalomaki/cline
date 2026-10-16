@@ -120,6 +120,112 @@ describe("createListFilesExecutor", () => {
 		},
 	);
 
+	describe("with a pattern", () => {
+		it("lists matching files only, sorted, relative to the path", async () => {
+			const output = await list({ path: root, pattern: "*.ts" }, "/", context);
+
+			expect(output.split("\n")).toEqual([
+				root,
+				"Found 3 files matching *.ts:",
+				"src/index.ts",
+				"src/util/deep/leaf.ts",
+				"src/util/helpers.ts",
+			]);
+		});
+
+		it("lists paths relative to a nested path argument", async () => {
+			const output = await list(
+				{ path: "src", pattern: "util/**/*.ts" },
+				root,
+				context,
+			);
+
+			expect(output.split("\n").slice(2)).toEqual([
+				"util/deep/leaf.ts",
+				"util/helpers.ts",
+			]);
+		});
+
+		it("searches to the maximum depth unless max_depth is given", async () => {
+			write(root, "a/b/c/d/e/f/g/h/deep.ts");
+
+			const full = await list({ path: root, pattern: "deep.ts" }, "/", context);
+			const shallow = await list(
+				{ path: root, pattern: "deep.ts", max_depth: 3 },
+				"/",
+				context,
+			);
+
+			expect(full).toContain("a/b/c/d/e/f/g/h/deep.ts");
+			expect(shallow).toContain("No files found matching deep.ts.");
+		});
+
+		it("does not descend into dependency directories", async () => {
+			const output = await list({ path: root, pattern: "*.js" }, "/", context);
+
+			expect(output).toContain("No files found matching *.js.");
+		});
+
+		it("truncates at the limit with a note", async () => {
+			const output = await list(
+				{ path: root, pattern: "**/*.ts", limit: 2 },
+				"/",
+				context,
+			);
+
+			expect(output).toContain("Found 2 files matching **/*.ts:");
+			expect(output).toContain("(Showing 2 files; more not shown.");
+		});
+
+		it("does not count non-matching entries against the limit", async () => {
+			const output = await list(
+				{ path: root, pattern: "leaf.ts", limit: 1 },
+				"/",
+				context,
+			);
+
+			expect(output).toContain("src/util/deep/leaf.ts");
+			expect(output).not.toContain("more not shown");
+		});
+
+		it.runIf(hasGit())(
+			"skips .gitignored files in a git work tree",
+			async () => {
+				execFileSync("git", ["init", "-q"], { cwd: root });
+				write(root, ".gitignore", "dist/\n*.log\n");
+				write(root, "dist/bundle.ts");
+				write(root, "debug.ts.log");
+				write(root, "src/generated.log");
+
+				const output = await list(
+					{ path: root, pattern: "**/*.{ts,log}" },
+					"/",
+					context,
+				);
+
+				expect(output).not.toContain("dist/");
+				expect(output).not.toContain(".log");
+				expect(output).toContain("src/index.ts");
+			},
+		);
+
+		it("refuses to search the home directory", async () => {
+			await expect(
+				list({ path: os.homedir(), pattern: "*.ts" }, "/", context),
+			).rejects.toThrow("Refusing to list");
+		});
+
+		it("reports a missing directory", async () => {
+			await expect(
+				list(
+					{ path: path.join(root, "missing"), pattern: "*.ts" },
+					"/",
+					context,
+				),
+			).rejects.toThrow("Directory not found");
+		});
+	});
+
 	it("rejects a file path and points at read_files", async () => {
 		await expect(
 			list({ path: path.join(root, "README.md") }, "/", context),

@@ -139,6 +139,13 @@ export const ListFilesInputSchema = z.object({
 		.max(1000)
 		.optional()
 		.describe("Maximum entries to return. Defaults to 200."),
+	pattern: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"Glob such as `**/*.ts` or `src/**/*.{ts,tsx}`: list matching files only, recursively under path",
+		),
 });
 
 /**
@@ -163,8 +170,12 @@ export function normalizeListFilesInput(input: unknown): unknown {
 		record.target_directory,
 		record.relative_workspace_path,
 	].find((value) => typeof value === "string" && value.trim() !== "");
+	const pattern = [record.pattern, record.glob, record.glob_pattern].find(
+		(value) => typeof value === "string" && value.trim() !== "",
+	);
 	return {
 		path: pathValue ?? ".",
+		...(pattern !== undefined ? { pattern } : {}),
 		...(typeof record.recursive === "boolean"
 			? { recursive: record.recursive }
 			: {}),
@@ -194,6 +205,15 @@ export const SearchCodebaseUnionInputSchema = z.union([
 	z.array(z.string()),
 	z.string(),
 	z.object({ queries: z.string() }),
+	z
+		.object({ pattern: z.string() })
+		.transform(({ pattern }) => ({ queries: [pattern] })),
+	z
+		.object({ query: z.string() })
+		.transform(({ query }) => ({ queries: [query] })),
+	z
+		.object({ regex: z.string() })
+		.transform(({ regex }) => ({ queries: [regex] })),
 ]);
 
 const commandInputSchemaFor = (limit: number) =>
@@ -268,6 +288,30 @@ export const FetchWebContentInputSchema = z.object({
 		.array(WebFetchRequestSchema)
 		.describe("Array of the URLs for the web fetch requests"),
 });
+
+const DEFAULT_WEB_FETCH_PROMPT = "Return the main content of the page.";
+
+const promptOrDefault = (prompt: string | undefined) =>
+	prompt !== undefined && prompt.trim().length >= 2
+		? prompt
+		: DEFAULT_WEB_FETCH_PROMPT;
+
+/**
+ * Also accepts other agents' `{ url, prompt? }` and `{ urls, prompt? }` shapes.
+ */
+export const FetchWebContentUnionInputSchema = z.union([
+	FetchWebContentInputSchema,
+	z
+		.object({ url: z.string(), prompt: z.string().optional() })
+		.transform(({ url, prompt }) => ({
+			requests: [{ url, prompt: promptOrDefault(prompt) }],
+		})),
+	z
+		.object({ urls: z.array(z.string()), prompt: z.string().optional() })
+		.transform(({ urls, prompt }) => ({
+			requests: urls.map((url) => ({ url, prompt: promptOrDefault(prompt) })),
+		})),
+]);
 
 /**
  * Schema for editor tool input

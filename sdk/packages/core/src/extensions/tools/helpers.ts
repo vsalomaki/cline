@@ -135,6 +135,98 @@ export function coalesceOrphanReadRanges(input: unknown): unknown {
 	return input;
 }
 
+function toLineCount(value: unknown): number | undefined {
+	const number = typeof value === "string" ? Number(value) : value;
+	return typeof number === "number" && Number.isInteger(number) && number >= 0
+		? number
+		: undefined;
+}
+
+/**
+ * Maps other agents' read-request fields (`absolute_path`, `target_file`,
+ * `offset`/`limit`, Cursor's one-indexed line fields) onto
+ * path/start_line/end_line.
+ */
+function normalizeReadRequestAliases(entry: unknown): unknown {
+	if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+		return entry;
+	}
+	const {
+		absolute_path,
+		target_file,
+		start_line_one_indexed,
+		end_line_one_indexed_inclusive,
+		offset,
+		limit,
+		...normalized
+	} = entry as Record<string, unknown>;
+	const pathAlias = absolute_path ?? target_file;
+	if (
+		pathAlias !== undefined &&
+		normalized.path === undefined &&
+		normalized.file_path === undefined &&
+		normalized.filePath === undefined
+	) {
+		normalized.path = pathAlias;
+	}
+	if (
+		normalized.start_line === undefined &&
+		start_line_one_indexed !== undefined
+	) {
+		normalized.start_line = start_line_one_indexed;
+	}
+	if (
+		normalized.end_line === undefined &&
+		end_line_one_indexed_inclusive !== undefined
+	) {
+		normalized.end_line = end_line_one_indexed_inclusive;
+	}
+	const start = toLineCount(offset);
+	const count = toLineCount(limit);
+	if (
+		normalized.start_line === undefined &&
+		normalized.end_line === undefined &&
+		(start !== undefined || count !== undefined)
+	) {
+		// `offset` is one-based for some agents and zero-based for others; this
+		// range covers both readings.
+		const startLine = Math.max(1, start ?? 1);
+		normalized.start_line = startLine;
+		if (count !== undefined) {
+			normalized.end_line = Math.max(startLine, (start ?? 0) + count);
+		}
+	}
+	return normalized;
+}
+
+/**
+ * Normalizes read_files input before validation: other agents' field names,
+ * then orphan line ranges (see `coalesceOrphanReadRanges`).
+ */
+export function normalizeReadFilesInput(input: unknown): unknown {
+	let normalized = input;
+	if (Array.isArray(input)) {
+		normalized = input.map(normalizeReadRequestAliases);
+	} else if (input !== null && typeof input === "object") {
+		const record = input as Record<string, unknown>;
+		const listKey = (["files", "paths"] as const).find(
+			(key) => record[key] !== undefined,
+		);
+		if (listKey === undefined) {
+			normalized = normalizeReadRequestAliases(record);
+		} else {
+			const value = record[listKey];
+			normalized = {
+				...record,
+				[listKey]: Array.isArray(value)
+					? value.map(normalizeReadRequestAliases)
+					: normalizeReadRequestAliases(value),
+			};
+		}
+	}
+	return coalesceOrphanReadRanges(normalized);
+}
+
 export function normalizeRunCommandsInput(
 	input: unknown,
 ): Array<string | StructuredCommandInput> {

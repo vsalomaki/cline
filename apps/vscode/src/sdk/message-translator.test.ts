@@ -3334,6 +3334,26 @@ describe("sdkToolToClineSayTool — search_codebase (S6-47)", () => {
 		expect(tool.regex).toBe("TODO, FIXME")
 	})
 
+	it("shows the pattern of a search renamed from another agent's grep tool", () => {
+		const state = new MessageTranslatorState()
+		const event: CoreSessionEvent = {
+			type: "agent_event",
+			payload: {
+				sessionId: "s1",
+				event: {
+					type: "content_start",
+					contentType: "tool",
+					toolName: "search_codebase",
+					toolCallId: "c1",
+					input: { pattern: "TODO", path: "src" },
+				} as AgentEvent,
+			},
+		}
+		const result = translateSessionEvent(event, state)
+		const tool = JSON.parse(result.messages[0].text!)
+		expect(tool.regex).toBe("TODO")
+	})
+
 	it("S6-47: search_codebase with stringified JSON input extracts regex", () => {
 		const state = new MessageTranslatorState()
 		const event: CoreSessionEvent = {
