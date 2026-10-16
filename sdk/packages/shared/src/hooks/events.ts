@@ -121,6 +121,7 @@ export interface PreCompactData {
 	deletedRangeEnd: number;
 	contextJsonPath: string;
 	contextRawPath: string;
+	trigger?: "auto" | "manual";
 }
 
 const PreToolUseDataSchema = z.object({
@@ -163,6 +164,7 @@ const PreCompactDataSchema = z.object({
 	deletedRangeEnd: z.number(),
 	contextJsonPath: z.string(),
 	contextRawPath: z.string(),
+	trigger: z.enum(["auto", "manual"]).optional(),
 });
 
 export interface HookEventPayloadBase {
@@ -185,6 +187,7 @@ export interface HookEventPayloadBase {
 	 */
 	workspaceInfo?: WorkspaceInfo;
 	userId: string;
+	model?: { provider: string; slug: string };
 	agent_id: string;
 	parent_agent_id: string | null;
 	preToolUse?: PreToolUseData | undefined;

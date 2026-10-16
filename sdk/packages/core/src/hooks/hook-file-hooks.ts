@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
 	AgentAfterToolContext,
 	AgentBeforeToolContext,
+	AgentBeforeToolResult,
 	AgentExtension,
 	AgentHooks,
+	AgentMessage,
 	AgentRunLifecycleContext,
 	AgentRuntimeEvent,
 	BasicLogger,
@@ -14,8 +17,12 @@ import type {
 } from "@cline/shared";
 import { augmentNodeCommandForDebug } from "@cline/shared";
 import { ensureHookLogDir } from "@cline/shared/storage";
+import type { CoreCompactionMode } from "../types/config";
 import { createAgentHooksExtension } from "./hook-extension";
-import { listHookConfigFiles } from "./hook-file-config";
+import {
+	HOOK_CONFIG_FILE_EVENT_MAP,
+	listHookConfigFiles,
+} from "./hook-file-config";
 import {
 	type HookEventName,
 	type HookEventPayload,
@@ -42,6 +49,11 @@ type HookCommandControl = Omit<HookControl, "appendMessages"> & {
 	 * cancellation reason when controls are merged.
 	 */
 	cancelReason?: string;
+	/** Block this one tool call (or prompt) without stopping the run. */
+	deny?: boolean;
+	denyReason?: string;
+	/** Ask the user before this tool call, whatever the approval settings. */
+	ask?: boolean;
 };
 
 type HookCommandRunStartContext = HookContextBase & {
@@ -64,18 +76,6 @@ type HookCommandToolCallEndContext = HookContextBase & {
 		endedAt: Date;
 	};
 };
-type HookCommandTurnEndContext = HookContextBase & {
-	iteration: number;
-	turn: unknown;
-};
-type HookCommandStopErrorContext = HookContextBase & {
-	iteration: number;
-	error: Error;
-};
-type HookCommandSessionShutdownContext = HookContextBase & {
-	reason?: string;
-};
-
 /**
  * Reports how long a fire-and-forget hook actually ran, once per hook. Hosts
  * use it to learn the real runtime distribution of detached hooks —
@@ -91,12 +91,55 @@ export type HookRuntimeObserver = (event: {
 	exited: boolean;
 }) => void;
 
+/** File hook settings a host can pass with the session config. */
+export interface FileHookSettings {
+	/** Timeout for each blocking hook. Default 120000, or `CLINE_HOOK_TIMEOUT_MS`. */
+	timeoutMs?: number;
+	/** Run TaskStart/TaskResume hooks blocking so they can stop the run or add context. */
+	blockingRunStart?: boolean;
+	/** Skip hook files without the executable bit (not on Windows). */
+	requireExecutable?: boolean;
+	/** Hook directories searched after the standard ones. */
+	extraHookDirs?: string[];
+	/**
+	 * Which run-start event the session's first run fires. `none` is for a
+	 * session rebuilt for a settings change. Default: `resume` when the
+	 * conversation already has an assistant reply, otherwise `startup`.
+	 */
+	lifecycle?: "startup" | "resume" | "none";
+}
+
+export type HookRunStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface HookRunEvent {
+	/** Same for the running and final report of one hook execution. */
+	executionId: string;
+	/** Hook file name, such as `PreToolUse`. */
+	hookName: string;
+	/** Hook file path, or the command of a hooks.json entry. */
+	source: string;
+	toolName?: string;
+	toolCallId?: string;
+	itemIndex?: number;
+	status: HookRunStatus;
+	durationMs?: number;
+	error?: string;
+}
+
+/** Reports each hook execution, for host status UI. */
+export type HookRunObserver = (event: HookRunEvent) => void;
+
 type HookRuntimeOptions = {
 	cwd: string;
 	workspacePath: string;
 	rootSessionId?: string;
 	logger?: BasicLogger;
 	toolCallTimeoutMs?: number;
+	requireExecutable?: boolean;
+	extraHookDirs?: readonly string[];
+	lifecycle?: FileHookSettings["lifecycle"];
+	onHookRun?: HookRunObserver;
+	model?: { provider: string; slug: string };
 	/** Keep asynchronous hooks attached until exit. Intended for deterministic tests. */
 	detachAsyncHooks?: boolean;
 	/**
@@ -114,6 +157,40 @@ type HookRuntimeOptions = {
 	/** Structured git + path metadata forwarded into every hook payload. */
 	workspaceInfo?: WorkspaceInfo;
 };
+
+/** Maps session settings onto runtime options; `CLINE_HOOK_TIMEOUT_MS` wins. */
+export function resolveFileHookOptions(
+	settings: FileHookSettings | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+): Pick<
+	HookRuntimeOptions,
+	| "toolCallTimeoutMs"
+	| "blockingRunStartHooks"
+	| "requireExecutable"
+	| "extraHookDirs"
+	| "lifecycle"
+> {
+	const envTimeout = Number(env.CLINE_HOOK_TIMEOUT_MS);
+	const timeoutMs =
+		Number.isFinite(envTimeout) && envTimeout > 0
+			? envTimeout
+			: settings?.timeoutMs;
+	return {
+		...(timeoutMs !== undefined && timeoutMs > 0
+			? { toolCallTimeoutMs: timeoutMs }
+			: {}),
+		...(settings?.blockingRunStart !== undefined
+			? { blockingRunStartHooks: settings.blockingRunStart }
+			: {}),
+		...(settings?.requireExecutable !== undefined
+			? { requireExecutable: settings.requireExecutable }
+			: {}),
+		...(settings?.extraHookDirs
+			? { extraHookDirs: settings.extraHookDirs }
+			: {}),
+		...(settings?.lifecycle ? { lifecycle: settings.lifecycle } : {}),
+	};
+}
 
 function mapParams(input: unknown): Record<string, string> {
 	if (!input || typeof input !== "object") {
@@ -171,8 +248,16 @@ function mergeHookControls(
 		...(current.appendMessages ?? []),
 		...(next.appendMessages ?? []),
 	];
+	const denyReasons = [current.denyReason, next.denyReason]
+		.filter(
+			(value): value is string => typeof value === "string" && value.length > 0,
+		)
+		.join("\n");
 	return {
 		cancel: current.cancel === true || next.cancel === true ? true : undefined,
+		deny: current.deny === true || next.deny === true ? true : undefined,
+		denyReason: denyReasons || undefined,
+		ask: current.ask === true || next.ask === true ? true : undefined,
 		review: current.review === true || next.review === true ? true : undefined,
 		context: contexts || undefined,
 		cancelReason: cancelReasons || undefined,
@@ -188,37 +273,71 @@ function mergeHookControls(
 	};
 }
 
-function parseHookControl(value: unknown): HookCommandControl | undefined {
+function nonEmptyString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
+}
+
+/**
+ * Reads Cline's own control fields and Claude Code's hook output fields
+ * (`hookSpecificOutput`, `decision`, `continue`).
+ */
+export function parseHookControl(
+	value: unknown,
+): HookCommandControl | undefined {
 	if (!value || typeof value !== "object") {
 		return undefined;
 	}
 	const record = value as Record<string, unknown>;
+	const specific =
+		record.hookSpecificOutput && typeof record.hookSpecificOutput === "object"
+			? (record.hookSpecificOutput as Record<string, unknown>)
+			: undefined;
 	const injectableContext =
 		typeof record.context === "string"
 			? record.context
 			: typeof record.contextModification === "string"
 				? record.contextModification
 				: undefined;
-	const errorMessage =
-		typeof record.errorMessage === "string" &&
-		record.errorMessage.trim().length > 0
-			? record.errorMessage
+	const errorMessage = nonEmptyString(record.errorMessage);
+	const stopRun = record.continue === false;
+	const cancel = stopRun
+		? true
+		: typeof record.cancel === "boolean"
+			? record.cancel
 			: undefined;
-	const cancel = typeof record.cancel === "boolean" ? record.cancel : undefined;
+	const deny =
+		specific?.permissionDecision === "deny" || record.decision === "block";
+	const additionalContext = nonEmptyString(specific?.additionalContext);
+	const context = [injectableContext ?? errorMessage, additionalContext]
+		.filter((text): text is string => Boolean(text?.trim()))
+		.join("\n");
 	return {
 		cancel,
 		review: typeof record.review === "boolean" ? record.review : undefined,
 		// A cancelling hook's message is its error/reason, not injectable
 		// conversation context; errorMessage takes precedence there.
 		context:
-			cancel === true
-				? undefined
-				: truncateHookContext(injectableContext ?? errorMessage),
+			cancel === true ? undefined : truncateHookContext(context || undefined),
 		cancelReason:
-			cancel === true ? (errorMessage ?? injectableContext) : undefined,
-		overrideInput: Object.hasOwn(record, "overrideInput")
-			? record.overrideInput
+			cancel === true
+				? stopRun
+					? (nonEmptyString(record.stopReason) ?? errorMessage)
+					: (errorMessage ?? injectableContext)
+				: undefined,
+		deny: deny ? true : undefined,
+		denyReason: deny
+			? (nonEmptyString(specific?.permissionDecisionReason) ??
+				nonEmptyString(record.reason))
 			: undefined,
+		ask: specific?.permissionDecision === "ask" ? true : undefined,
+		overrideInput:
+			specific && Object.hasOwn(specific, "updatedInput")
+				? specific.updatedInput
+				: Object.hasOwn(record, "overrideInput")
+					? record.overrideInput
+					: undefined,
 	};
 }
 
@@ -248,12 +367,60 @@ function createPayloadBase(
 		workspaceRoots: options.workspacePath ? [options.workspacePath] : [],
 		workspaceInfo: options.workspaceInfo,
 		userId,
+		...(options.model ? { model: options.model } : {}),
 		agent_id: ctx.agentId,
 		parent_agent_id: ctx.parentAgentId,
 	} as Omit<HookEventPayload, "hookName">;
 }
 
-type HookCommandMap = Partial<Record<HookEventName, string[][]>>;
+type HookCommand = { command: string[]; path: string };
+type HookCommandMap = Partial<Record<HookEventName, HookCommand[]>>;
+
+/** Which tool call a hook run belongs to, for status reporting. */
+type HookRunMeta = Pick<HookRunEvent, "toolName" | "toolCallId" | "itemIndex">;
+
+const HOOK_FILE_NAME_BY_EVENT = new Map<HookEventName, string>(
+	Object.entries(HOOK_CONFIG_FILE_EVENT_MAP).flatMap(([fileName, event]) =>
+		event ? [[event, fileName] as const] : [],
+	),
+);
+
+export function hookFileNameForEvent(event: HookEventName): string {
+	return HOOK_FILE_NAME_BY_EVENT.get(event) ?? event;
+}
+
+/** Starts reporting one hook execution; the returned function reports its end. */
+export function reportHookRun(
+	observer: HookRunObserver | undefined,
+	logger: BasicLogger | undefined,
+	start: Omit<HookRunEvent, "executionId" | "status" | "durationMs" | "error">,
+): (status: Exclude<HookRunStatus, "running">, error?: string) => void {
+	if (!observer) {
+		return () => {};
+	}
+	const executionId = randomUUID();
+	const startedAt = Date.now();
+	const emit = (event: HookRunEvent) => {
+		try {
+			observer(event);
+		} catch (error) {
+			logHookError(logger, "hook run observer failed", error);
+		}
+	};
+	emit({ ...start, executionId, status: "running" });
+	let finished = false;
+	return (status, error) => {
+		if (finished) return;
+		finished = true;
+		emit({
+			...start,
+			executionId,
+			status,
+			durationMs: Date.now() - startedAt,
+			...(error ? { error } : {}),
+		});
+	};
+}
 
 async function runHookCommand(
 	payload: HookEventPayload,
@@ -398,30 +565,40 @@ function inferHookCommand(path: string): string[] {
 	return ["bash", path];
 }
 
-function createHookCommandMap(workspacePath: string): HookCommandMap {
+function createHookCommandMap(options: HookRuntimeOptions): HookCommandMap {
 	const map: HookCommandMap = {};
-	for (const file of listHookConfigFiles(workspacePath)) {
+	for (const file of listHookConfigFiles(options.workspacePath, {
+		extraDirectories: options.extraHookDirs,
+		requireExecutable: options.requireExecutable,
+	})) {
 		if (!file.hookEventName) {
 			continue;
 		}
 		const hookEventName = file.hookEventName;
 		const existing = map[hookEventName] ?? [];
-		existing.push(inferHookCommand(file.path));
+		existing.push({ command: inferHookCommand(file.path), path: file.path });
 		map[hookEventName] = existing;
 	}
 	return map;
 }
 
 async function runBlockingHookCommands(options: {
-	commands: string[][];
+	commands: HookCommand[];
 	payload: HookEventPayload;
 	cwd: string;
 	logger?: BasicLogger;
 	timeoutMs?: number;
+	onHookRun?: HookRunObserver;
+	meta?: HookRunMeta;
 }): Promise<HookCommandControl | undefined> {
 	let merged: HookCommandControl | undefined;
-	for (const command of options.commands) {
+	for (const { command, path } of options.commands) {
 		const commandLabel = command.join(" ");
+		const finish = reportHookRun(options.onHookRun, options.logger, {
+			hookName: hookFileNameForEvent(options.payload.hookName),
+			source: path,
+			...options.meta,
+		});
 		try {
 			const result = await runHookCommand(options.payload, {
 				command,
@@ -432,6 +609,7 @@ async function runBlockingHookCommands(options: {
 			});
 			if (result?.timedOut) {
 				logHookError(options.logger, `hook command timed out: ${commandLabel}`);
+				finish("failed", "timed out");
 				continue;
 			}
 			if (result?.parseError) {
@@ -439,72 +617,96 @@ async function runBlockingHookCommands(options: {
 					options.logger,
 					`hook command returned invalid JSON control output: ${commandLabel} (${result.parseError})`,
 				);
+				finish("failed", "invalid JSON output");
 				continue;
 			}
-			merged = mergeHookControls(merged, parseHookControl(result?.parsedJson));
+			const control = parseHookControl(result?.parsedJson);
+			merged = mergeHookControls(merged, control);
+			finish(control?.cancel === true ? "cancelled" : "completed");
 		} catch (error) {
 			logHookError(
 				options.logger,
 				`hook command failed: ${commandLabel}`,
 				error,
 			);
+			finish("failed", error instanceof Error ? error.message : String(error));
 		}
 	}
 	return merged;
 }
 
 async function runAsyncHookCommands(options: {
-	commands: string[][];
+	commands: HookCommand[];
 	payload: HookEventPayload;
 	cwd: string;
 	logger?: BasicLogger;
 	detached: boolean;
 	onHookRuntime?: HookRuntimeObserver;
+	onHookRun?: HookRunObserver;
 }): Promise<void> {
+	const hookName = options.payload.hookName;
+	const startReport = (path: string) =>
+		reportHookRun(options.onHookRun, options.logger, {
+			hookName: hookFileNameForEvent(hookName),
+			source: path,
+		});
 	if (options.detached) {
 		const observer = options.onHookRuntime;
-		const hookName = options.payload.hookName;
-		for (const command of options.commands) {
+		for (const { command, path } of options.commands) {
 			const commandLabel = command.join(" ");
+			const finish = startReport(path);
 			void runHookCommand(options.payload, {
 				command,
 				cwd: options.cwd,
 				env: process.env,
 				detached: true,
-				onDetachedSettled: observer
-					? (event) =>
-							observer({
-								hookName,
-								durationMs: event.durationMs,
-								exitCode: event.exitCode,
-								exited: event.exited,
-							})
-					: undefined,
+				onDetachedSettled: (event) => {
+					// A hook still running when observation ends stays "running".
+					if (event.exited) {
+						finish(event.exitCode === 0 ? "completed" : "failed");
+					}
+					observer?.({
+						hookName,
+						durationMs: event.durationMs,
+						exitCode: event.exitCode,
+						exited: event.exited,
+					});
+				},
 			}).catch((error) => {
 				logHookError(
 					options.logger,
 					`hook command failed: ${commandLabel}`,
 					error,
 				);
+				finish(
+					"failed",
+					error instanceof Error ? error.message : String(error),
+				);
 			});
 		}
 		return;
 	}
 	await Promise.all(
-		options.commands.map(async (command) => {
+		options.commands.map(async ({ command, path }) => {
 			const commandLabel = command.join(" ");
+			const finish = startReport(path);
 			try {
-				await runHookCommand(options.payload, {
+				const result = await runHookCommand(options.payload, {
 					command,
 					cwd: options.cwd,
 					env: process.env,
 					detached: options.detached,
 				});
+				finish(result?.exitCode ? "failed" : "completed");
 			} catch (error) {
 				logHookError(
 					options.logger,
 					`hook command failed: ${commandLabel}`,
 					error,
+				);
+				finish(
+					"failed",
+					error instanceof Error ? error.message : String(error),
 				);
 			}
 		}),
@@ -574,30 +776,36 @@ function textFromMessageContent(
 		.join("");
 }
 
-function beforeToolResultFromControl(
+const DEFAULT_DENY_REASON = "Blocked by a PreToolUse hook";
+
+/** Stop beats deny, and deny beats ask. */
+export function beforeToolResultFromControl(
 	control: HookCommandControl | undefined,
-):
-	| { stop?: boolean; reason?: string; input?: unknown; appendContext?: string }
-	| undefined {
+): AgentBeforeToolResult | undefined {
 	if (!control) {
 		return undefined;
 	}
-	const result: {
-		stop?: boolean;
-		reason?: string;
-		input?: unknown;
-		appendContext?: string;
-	} = {};
+	const result: AgentBeforeToolResult = {};
 	if (control.cancel === true) {
 		result.stop = true;
 		if (control.cancelReason?.trim()) {
 			result.reason = control.cancelReason;
 		}
-	} else if (control.context?.trim()) {
+		return result;
+	}
+	if (control.context?.trim()) {
 		// Context is injected only when the hook lets the run continue; a
 		// cancelling hook's message travels as cancelReason instead (legacy
 		// surfaced it as an error, never as conversation context).
 		result.appendContext = control.context;
+	}
+	if (control.deny === true) {
+		result.skip = true;
+		result.reason = control.denyReason ?? DEFAULT_DENY_REASON;
+		return result;
+	}
+	if (control.ask === true) {
+		result.policy = { requireApproval: true };
 	}
 	if (control.overrideInput !== undefined) {
 		result.input = control.overrideInput;
@@ -605,9 +813,8 @@ function beforeToolResultFromControl(
 	return Object.keys(result).length > 0 ? result : undefined;
 }
 
-// Shared by afterTool and beforeRun: both may stop the run or inject
-// context, and neither can override tool input.
-function stopOrContextResultFromControl(
+/** afterTool may stop the run or add context; a deny reason becomes context. */
+export function afterToolResultFromControl(
 	control: HookCommandControl | undefined,
 ): { stop?: boolean; reason?: string; appendContext?: string } | undefined {
 	if (!control) {
@@ -620,10 +827,32 @@ function stopOrContextResultFromControl(
 		if (control.cancelReason?.trim()) {
 			result.reason = control.cancelReason;
 		}
-	} else if (control.context?.trim()) {
-		result.appendContext = control.context;
+		return result;
+	}
+	const context = [control.denyReason, control.context]
+		.filter((text): text is string => Boolean(text?.trim()))
+		.join("\n");
+	if (context) {
+		result.appendContext = context;
 	}
 	return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** beforeRun may stop the run or add context; a denied prompt stops the run. */
+export function runStartResultFromControl(
+	control: HookCommandControl | undefined,
+): { stop?: boolean; reason?: string; appendContext?: string } | undefined {
+	if (!control) {
+		return undefined;
+	}
+	if (control.cancel === true || control.deny === true) {
+		const reason =
+			control.cancel === true ? control.cancelReason : control.denyReason;
+		return { stop: true, ...(reason?.trim() ? { reason } : {}) };
+	}
+	return control.context?.trim()
+		? { appendContext: control.context }
+		: undefined;
 }
 
 export function createHookAuditHooks(options: {
@@ -757,16 +986,82 @@ export function createHookAuditHooks(options: {
 	};
 }
 
-export function createHookConfigFileHooks(
-	options: HookRuntimeOptions,
-): AgentHooks | undefined {
-	const commandMap = createHookCommandMap(options.workspacePath);
-	const hasAnyHooks = Object.values(commandMap).some(
-		(commands) => commands.length > 0,
-	);
-	if (!hasAnyHooks) {
+export interface CompactionHookInput {
+	mode: CoreCompactionMode;
+	agentId: string;
+	conversationId: string;
+	parentAgentId: string | null;
+	tokensBefore?: number;
+	strategy?: string;
+}
+
+/**
+ * Hooks around context compaction. `afterCompact` returns context to add to
+ * the compacted conversation.
+ */
+export interface CompactionHookRunner {
+	beforeCompact(input: CompactionHookInput): Promise<void>;
+	afterCompact(input: CompactionHookInput): Promise<string | undefined>;
+}
+
+export interface HookConfigFileRuntime {
+	hooks: AgentHooks;
+	compaction: CompactionHookRunner;
+}
+
+function latestUserPrompt(
+	ctx: AgentRunLifecycleContext,
+): AgentMessage | undefined {
+	const messages =
+		ctx.input && ctx.input.length > 0 ? ctx.input : ctx.snapshot.messages;
+	const last = messages.at(-1);
+	if (
+		!last ||
+		last.role !== "user" ||
+		last.metadata?.displayRole === "system"
+	) {
 		return undefined;
 	}
+	return last;
+}
+
+/**
+ * File hooks are discovered again at the start of every run, so a hook added
+ * mid-session runs from the next run on.
+ */
+export function createHookConfigFileRuntime(
+	options: HookRuntimeOptions,
+): HookConfigFileRuntime {
+	let commandMap = createHookCommandMap(options);
+	const commandsFor = (event: HookEventName) => commandMap[event] ?? [];
+	const timeoutMs = options.toolCallTimeoutMs ?? 120000;
+	let firstRun = true;
+	const submittedPromptIds = new Set<string>();
+
+	const runAsync = (event: HookEventName, payload: HookEventPayload) =>
+		runAsyncHookCommands({
+			commands: commandsFor(event),
+			cwd: options.cwd,
+			logger: options.logger,
+			detached: options.detachAsyncHooks ?? true,
+			onHookRuntime: options.onHookRuntime,
+			onHookRun: options.onHookRun,
+			payload,
+		});
+	const runBlocking = (
+		event: HookEventName,
+		payload: HookEventPayload,
+		meta?: HookRunMeta,
+	) =>
+		runBlockingHookCommands({
+			commands: commandsFor(event),
+			cwd: options.cwd,
+			logger: options.logger,
+			timeoutMs,
+			onHookRun: options.onHookRun,
+			meta,
+			payload,
+		});
 
 	// With blockingRunStartHooks, run-start hooks execute blocking so their
 	// output is collected: like the tool hooks, they may cancel the run or
@@ -777,11 +1072,10 @@ export function createHookConfigFileHooks(
 		ctx: HookContextBase,
 		hookName: "agent_start" | "agent_resume",
 	): Promise<HookCommandControl | undefined> => {
-		const commandPaths = commandMap[hookName] ?? [];
-		if (commandPaths.length === 0) {
+		if (commandsFor(hookName).length === 0) {
 			return undefined;
 		}
-		const payload =
+		const payload: HookEventPayload =
 			hookName === "agent_resume"
 				? {
 						...createPayloadBase(ctx, options),
@@ -797,296 +1091,228 @@ export function createHookConfigFileHooks(
 						taskStart: { taskMetadata: {} },
 					};
 		if (!options.blockingRunStartHooks) {
-			await runAsyncHookCommands({
-				commands: commandPaths,
-				cwd: options.cwd,
-				logger: options.logger,
-				detached: options.detachAsyncHooks ?? true,
-				onHookRuntime: options.onHookRuntime,
-				payload,
-			});
+			await runAsync(hookName, payload);
 			return undefined;
 		}
-		return runBlockingHookCommands({
-			commands: commandPaths,
-			cwd: options.cwd,
-			logger: options.logger,
-			timeoutMs: options.toolCallTimeoutMs ?? 120000,
-			payload,
-		});
+		return runBlocking(hookName, payload);
 	};
 
 	const runPromptSubmit = async (
 		ctx: HookCommandRunStartContext,
-	): Promise<void> => {
-		const promptSubmit = commandMap.prompt_submit ?? [];
-		if (promptSubmit.length > 0) {
-			await runAsyncHookCommands({
-				commands: promptSubmit,
-				cwd: options.cwd,
-				logger: options.logger,
-				detached: options.detachAsyncHooks ?? true,
-				onHookRuntime: options.onHookRuntime,
-				payload: {
-					...createPayloadBase(ctx, options),
-					hookName: "prompt_submit",
-					userPromptSubmit: {
-						prompt: ctx.userMessage,
-						attachments: [],
-					},
-				},
-			});
-		}
-	};
-
-	const runToolCallStart = async (
-		ctx: HookCommandToolCallStartContext,
+		blocking: boolean,
 	): Promise<HookCommandControl | undefined> => {
-		const commandPaths = commandMap.tool_call ?? [];
-		if (commandPaths.length === 0) {
+		if (commandsFor("prompt_submit").length === 0) {
 			return undefined;
 		}
-		return runBlockingHookCommands({
-			commands: commandPaths,
-			cwd: options.cwd,
-			logger: options.logger,
-			timeoutMs: options.toolCallTimeoutMs ?? 120000,
-			payload: {
-				...createPayloadBase(ctx, options),
-				hookName: "tool_call",
-				iteration: ctx.iteration,
-				tool_call: {
-					id: ctx.call.id,
-					name: ctx.call.name,
-					input: ctx.call.input,
-				},
-				preToolUse: {
-					toolName: ctx.call.name,
-					parameters: mapParams(ctx.call.input),
-				},
+		const payload: HookEventPayload = {
+			...createPayloadBase(ctx, options),
+			hookName: "prompt_submit",
+			userPromptSubmit: {
+				prompt: ctx.userMessage,
+				attachments: [],
 			},
-		});
-	};
-
-	const runToolCallEnd = async (
-		ctx: HookCommandToolCallEndContext,
-	): Promise<HookCommandControl | undefined> => {
-		const commandPaths = commandMap.tool_result ?? [];
-		if (commandPaths.length === 0) {
+		};
+		if (!blocking) {
+			await runAsync("prompt_submit", payload);
 			return undefined;
 		}
-		return runBlockingHookCommands({
-			commands: commandPaths,
-			cwd: options.cwd,
-			logger: options.logger,
-			timeoutMs: options.toolCallTimeoutMs ?? 120000,
-			payload: {
-				...createPayloadBase(ctx, options),
-				hookName: "tool_result",
-				iteration: ctx.iteration,
-				tool_result: ctx.record,
-				postToolUse: {
-					toolName: ctx.record.name,
-					parameters: mapParams(ctx.record.input),
-					result:
-						typeof ctx.record.output === "string"
-							? ctx.record.output
-							: JSON.stringify(ctx.record.output),
-					success: !ctx.record.error,
-					executionTimeMs: ctx.record.durationMs,
-				},
-			},
-		});
+		return runBlocking("prompt_submit", payload);
 	};
 
-	const runTurnEnd = async (ctx: HookCommandTurnEndContext): Promise<void> => {
-		const commandPaths = commandMap.agent_end ?? [];
-		if (commandPaths.length === 0) {
-			return;
-		}
-		await runAsyncHookCommands({
-			commands: commandPaths,
-			cwd: options.cwd,
-			logger: options.logger,
-			detached: options.detachAsyncHooks ?? true,
-			onHookRuntime: options.onHookRuntime,
-			payload: {
-				...createPayloadBase(ctx, options),
-				hookName: "agent_end",
-				iteration: ctx.iteration,
-				turn: ctx.turn,
-				taskComplete: { taskMetadata: {} },
-			},
-		});
-	};
-
-	const runStopError = async (
-		ctx: HookCommandStopErrorContext,
-	): Promise<void> => {
-		const commandPaths = commandMap.agent_error ?? [];
-		if (commandPaths.length === 0) {
-			return;
-		}
-		await runAsyncHookCommands({
-			commands: commandPaths,
-			cwd: options.cwd,
-			logger: options.logger,
-			detached: options.detachAsyncHooks ?? true,
-			onHookRuntime: options.onHookRuntime,
-			payload: {
-				...createPayloadBase(ctx, options),
-				hookName: "agent_error",
-				iteration: ctx.iteration,
-				error: {
-					name: ctx.error.name,
-					message: ctx.error.message,
-					stack: ctx.error.stack,
-				},
-			},
-		});
-	};
-
-	const runSessionShutdown = async (
-		ctx: HookCommandSessionShutdownContext,
-	): Promise<void> => {
-		if (isAbortReason(ctx.reason)) {
-			const abortCommands = commandMap.agent_abort ?? [];
-			if (abortCommands.length > 0) {
-				await runAsyncHookCommands({
-					commands: abortCommands,
-					cwd: options.cwd,
-					logger: options.logger,
-					detached: options.detachAsyncHooks ?? true,
-					onHookRuntime: options.onHookRuntime,
-					payload: {
-						...createPayloadBase(ctx, options),
-						hookName: "agent_abort",
-						reason: ctx.reason,
-						taskCancel: { taskMetadata: {} },
-					},
-				});
-			}
-		}
-		const shutdownCommands = commandMap.session_shutdown ?? [];
-		if (shutdownCommands.length === 0) {
-			return;
-		}
-		await runAsyncHookCommands({
-			commands: shutdownCommands,
-			cwd: options.cwd,
-			logger: options.logger,
-			detached: options.detachAsyncHooks ?? true,
-			onHookRuntime: options.onHookRuntime,
-			payload: {
-				...createPayloadBase(ctx, options),
-				hookName: "session_shutdown",
-				reason: ctx.reason,
-			},
-		});
-	};
-
-	const hooks: AgentHooks = {};
-	if (
-		(commandMap.agent_start?.length ?? 0) > 0 ||
-		(commandMap.agent_resume?.length ?? 0) > 0 ||
-		(commandMap.prompt_submit?.length ?? 0) > 0
-	) {
-		if (
-			(commandMap.agent_start?.length ?? 0) > 0 ||
-			(commandMap.agent_resume?.length ?? 0) > 0
-		) {
-			hooks.beforeRun = async (ctx: AgentRunLifecycleContext) => {
-				const hookName =
-					process.env.CLINE_HOOK_AGENT_RESUME === "1"
-						? "agent_resume"
-						: "agent_start";
-				const control = await runAgentStart(
-					baseContextFromSnapshot(ctx.snapshot),
-					hookName,
-				);
-				return stopOrContextResultFromControl(control);
-			};
-		}
-		if ((commandMap.prompt_submit?.length ?? 0) > 0) {
-			// prompt_submit dispatches on message-added, which has no return
-			// channel, so prompt hooks at this layer cannot cancel or inject
-			// context. Note the two host paths differ: a directly-driven
-			// runtime pushes the prompt as run input (visible here, absent
-			// from the beforeRun snapshot), while orchestrated sessions seed
-			// the prompt into the runtime's initial messages (visible to
-			// beforeRun, never emitted as message-added).
-			hooks.onEvent = async (event: AgentRuntimeEvent) => {
-				if (
-					event.type !== "message-added" ||
-					event.message.role !== "user" ||
-					// Injected hook-context blocks are user-role messages with a
-					// system display role; they are not user prompts.
-					event.message.metadata?.displayRole === "system"
-				) {
-					return;
+	const hooks: AgentHooks = {
+		beforeRun: async (ctx: AgentRunLifecycleContext) => {
+			commandMap = createHookCommandMap(options);
+			const base = baseContextFromSnapshot(ctx.snapshot);
+			let control: HookCommandControl | undefined;
+			if (firstRun) {
+				firstRun = false;
+				const lifecycle =
+					options.lifecycle ??
+					(ctx.snapshot.messages.some((message) => message.role === "assistant")
+						? "resume"
+						: "startup");
+				if (lifecycle !== "none") {
+					control = await runAgentStart(
+						base,
+						lifecycle === "resume" ? "agent_resume" : "agent_start",
+					);
+					if (control?.cancel === true) {
+						return runStartResultFromControl(control);
+					}
 				}
-				await runPromptSubmit(
-					runStartContext(
-						{ snapshot: event.snapshot },
-						textFromMessageContent(event.message.content),
+			}
+			// The prompt is either the run's input (a directly driven runtime)
+			// or already the last message (sessions seed it into the initial
+			// messages and run with empty input).
+			const prompt = latestUserPrompt(ctx);
+			if (prompt && !submittedPromptIds.has(prompt.id)) {
+				submittedPromptIds.add(prompt.id);
+				control = mergeHookControls(
+					control,
+					await runPromptSubmit(
+						{ ...base, userMessage: textFromMessageContent(prompt.content) },
+						true,
 					),
 				);
-			};
-		}
-	}
-	if ((commandMap.tool_call?.length ?? 0) > 0) {
-		hooks.beforeTool = async (ctx: AgentBeforeToolContext) => {
-			const control = await runToolCallStart(toolCallStartContext(ctx));
-			return beforeToolResultFromControl(control);
-		};
-	}
-	if ((commandMap.tool_result?.length ?? 0) > 0) {
-		hooks.afterTool = async (ctx: AgentAfterToolContext) => {
-			const control = await runToolCallEnd(toolCallEndContext(ctx));
-			return stopOrContextResultFromControl(control);
-		};
-	}
-	if ((commandMap.agent_end?.length ?? 0) > 0) {
-		hooks.afterRun = async ({ snapshot, result }) => {
-			if (result.status !== "completed") {
+			}
+			return runStartResultFromControl(control);
+		},
+		// Prompts added during a run, such as queued user messages. There is no
+		// result channel here, so these hooks only observe.
+		onEvent: async (event: AgentRuntimeEvent) => {
+			if (
+				event.type !== "message-added" ||
+				event.message.role !== "user" ||
+				// Injected hook-context blocks are user-role messages with a
+				// system display role; they are not user prompts.
+				event.message.metadata?.displayRole === "system" ||
+				submittedPromptIds.has(event.message.id)
+			) {
 				return;
 			}
-			await runTurnEnd({
-				...baseContextFromSnapshot(snapshot),
-				iteration: result.iterations,
-				turn: {
-					outputText: result.outputText,
-					status: result.status,
+			submittedPromptIds.add(event.message.id);
+			await runPromptSubmit(
+				runStartContext(
+					{ snapshot: event.snapshot },
+					textFromMessageContent(event.message.content),
+				),
+				false,
+			);
+		},
+		beforeTool: async (ctx: AgentBeforeToolContext) => {
+			if (commandsFor("tool_call").length === 0) {
+				return undefined;
+			}
+			const call = toolCallStartContext(ctx);
+			const control = await runBlocking(
+				"tool_call",
+				{
+					...createPayloadBase(call, options),
+					hookName: "tool_call",
+					iteration: call.iteration,
+					tool_call: {
+						id: call.call.id,
+						name: call.call.name,
+						input: call.call.input,
+					},
+					preToolUse: {
+						toolName: call.call.name,
+						parameters: mapParams(call.call.input),
+					},
 				},
-			});
-		};
-	}
-	if (
-		(commandMap.agent_error?.length ?? 0) > 0 ||
-		(commandMap.agent_abort?.length ?? 0) > 0 ||
-		(commandMap.session_shutdown?.length ?? 0) > 0
-	) {
-		const previousAfterRun = hooks.afterRun;
-		hooks.afterRun = async (ctx) => {
-			await previousAfterRun?.(ctx);
-			const { snapshot, result } = ctx;
+				{ toolName: call.call.name, toolCallId: call.call.id },
+			);
+			return beforeToolResultFromControl(control);
+		},
+		afterTool: async (ctx: AgentAfterToolContext) => {
+			if (commandsFor("tool_result").length === 0) {
+				return undefined;
+			}
+			const end = toolCallEndContext(ctx);
+			const control = await runBlocking(
+				"tool_result",
+				{
+					...createPayloadBase(end, options),
+					hookName: "tool_result",
+					iteration: end.iteration,
+					tool_result: end.record,
+					postToolUse: {
+						toolName: end.record.name,
+						parameters: mapParams(end.record.input),
+						result:
+							typeof end.record.output === "string"
+								? end.record.output
+								: JSON.stringify(end.record.output),
+						success: !end.record.error,
+						executionTimeMs: end.record.durationMs,
+					},
+				},
+				{ toolName: end.record.name, toolCallId: end.record.id },
+			);
+			return afterToolResultFromControl(control);
+		},
+		afterRun: async ({ snapshot, result }) => {
+			const base = baseContextFromSnapshot(snapshot);
+			if (result.status === "completed") {
+				await runAsync("agent_end", {
+					...createPayloadBase(base, options),
+					hookName: "agent_end",
+					iteration: result.iterations,
+					turn: {
+						outputText: result.outputText,
+						status: result.status,
+					},
+					taskComplete: { taskMetadata: {} },
+				});
+				return;
+			}
 			if (result.status === "aborted" || isAbortReason(result.error?.message)) {
-				await runSessionShutdown({
-					...baseContextFromSnapshot(snapshot),
+				await runAsync("agent_abort", {
+					...createPayloadBase(base, options),
+					hookName: "agent_abort",
+					reason: result.error?.message,
+					taskCancel: { taskMetadata: {} },
+				});
+				await runAsync("session_shutdown", {
+					...createPayloadBase(base, options),
+					hookName: "session_shutdown",
 					reason: result.error?.message,
 				});
 				return;
 			}
 			if (result.error) {
-				await runStopError({
-					...baseContextFromSnapshot(snapshot),
+				await runAsync("agent_error", {
+					...createPayloadBase(base, options),
+					hookName: "agent_error",
 					iteration: result.iterations,
-					error: result.error,
+					error: {
+						name: result.error.name,
+						message: result.error.message,
+						stack: result.error.stack,
+					},
 				});
 			}
-		};
-	}
-	return hooks;
+		},
+	};
+
+	const compaction: CompactionHookRunner = {
+		// PreCompact runs blocking so it finishes before the conversation is
+		// rewritten; like Claude Code's, it cannot stop the compaction.
+		beforeCompact: async (input) => {
+			if (commandsFor("pre_compact").length === 0) {
+				return;
+			}
+			await runBlocking("pre_compact", {
+				...createPayloadBase(input, options),
+				hookName: "pre_compact",
+				preCompact: {
+					taskId: input.conversationId,
+					ulid: "",
+					contextSize: input.tokensBefore ?? 0,
+					compactionStrategy: input.strategy ?? "",
+					previousApiReqIndex: 0,
+					tokensIn: 0,
+					tokensOut: 0,
+					tokensInCache: 0,
+					tokensOutCache: 0,
+					deletedRangeStart: 0,
+					deletedRangeEnd: 0,
+					contextJsonPath: "",
+					contextRawPath: "",
+					trigger: input.mode === "manual" ? "manual" : "auto",
+				},
+			});
+		},
+		afterCompact: async () => undefined,
+	};
+
+	return { hooks, compaction };
+}
+
+export function createHookConfigFileHooks(
+	options: HookRuntimeOptions,
+): AgentHooks {
+	return createHookConfigFileRuntime(options).hooks;
 }
 
 export function createHookConfigFileExtension(
@@ -1122,11 +1348,25 @@ function mergeHookFunction<K extends keyof AgentHooks>(
 						typeof value === "string" && value.length > 0,
 				)
 				.join("\n\n");
-			// A stopping layer ends the merge: later layers' hooks are not run
-			// for a turn that is already cancelled (each is a blocking
-			// subprocess with its own timeout budget).
-			if (record.stop === true) {
-				return { ...(merged ?? {}), ...record, stop: true };
+			const policy =
+				merged?.policy || record.policy
+					? {
+							...((merged?.policy as Record<string, unknown> | undefined) ??
+								{}),
+							...((record.policy as Record<string, unknown> | undefined) ?? {}),
+						}
+					: undefined;
+			// A stopping or skipping layer ends the merge: later layers' hooks
+			// are not run for a turn that is already cancelled or a tool call
+			// that will not run (each is a blocking subprocess with its own
+			// timeout budget).
+			if (record.stop === true || record.skip === true) {
+				return {
+					...(merged ?? {}),
+					...record,
+					appendContext: appendContexts || undefined,
+					...(policy ? { policy } : {}),
+				};
 			}
 			merged = {
 				...(merged ?? {}),
@@ -1134,6 +1374,7 @@ function mergeHookFunction<K extends keyof AgentHooks>(
 				stop:
 					merged?.stop === true || record.stop === true ? true : record.stop,
 				appendContext: appendContexts || undefined,
+				...(policy ? { policy } : {}),
 				options:
 					merged?.options || record.options
 						? {

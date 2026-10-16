@@ -94,6 +94,7 @@ export function isUnusableSessionError(error: unknown): boolean {
 
 type LocalOnlyCoreSessionConfigKeys =
 	| "hooks"
+	| "onHookRun"
 	| "logger"
 	| "telemetry"
 	| "extensionContext"
@@ -134,6 +135,7 @@ export type LocalRuntimeBootstrapConfig = Pick<
 
 export interface LocalRuntimeStartOptions {
 	hooks?: LocalRuntimeBootstrapConfig["hooks"];
+	onHookRun?: LocalRuntimeBootstrapConfig["onHookRun"];
 	logger?: LocalRuntimeBootstrapConfig["logger"];
 	telemetry?: LocalRuntimeBootstrapConfig["telemetry"];
 	extensionContext?: LocalRuntimeBootstrapConfig["extensionContext"];
@@ -191,6 +193,7 @@ export function splitCoreSessionConfig(config: ClineCoreStartConfig): {
 } {
 	const {
 		hooks,
+		onHookRun,
 		logger,
 		telemetry,
 		extensionContext,
@@ -206,6 +209,7 @@ export function splitCoreSessionConfig(config: ClineCoreStartConfig): {
 
 	const localConfigOverrides: Partial<LocalRuntimeBootstrapConfig> = {};
 	if (hooks) localConfigOverrides.hooks = hooks;
+	if (onHookRun) localConfigOverrides.onHookRun = onHookRun;
 	if (logger) localConfigOverrides.logger = logger;
 	if (telemetry) localConfigOverrides.telemetry = telemetry;
 	if (extensionContext)

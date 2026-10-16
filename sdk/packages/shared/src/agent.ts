@@ -462,6 +462,11 @@ export interface AgentAfterToolResult {
 
 export interface AgentRunLifecycleContext {
 	snapshot: AgentRuntimeStateSnapshot;
+	/**
+	 * beforeRun only: the run's input messages, which are added to the
+	 * conversation after the beforeRun hooks.
+	 */
+	input?: readonly AgentMessage[];
 }
 
 // =============================================================================

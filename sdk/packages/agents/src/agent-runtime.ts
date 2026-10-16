@@ -810,10 +810,11 @@ export class AgentRuntime {
 		this.maxTokensRecoveryAttempted = false;
 
 		try {
-			await this.callBeforeRunHooks();
+			const inputMessages = input ? normalizeInput(input) : [];
+			await this.callBeforeRunHooks(inputMessages);
 			await this.emit({ type: "run-started", snapshot: this.snapshot() });
 
-			for (const message of input ? normalizeInput(input) : []) {
+			for (const message of inputMessages) {
 				this.state.messages.push(message);
 				await this.emit({
 					type: "message-added",
@@ -1132,10 +1133,13 @@ export class AgentRuntime {
 		});
 	}
 
-	private async callBeforeRunHooks(): Promise<void> {
+	private async callBeforeRunHooks(
+		inputMessages: readonly AgentMessage[],
+	): Promise<void> {
 		for (const hook of this.hooks.beforeRun) {
 			const result = await hook({
 				snapshot: this.snapshot(),
+				input: inputMessages,
 			});
 			this.applyStopControl(result);
 			// Collected here, injected after the run's input messages are

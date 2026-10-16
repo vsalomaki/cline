@@ -1,4 +1,8 @@
 import { estimateRequestInputTokens } from "@cline/shared";
+import type {
+	CompactionHookInput,
+	CompactionHookRunner,
+} from "../../hooks/hook-file-hooks";
 import { resolveConnectionProviderConfig } from "../../services/llms/handler-factory";
 import {
 	captureCompactionBudgetEmergency,
@@ -95,6 +99,41 @@ export interface ContextCompactionPrepareTurnOptions {
 	manualTargetRatio?: number;
 	/** Overrides layered over `config.compaction`. */
 	compaction?: Partial<CoreCompactionConfig>;
+	/** File hooks that run before compaction and add context after it. */
+	hooks?: CompactionHookRunner;
+}
+
+async function runCompactionHook<T>(
+	logger: CoreSessionConfig["logger"],
+	label: string,
+	run: () => Promise<T> | undefined,
+): Promise<T | undefined> {
+	try {
+		return await run();
+	} catch (error) {
+		logger?.log(`${label} hook failed`, { severity: "warn", error });
+		return undefined;
+	}
+}
+
+/** Puts hook context right after the summary, where it survives later turns. */
+function insertHookContextAfterSummary(
+	messages: CoreCompactionContext["messages"],
+	text: string,
+): CoreCompactionContext["messages"] {
+	const body = text.trim().replace(/<(\/?)hook_context/gi, "<\\$1hook_context");
+	const message = {
+		role: "user" as const,
+		content: [
+			{
+				type: "text" as const,
+				text: `<hook_context source="SessionStart">\n${body}\n</hook_context>`,
+			},
+		],
+		metadata: { displayRole: "system", userRunSpan: 0 },
+	};
+	const at = findLatestSummaryIndex(messages) + 1;
+	return [...messages.slice(0, at), message, ...messages.slice(at)];
 }
 
 const LONG_CONVERSATION_TARGET_RATIO = 0.5;
@@ -459,6 +498,17 @@ export function createContextCompactionPrepareTurn(
 				: effectiveMode === "overflow_recovery"
 					? "overflow-recovery-"
 					: "auto-";
+		const hookInput: CompactionHookInput = {
+			mode: effectiveMode,
+			agentId: context.agentId,
+			conversationId: context.conversationId,
+			parentAgentId: context.parentAgentId,
+			tokensBefore: requestInputTokens,
+			strategy: telemetryStrategy,
+		};
+		await runCompactionHook(config.logger, "PreCompact", () =>
+			options.hooks?.beforeCompact(hookInput),
+		);
 		context.emitStatusNotice?.(`${noticePrefix}compacting`, {
 			kind: statusReason,
 			reason: statusReason,
@@ -587,6 +637,22 @@ export function createContextCompactionPrepareTurn(
 			conversationId: context.conversationId,
 			parentAgentId: context.parentAgentId ?? undefined,
 		};
+
+		// Overflow recovery must come out strictly smaller, so hooks add no
+		// context to it.
+		if (result?.messages && effectiveMode !== "overflow_recovery") {
+			const hookContext = await runCompactionHook(
+				config.logger,
+				"post-compaction",
+				() => options.hooks?.afterCompact(hookInput),
+			);
+			if (hookContext?.trim()) {
+				result = {
+					...result,
+					messages: insertHookContextAfterSummary(result.messages, hookContext),
+				};
+			}
+		}
 
 		if (result?.messages) {
 			const afterMessageTokens = result.messages.reduce(

@@ -1,10 +1,12 @@
 import {
 	createContextCompactionPrepareTurn,
+	createHookConfigFileRuntime,
 	createSessionCompactionState,
 	type ProviderConfig,
 	type ProviderSettings,
 	type ProviderSettingsManager,
 	type ReasoningSettings,
+	resolveFileHookOptions,
 	type SessionCompactionState,
 	toProviderConfig,
 } from "@cline/core";
@@ -89,7 +91,20 @@ export async function compactInteractiveMessages(input: {
 			telemetry: input.config.telemetry,
 			sessionId: input.sessionId,
 		},
-		{ mode: "manual" },
+		{
+			mode: "manual",
+			hooks: createHookConfigFileRuntime({
+				...resolveFileHookOptions(input.config.fileHooks),
+				cwd: input.config.cwd,
+				workspacePath: input.config.workspaceRoot ?? input.config.cwd,
+				rootSessionId: input.sessionId,
+				logger: input.config.logger,
+				model: {
+					provider: input.config.providerId,
+					slug: input.config.modelId,
+				},
+			}).compaction,
+		},
 	);
 	if (!compact) {
 		return { compacted: false, canonicalMessages: input.messages };

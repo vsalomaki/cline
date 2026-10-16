@@ -39,10 +39,13 @@ import type {
 	TeamEvent,
 } from "../extensions/tools/team";
 import { createCheckpointHooks } from "../hooks/checkpoint-hooks";
+import { createAgentHooksExtension } from "../hooks/hook-extension";
 import {
+	type CompactionHookRunner,
 	createHookAuditHooks,
-	createHookConfigFileExtension,
+	createHookConfigFileRuntime,
 	mergeAgentHooks,
+	resolveFileHookOptions,
 } from "../hooks/hook-file-hooks";
 import type { RuntimeCapabilities } from "../runtime/capabilities";
 import { normalizeRuntimeCapabilities } from "../runtime/capabilities";
@@ -319,6 +322,8 @@ export interface LocalRuntimeBootstrap {
 	gitState: GitWorkspaceState;
 	extensions: AgentConfig["extensions"];
 	hooks: AgentHooks | undefined;
+	/** File hooks around compaction; undefined when file hooks are off. */
+	compactionHooks?: CompactionHookRunner;
 	toolPolicies: AgentConfig["toolPolicies"];
 	requestToolApproval?: (
 		request: ToolApprovalRequest,
@@ -454,13 +459,19 @@ export async function prepareLocalRuntimeBootstrap(
 
 	// Hosts with their own hook execution layer (the VS Code extension's
 	// hooks adapter) exclude "hooks" so file hooks run exactly once.
-	const fileHookExtension = hasConfigExtension(configExtensions, "hooks")
-		? createHookConfigFileExtension({
+	const fileHookRuntime = hasConfigExtension(configExtensions, "hooks")
+		? createHookConfigFileRuntime({
+				...resolveFileHookOptions(input.config.fileHooks),
 				cwd: input.config.cwd,
 				workspacePath,
 				rootSessionId: sessionId,
 				logger: localConfig?.logger,
 				workspaceInfo,
+				model: {
+					provider: input.config.providerId,
+					slug: input.config.modelId,
+				},
+				onHookRun: localConfig?.onHookRun,
 				// Detached hooks are never awaited, so their runtime is
 				// invisible today. Measuring it is what tells us whether
 				// run-start hooks could safely become blocking.
@@ -468,6 +479,10 @@ export async function prepareLocalRuntimeBootstrap(
 					captureDetachedHookRuntime(extensionContext.telemetry, event),
 			})
 		: undefined;
+	const fileHookExtension = createAgentHooksExtension(
+		"core.hook_config_files",
+		fileHookRuntime?.hooks,
+	);
 	const auditHooks = hasRuntimeHooks(localConfig?.hooks)
 		? undefined
 		: createHookAuditHooks({
@@ -654,6 +669,7 @@ export async function prepareLocalRuntimeBootstrap(
 		gitState,
 		extensions,
 		hooks,
+		compactionHooks: fileHookRuntime?.compaction,
 		toolPolicies,
 		requestToolApproval,
 		pluginSandboxShutdown: loadedPlugins?.shutdown,
