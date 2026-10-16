@@ -28,6 +28,24 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 			{children}
 		</label>
 	),
+	VSCodeDropdown: ({
+		children,
+		disabled,
+		id,
+		onChange,
+		value,
+	}: {
+		children?: ReactNode
+		disabled?: boolean
+		id?: string
+		onChange?: ChangeEventHandler<HTMLSelectElement>
+		value?: string
+	}) => (
+		<select disabled={disabled} id={id} onChange={onChange} value={value}>
+			{children}
+		</select>
+	),
+	VSCodeOption: ({ children, value }: { children?: ReactNode; value?: string }) => <option value={value}>{children}</option>,
 	VSCodeButton: ({
 		children,
 		disabled,
@@ -73,6 +91,7 @@ describe("AgentLimitsSection", () => {
 		renderSection()
 
 		for (const title of [
+			"Language servers",
 			"Tool output",
 			"Tool input",
 			"Provider request",
@@ -140,6 +159,30 @@ describe("AgentLimitsSection", () => {
 		expect(field("session.loopSoftThreshold").disabled).toBe(true)
 		expect(field("session.loopHardThreshold").disabled).toBe(true)
 		expect(field("session.maxConsecutiveMistakes").disabled).toBe(false)
+	})
+
+	it("saves a choice as its number and resets it at the default", () => {
+		renderSection()
+		const select = field("session.problemsAfterEdit") as unknown as HTMLSelectElement
+
+		expect(select.value).toBe("1")
+		fireEvent.change(select, { target: { value: "2" } })
+		expect(mockUpdateSetting).toHaveBeenCalledWith("agentLimitUpdates", { "session.problemsAfterEdit": 2 })
+		fireEvent.change(select, { target: { value: "1" } })
+		expect(mockUpdateSetting).toHaveBeenLastCalledWith("agentLimitUpdates", { "session.problemsAfterEdit": -1 })
+	})
+
+	it("locks a choice an env var overrides and shows its value", () => {
+		setLimits({
+			effective: { "session.problemsAfterEdit": 0 },
+			envOverrides: { "session.problemsAfterEdit": "CLINE_PROBLEMS_AFTER_EDIT" },
+		})
+		renderSection()
+		const select = field("session.problemsAfterEdit") as unknown as HTMLSelectElement
+
+		expect(select.disabled).toBe(true)
+		expect(select.value).toBe("0")
+		expect(screen.getByText("CLINE_PROBLEMS_AFTER_EDIT")).toBeTruthy()
 	})
 
 	it("resets every changed limit at once", () => {

@@ -9,6 +9,7 @@ export default defineConfig({
 		include: [
 			"src/sdk/**/*.test.ts",
 			"src/hosts/vscode/VscodeEditPreview.test.ts",
+			"src/hosts/vscode/VscodeCodeIntelligence.test.ts",
 			"src/shared/vsCodeSelectorUtils.test.ts",
 			"src/shared/net.test.ts",
 			"src/shared/proto-conversions/models/**/*.test.ts",

@@ -72,6 +72,31 @@ export function getToolCallEnvSources(): { maxParallelToolCalls?: string; parall
 	return {}
 }
 
+export function resolveCodeIntelligenceSettings(
+	config: {
+		languageServers?: { enabled?: boolean }
+		codeIntelligenceTool?: boolean
+		problemsAfterEdit?: string
+		problemsTimeoutMs?: number
+	} = {},
+) {
+	return {
+		languageServers: config.languageServers?.enabled ?? true,
+		codeIntelligenceTool: config.codeIntelligenceTool ?? true,
+		problemsAfterEdit: (config.problemsAfterEdit ?? "errors") as "off" | "errors" | "warnings",
+		problemsTimeoutMs: config.problemsTimeoutMs ?? 3000,
+	}
+}
+
+export function getCodeIntelligenceEnvSources(): {
+	languageServers?: string
+	codeIntelligenceTool?: string
+	problemsAfterEdit?: string
+	problemsTimeoutMs?: string
+} {
+	return {}
+}
+
 export interface StoredModelEntry {
 	id?: string
 	name?: string

@@ -19,6 +19,13 @@ describe("normalizeAgentLimitValue", () => {
 		expect(normalizeAgentLimitValue("session.loopDetection", 0)).toBe(0)
 		expect(normalizeAgentLimitValue("session.loopDetection", 5)).toBe(1)
 	})
+
+	it("keeps only a choice's listed values", () => {
+		expect(normalizeAgentLimitValue("session.problemsAfterEdit", 0)).toBe(0)
+		expect(normalizeAgentLimitValue("session.problemsAfterEdit", 2)).toBe(2)
+		expect(normalizeAgentLimitValue("session.problemsAfterEdit", 3)).toBeUndefined()
+		expect(normalizeAgentLimitValue("session.problemsAfterEdit", 1.5)).toBeUndefined()
+	})
 })
 
 describe("applyAgentLimitUpdates", () => {

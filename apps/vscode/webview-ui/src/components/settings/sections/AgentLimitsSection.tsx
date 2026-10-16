@@ -6,7 +6,7 @@ import {
 	type AgentLimitsState,
 	type AgentLimitUnit,
 } from "@shared/AgentLimits"
-import { VSCodeButton, VSCodeCheckbox, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 import React, { useEffect, useState } from "react"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import Section from "../Section"
@@ -25,6 +25,7 @@ const UNIT_LABELS: Record<AgentLimitUnit, string> = {
 	tokens: "tokens",
 	percent: "%",
 	toggle: "",
+	choice: "",
 }
 
 /** Timeouts are stored in ms but edited in seconds; everything else is edited as stored. */
@@ -159,6 +160,41 @@ const LimitToggle: React.FC<{ definition: AgentLimitDefinition; limits: AgentLim
 	)
 }
 
+const LimitChoice: React.FC<{ definition: AgentLimitDefinition; limits: AgentLimitsState }> = ({ definition, limits }) => {
+	const id = definition.id as AgentLimitId
+	const envVar = limits.envOverrides[id]
+	const selected = envVar ? limits.effective[id] : (limits.values[id] ?? definition.default)
+	const inputId = `agent-limit-${id.replace(".", "-")}`
+	return (
+		<div className="mb-4">
+			<label className="font-medium block mb-1" htmlFor={inputId}>
+				{definition.label}
+			</label>
+			<VSCodeDropdown
+				className="w-full"
+				disabled={envVar !== undefined}
+				id={inputId}
+				onChange={(event) => {
+					const next = Number((event.target as HTMLSelectElement).value)
+					saveLimit(id, next === definition.default ? undefined : next)
+				}}
+				value={String(selected)}>
+				{definition.options?.map((option) => (
+					<VSCodeOption key={option.value} value={String(option.value)}>
+						{option.label}
+					</VSCodeOption>
+				))}
+			</VSCodeDropdown>
+			{envVar && (
+				<div className="text-(--vscode-editorWarning-foreground) text-xs mt-1">
+					Set by <code>{envVar}</code> in the editor's environment. Unset it to edit here.
+				</div>
+			)}
+			<p className="text-xs text-(--vscode-descriptionForeground) mt-1">{definition.description}</p>
+		</div>
+	)
+}
+
 const AgentLimitsSection = ({ renderSectionHeader }: AgentLimitsSectionProps) => {
 	const { agentLimits } = useExtensionState()
 
@@ -188,6 +224,8 @@ const AgentLimitsSection = ({ renderSectionHeader }: AgentLimitsSectionProps) =>
 						{AGENT_LIMIT_DEFINITIONS.filter((definition) => definition.group === group.id).map((definition) =>
 							definition.unit === "toggle" ? (
 								<LimitToggle definition={definition} key={definition.id} limits={agentLimits} />
+							) : definition.unit === "choice" ? (
+								<LimitChoice definition={definition} key={definition.id} limits={agentLimits} />
 							) : (
 								<LimitField
 									definition={definition}

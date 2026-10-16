@@ -40,6 +40,7 @@ import { reasoningEffortFromThinkingBudget } from "@shared/utils/reasoning-suppo
 import { stringifyVsCodeLmModelSelector } from "@shared/vsCodeSelectorUtils"
 import { StateManager } from "@/core/storage/StateManager"
 import { HostProvider } from "@/hosts/host-provider"
+import { createVscodeCodeIntelligence } from "@/hosts/vscode/VscodeCodeIntelligence"
 import { ExtensionRegistryInfo } from "@/registry"
 import { getDistinctId } from "@/services/logging/distinctId"
 import { fetch, fetchWithoutIdleTimeouts } from "@/shared/net"
@@ -55,6 +56,7 @@ import { createProviderConfigStore, resolveRuntimeModelSelection } from "./model
 import { getProviderSettingsManager } from "./provider-migration"
 import { buildSapProviderConfig, type SapProviderConfig } from "./sap-config"
 import type { SdkSessionHost } from "./session-host"
+import { isStandaloneHost } from "./vscode-terminal-execution-mode"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1203,6 +1205,9 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 				}
 			: {}),
 		...agentLimitConfig,
+		// VS Code's language extensions supply code intelligence; the SDK's own servers never run here.
+		languageServers: { enabled: false },
+		...(isStandaloneHost() ? {} : { codeIntelligence: createVscodeCodeIntelligence() }),
 		disableMcpSettingsTools: true,
 		mode: mode === "plan" ? "plan" : "act",
 		...reasoningConfig,
