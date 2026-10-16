@@ -270,6 +270,44 @@ server replaces it, `false` turns it off, and a new name adds a server. The
 with the tool-call settings, an env var wins over the flag and the file, the flag
 wins over the file, and values that are not valid are ignored.
 
+#### Built-in servers
+
+The CLI knows these servers and uses each one whose binary it finds in the
+workspace's `node_modules/.bin` or on `PATH` when the session starts. When it finds
+none, the session has no `code_intelligence` tool.
+
+| Name | Files | Command | Install |
+|------|-------|---------|---------|
+| `typescript` | `.ts .tsx .mts .cts .js .jsx .mjs .cjs` | `typescript-language-server --stdio` | `npm i -g typescript-language-server typescript@6` |
+| `python` | `.py .pyi` | `pyright-langserver --stdio`, else `basedpyright-langserver --stdio` | `npm i -g pyright` |
+| `java` | `.java` | `jdtls -data <data dir>/jdtls/<workspace hash>` | [Eclipse JDT Language Server](https://github.com/eclipse-jdtls/eclipse.jdt.ls) |
+| `go` | `.go` | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+| `rust` | `.rs` | `rust-analyzer` | `rustup component add rust-analyzer` |
+
+`typescript-language-server` runs on the workspace's own `typescript` package when
+it has one, otherwise on the one installed next to it. It needs TypeScript 6 or
+earlier: TypeScript 7 has no `tsserver`. TypeScript 7 ships its own language server
+instead, which you can configure in place of the built-in one:
+
+```json
+{
+  "languageServers": {
+    "servers": {
+      "typescript": {
+        "command": ["tsc", "--lsp", "--stdio"],
+        "extensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]
+      }
+    }
+  }
+}
+```
+
+A server starts the first time a file it handles is read or queried, and gets 20
+seconds to start (60 for `jdtls`; set `startupTimeoutMs` to change it). Sessions in
+the same process share servers, and a server stays up for two minutes after the
+last session using it ends, so the next session starts warm. A server that crashes
+is not restarted until a new session starts.
+
 ## Related Docs
 
 - [Rules](/customization/cline-rules)
