@@ -82,7 +82,9 @@ notes="$out/cline-$version.md"
 work="$root/.worktrees/release-$version"
 mkdir -p "$out"
 
-prev=$(git describe --tags --abbrev=0 --match "v*+$suffix" "$sha^" 2>/dev/null || true)
+# vsa.2 continues from vsa or vsa.1, so look for any tag in the suffix's family.
+family=${suffix%%.*}
+prev=$(git describe --tags --abbrev=0 --match "v*+$family" --match "v*+$family.*" "$sha^" 2>/dev/null || true)
 {
 	echo "Based on upstream Cline v$base.${prev:+ Changes since $prev:}"
 	echo
