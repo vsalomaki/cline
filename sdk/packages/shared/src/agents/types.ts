@@ -910,7 +910,7 @@ export interface AgentConfig {
 	 */
 	completionPolicy?: {
 		requireCompletionTool?: boolean;
-		completionGuard?: () => string | undefined;
+		completionGuard?: () => string | undefined | Promise<string | undefined>;
 	};
 
 	// -------------------------------------------------------------------------

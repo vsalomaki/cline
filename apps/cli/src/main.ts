@@ -61,6 +61,7 @@ import {
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
+	resolveStartupReviewBeforeFinish,
 	resolveStartupToolAutoApprove,
 } from "./utils/startup-settings";
 import { rewriteTeamPrompt, TEAM_COMMAND_USAGE } from "./utils/team-command";
@@ -933,6 +934,10 @@ export async function runCli(): Promise<void> {
 		args,
 		persistedGlobalSettings,
 	);
+	const effectiveReviewBeforeFinish = resolveStartupReviewBeforeFinish(
+		args,
+		persistedGlobalSettings,
+	);
 	const effectiveLanguageServers = resolveStartupLanguageServers(
 		args,
 		persistedGlobalSettings,
@@ -1127,6 +1132,7 @@ export async function runCli(): Promise<void> {
 			maxParallelToolCalls: effectiveMaxParallelToolCalls,
 			parallelToolCalls: effectiveParallelToolCalls,
 			readBeforeWrite: effectiveReadBeforeWrite,
+			reviewBeforeFinish: effectiveReviewBeforeFinish,
 			languageServers: effectiveLanguageServers,
 			codeIntelligenceTool: effectiveCodeIntelligenceTool,
 			problemsAfterEdit: effectiveProblemsAfterEdit,

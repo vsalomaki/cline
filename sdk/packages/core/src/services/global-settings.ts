@@ -100,6 +100,7 @@ export const GlobalSettingsSchema = z
 			.catch(undefined),
 		parallelToolCalls: z.boolean().optional().catch(undefined),
 		readBeforeWrite: z.boolean().optional().catch(undefined),
+		reviewBeforeFinish: z.boolean().optional().catch(undefined),
 		languageServers: LanguageServerSettingsSchema.optional().catch(undefined),
 		codeIntelligenceTool: z.boolean().optional().catch(undefined),
 		problemsAfterEdit: z
@@ -130,6 +131,7 @@ export const GlobalSettingsSchema = z
 			maxParallelToolCalls?: number;
 			parallelToolCalls?: boolean;
 			readBeforeWrite?: boolean;
+			reviewBeforeFinish?: boolean;
 			languageServers?: LanguageServerSettings;
 			codeIntelligenceTool?: boolean;
 			problemsAfterEdit?: ProblemsAfterEditLevel;
@@ -163,6 +165,9 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.readBeforeWrite !== undefined) {
 			normalized.readBeforeWrite = settings.readBeforeWrite;
+		}
+		if (settings.reviewBeforeFinish !== undefined) {
+			normalized.reviewBeforeFinish = settings.reviewBeforeFinish;
 		}
 		if (settings.languageServers !== undefined) {
 			normalized.languageServers = settings.languageServers;

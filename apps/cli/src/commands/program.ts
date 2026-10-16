@@ -85,6 +85,14 @@ export function addRootOptions(cmd: Command): Command {
 				"Allow edits to files the agent has not read",
 			)
 			.option(
+				"--review-before-finish",
+				"Send the agent back once to review a request that changed files before its final report (default)",
+			)
+			.option(
+				"--no-review-before-finish",
+				"Let the agent report without the review",
+			)
+			.option(
 				"--language-servers",
 				"Start language servers for the code_intelligence tool and problems after edits (default)",
 			)
@@ -269,6 +277,9 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.readBeforeWrite === "boolean") {
 		result.readBeforeWrite = opts.readBeforeWrite;
+	}
+	if (typeof opts.reviewBeforeFinish === "boolean") {
+		result.reviewBeforeFinish = opts.reviewBeforeFinish;
 	}
 	if (typeof opts.languageServers === "boolean") {
 		result.languageServers = opts.languageServers;

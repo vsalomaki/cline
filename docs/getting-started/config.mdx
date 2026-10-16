@@ -122,6 +122,7 @@ cline doctor log
 | `CLINE_MAX_PARALLEL_TOOL_CALLS` | Read-only tool calls run at once ([Tool calls](#tool-calls)) |
 | `CLINE_PARALLEL_TOOL_CALLS` | Whether the model may request several tool calls per response ([Tool calls](#tool-calls)) |
 | `CLINE_READ_BEFORE_WRITE` | Whether edits to unread or changed files are refused ([Tool calls](#tool-calls)) |
+| `CLINE_REVIEW_BEFORE_FINISH` | Whether the agent reviews a run that changed files before its final report ([Tool calls](#tool-calls)) |
 | `CLINE_LANGUAGE_SERVERS` | Whether the CLI starts language servers ([Language servers](#language-servers)) |
 | `CLINE_CODE_INTELLIGENCE_TOOL` | Whether the `code_intelligence` tool is offered ([Language servers](#language-servers)) |
 | `CLINE_PROBLEMS_AFTER_EDIT` | Which new problems are reported after an edit ([Language servers](#language-servers)) |
@@ -198,13 +199,16 @@ a time.
 | `CLINE_MAX_PARALLEL_TOOL_CALLS` | `4` | Read-only tool calls run at once; `1` runs every call in order |
 | `CLINE_PARALLEL_TOOL_CALLS` | `true` | `false` (or `0`, `off`) asks the provider for one tool call per response |
 | `CLINE_READ_BEFORE_WRITE` | `true` | Refuse `editor` and `apply_patch` changes to an existing file the agent has not read in this session, or that changed since it last read it |
+| `CLINE_REVIEW_BEFORE_FINISH` | `true` | In act mode, when a request changed files and the agent answers without tool calls, send it back once with the list of changed files to review them before its final report |
 
 With read-before-write on, any successful `read_files` of a file counts, including a line range, and Cline's own edits keep the record current. The record is cleared when older history is compacted and starts empty in a resumed session, so the agent reads files again before editing them. Creating new files and `run_commands` are not checked.
 
+The review before finishing lists the files whose git status changed since the request started, plus the files `editor` and `apply_patch` wrote (which also covers files outside a git repository). It is asked once per request and costs one more model turn when files changed.
+
 In the VS Code extension, these settings are under **Settings → Agent Limits → Tool calls**.
-The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls` and
-`--no-read-before-write`, and reads `maxParallelToolCalls`, `parallelToolCalls` and
-`readBeforeWrite` from
+The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls`,
+`--no-read-before-write` and `--no-review-before-finish`, and reads `maxParallelToolCalls`,
+`parallelToolCalls`, `readBeforeWrite` and `reviewBeforeFinish` from
 `global-settings.json`. An env var wins over the flag and the file, and the flag wins
 over the file. Values that are not valid (a non-positive or non-integer count, an
 unrecognized boolean) are ignored.

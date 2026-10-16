@@ -59,6 +59,13 @@ export function resolveStartupReadBeforeWrite(
 	return args.readBeforeWrite ?? settings.readBeforeWrite;
 }
 
+export function resolveStartupReviewBeforeFinish(
+	args: Pick<ParsedArgs, "reviewBeforeFinish">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.reviewBeforeFinish ?? settings.reviewBeforeFinish;
+}
+
 /** The flag only switches the servers on or off; the server list stays the persisted one. */
 export function resolveStartupLanguageServers(
 	args: Pick<ParsedArgs, "languageServers">,

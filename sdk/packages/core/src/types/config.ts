@@ -331,6 +331,13 @@ export interface CoreSessionConfig
 	 */
 	readBeforeWrite?: boolean;
 	/**
+	 * When the agent answers without tool calls after files changed during the
+	 * request, send it back once to review the run before its final report.
+	 * `CLINE_REVIEW_BEFORE_FINISH` takes precedence.
+	 * @default true
+	 */
+	reviewBeforeFinish?: boolean;
+	/**
 	 * Language intelligence the host supplies in process (the VS Code
 	 * extension passes its editor's). Never serialized; without it the SDK
 	 * starts its own language servers per `languageServers`.

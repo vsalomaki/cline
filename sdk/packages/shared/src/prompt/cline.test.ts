@@ -40,10 +40,11 @@ describe("processWorkspaceInfo", () => {
 describe("buildClineSystemPrompt task discipline", () => {
 	const prompt = buildClineSystemPrompt({ ...BASE_OPTIONS, mode: "act" });
 
-	it("asks for a full review of the changes before the final answer", () => {
-		expect(prompt).toContain("review every file you changed as a whole");
-		expect(prompt).toContain("Remove leftovers");
-		expect(prompt).toContain("do the final review above before sending it");
+	it("asks for no leftovers and restrained comments", () => {
+		expect(prompt).toContain("Leave no leftovers in what you changed");
+		expect(prompt).toContain(
+			"Comment only where the reason is not obvious from the code itself",
+		);
 	});
 
 	it("ties success claims to verification", () => {

@@ -10,6 +10,7 @@ import {
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
+	resolveStartupReviewBeforeFinish,
 	resolveStartupToolAutoApprove,
 } from "./startup-settings";
 
@@ -193,6 +194,26 @@ describe("resolveStartupReadBeforeWrite", () => {
 				makeSettings({ readBeforeWrite: false }),
 			),
 		).toBe(true);
+	});
+});
+
+describe("resolveStartupReviewBeforeFinish", () => {
+	it("prefers the flag over the persisted value and leaves unset to Core", () => {
+		expect(
+			resolveStartupReviewBeforeFinish({}, makeSettings()),
+		).toBeUndefined();
+		expect(
+			resolveStartupReviewBeforeFinish(
+				{ reviewBeforeFinish: false },
+				makeSettings({ reviewBeforeFinish: true }),
+			),
+		).toBe(false);
+		expect(
+			resolveStartupReviewBeforeFinish(
+				{},
+				makeSettings({ reviewBeforeFinish: false }),
+			),
+		).toBe(false);
 	});
 });
 

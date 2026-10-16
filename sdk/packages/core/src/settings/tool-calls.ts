@@ -9,6 +9,7 @@ export const TOOL_CALL_ENV = {
 	maxParallelToolCalls: "CLINE_MAX_PARALLEL_TOOL_CALLS",
 	parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
 	readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
+	reviewBeforeFinish: "CLINE_REVIEW_BEFORE_FINISH",
 } as const;
 
 export interface ToolCallSettings {
@@ -16,6 +17,8 @@ export interface ToolCallSettings {
 	parallelToolCalls: boolean;
 	/** Refuse edits to existing files that were not read, or changed since. */
 	readBeforeWrite: boolean;
+	/** Ask the agent to review a run that changed files before its final report. */
+	reviewBeforeFinish: boolean;
 }
 
 function parsePositiveIntEnv(raw: string | undefined): number | undefined {
@@ -63,6 +66,10 @@ export function resolveToolCallSettings(
 			parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) ??
 			config.readBeforeWrite ??
 			true,
+		reviewBeforeFinish:
+			parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) ??
+			config.reviewBeforeFinish ??
+			true,
 	};
 }
 
@@ -81,6 +88,9 @@ export function getToolCallEnvSources(
 	}
 	if (parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) !== undefined) {
 		sources.readBeforeWrite = TOOL_CALL_ENV.readBeforeWrite;
+	}
+	if (parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) !== undefined) {
+		sources.reviewBeforeFinish = TOOL_CALL_ENV.reviewBeforeFinish;
 	}
 	return sources;
 }

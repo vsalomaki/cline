@@ -98,6 +98,7 @@ export interface ParsedArgs {
 	invalidMaxParallelToolCalls?: string;
 	parallelToolCalls?: boolean;
 	readBeforeWrite?: boolean;
+	reviewBeforeFinish?: boolean;
 	languageServers?: boolean;
 	codeIntelligenceTool?: boolean;
 	problemsAfterEdit?: "off" | "errors" | "warnings";

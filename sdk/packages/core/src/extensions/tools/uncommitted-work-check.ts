@@ -27,9 +27,11 @@ export interface WorkingTreeSnapshot {
 	changed: Map<string, ChangedPath>;
 	/** Size in bytes of each changed path, undefined when it does not exist. */
 	sizes: Map<string, number | undefined>;
+	/** Modification time of each changed path that exists. */
+	mtimes: Map<string, number>;
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
+export async function git(cwd: string, args: string[]): Promise<string> {
 	const { stdout } = await promisify(execFile)(
 		"git",
 		["--no-optional-locks", "-C", cwd, ...args],
@@ -38,9 +40,11 @@ async function git(cwd: string, args: string[]): Promise<string> {
 	return stdout;
 }
 
-async function sizeOf(path: string): Promise<number | undefined> {
+async function statOf(
+	path: string,
+): Promise<{ size: number; mtimeMs: number } | undefined> {
 	try {
-		return (await stat(path)).size;
+		return await stat(path);
 	} catch {
 		return undefined;
 	}
@@ -123,15 +127,20 @@ export async function snapshotWorkingTree(
 	const { head, files } = parsePorcelainV2(output);
 	const paths = new Set([...files.keys(), ...alsoStat]);
 	const sizes = new Map<string, number | undefined>();
+	const mtimes = new Map<string, number>();
 	await Promise.all(
 		[...paths].map(async (path) => {
-			sizes.set(path, await sizeOf(join(root, path)));
+			const stats = await statOf(join(root, path));
+			sizes.set(path, stats?.size);
+			if (stats) {
+				mtimes.set(path, stats.mtimeMs);
+			}
 		}),
 	);
-	return { head, changed: files, sizes };
+	return { head, changed: files, sizes, mtimes };
 }
 
-function formatBytes(size: number): string {
+export function formatBytes(size: number): string {
 	return `${size.toLocaleString("en-US")} bytes`;
 }
 

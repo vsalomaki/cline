@@ -23,6 +23,7 @@ import {
 } from "../../extensions/tools/command-guard-extension";
 import { TelemetryService } from "../../services/telemetry/TelemetryService";
 import type { CoreSessionConfig } from "../../types/config";
+import { RUN_REVIEW_EXTENSION_NAME } from "../safety/run-review";
 import { DefaultRuntimeBuilder } from "./runtime-builder";
 
 function makeSpawnTool(): AgentTool {
@@ -327,6 +328,26 @@ Use the review guidance.`,
 		);
 	});
 
+	it("adds the run review in act mode unless it is switched off", async () => {
+		const build = (config: Partial<CoreSessionConfig>) =>
+			new DefaultRuntimeBuilder().build({ config: makeBaseConfig(config) });
+		const names = (runtime: Awaited<ReturnType<typeof build>>) =>
+			(runtime.extensions ?? []).map((extension) => extension.name);
+
+		const act = await build({});
+		expect(names(act)).toContain(RUN_REVIEW_EXTENSION_NAME);
+		expect(act.completionPolicy?.completionGuard).toBeTypeOf("function");
+
+		for (const off of [
+			await build({ mode: "plan" }),
+			await build({ mode: "yolo" }),
+			await build({ reviewBeforeFinish: false }),
+		]) {
+			expect(names(off)).not.toContain(RUN_REVIEW_EXTENSION_NAME);
+			expect(off.completionPolicy?.completionGuard).toBeUndefined();
+		}
+	});
+
 	it("does not register the plan-mode command-guard when tools are disabled", async () => {
 		const runtime = await new DefaultRuntimeBuilder().build({
 			config: makeBaseConfig({
@@ -385,7 +406,7 @@ Use the review guidance.`,
 			const names = runtime.tools.map((tool) => tool.name);
 			expect(names).toContain("ask_question");
 			expect(names).not.toContain("submit_and_exit");
-			expect(runtime.completionPolicy).toBeUndefined();
+			expect(runtime.completionPolicy?.requireCompletionTool).toBeUndefined();
 		}
 	}, 10_000);
 

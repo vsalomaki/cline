@@ -61,7 +61,9 @@ import {
 	resolveDisabledToolNames,
 } from "../../services/global-settings";
 import { createLocalTeamStore } from "../../services/storage/team-store";
+import { resolveToolCallSettings } from "../../settings/tool-calls";
 import type { CoreAgentMode, CoreSessionConfig } from "../../types/config";
+import { createRunReview } from "../safety/run-review";
 import type {
 	RuntimeBuilder,
 	RuntimeBuilderInput,
@@ -602,6 +604,13 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			normalized.mode !== "plan" && normalized.enableTools
 				? createUncommittedWorkGuardExtension({ cwd: config.cwd })
 				: undefined;
+		// Yolo runs finish through submit_and_exit, which the review does not see.
+		const runReview =
+			normalized.mode === "act" &&
+			normalized.enableTools &&
+			resolveToolCallSettings(config).reviewBeforeFinish
+				? createRunReview({ cwd: config.cwd })
+				: undefined;
 		const injectedExtensions = [
 			userInstructionPlugin,
 			planModeCommandGuard,
@@ -912,15 +921,19 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 					return undefined;
 				}
 			: undefined;
+		// Team obligations come first; the review runs once they are met.
+		const completionGuard =
+			teamCompletionGuard && runReview
+				? async () =>
+						teamCompletionGuard() ?? (await runReview.completionGuard())
+				: (teamCompletionGuard ?? runReview?.completionGuard);
 		const completionPolicy = requiresCompletionTool
 			? {
 					requireCompletionTool: true,
-					...(teamCompletionGuard
-						? { completionGuard: teamCompletionGuard }
-						: {}),
+					...(completionGuard ? { completionGuard } : {}),
 				}
-			: teamCompletionGuard
-				? { completionGuard: teamCompletionGuard }
+			: completionGuard
+				? { completionGuard }
 				: undefined;
 
 		return {
@@ -933,7 +946,11 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			delegatedAgentConfigProvider:
 				this.teamRuntimeEntries.get(registryKey)
 					?.delegatedAgentConfigProvider ?? delegatedAgentConfigProvider,
-			extensions: runtimeExtensions,
+			// The review is the lead's alone: it holds per-run state, and only the
+			// lead gets the completion policy.
+			extensions: runReview
+				? [...(runtimeExtensions ?? []), runReview.extension]
+				: runtimeExtensions,
 			completionPolicy,
 			registerLeadAgent: (agent) => {
 				leadAgentInstance = agent;

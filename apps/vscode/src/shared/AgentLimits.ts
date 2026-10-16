@@ -105,6 +105,18 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		envVar: "CLINE_READ_BEFORE_WRITE",
 	},
 	{
+		id: "session.reviewBeforeFinish",
+		group: "toolCalls",
+		label: "Review before finishing",
+		description:
+			"When a request changed files, send the agent back once to review everything it changed before its final report: it gets a list of the changed files and checks them, removes leftovers and runs what is still unverified. Costs one more model turn per such request.",
+		unit: "toggle",
+		default: 1,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_REVIEW_BEFORE_FINISH",
+	},
+	{
 		id: "session.codeIntelligenceTool",
 		group: "languageServers",
 		label: "Code intelligence tool",
