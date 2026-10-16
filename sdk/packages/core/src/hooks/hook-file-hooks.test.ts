@@ -1061,6 +1061,18 @@ describe("file hook lifecycle and controls", () => {
 		expect(log[0].userPromptSubmit.prompt).toBe("hello");
 	});
 
+	it("runs no prompt or lifecycle hooks for a subagent's run", async () => {
+		await addHook("TaskStart.js");
+		await addHook("UserPromptSubmit.js");
+		const { hooks } = createHooks({ blockingRunStartHooks: true });
+		const ctx = runContext([message("s1", "user", "subagent task")]);
+		await hooks.beforeRun?.({
+			...ctx,
+			snapshot: { ...ctx.snapshot, parentAgentId: "lead" },
+		});
+		expect(await readLog()).toEqual([]);
+	});
+
 	it("takes the prompt from run input and does not fire again when it is added", async () => {
 		await addHook("UserPromptSubmit.js");
 		const { hooks } = createHooks();

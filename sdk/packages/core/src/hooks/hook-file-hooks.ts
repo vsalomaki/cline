@@ -1,33 +1,39 @@
-import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
 	AgentAfterToolContext,
 	AgentBeforeToolContext,
-	AgentBeforeToolResult,
 	AgentExtension,
 	AgentHooks,
 	AgentMessage,
 	AgentRunLifecycleContext,
 	AgentRuntimeEvent,
 	BasicLogger,
-	HookControl,
 	HookSessionContext,
 	WorkspaceInfo,
 } from "@cline/shared";
 import { augmentNodeCommandForDebug } from "@cline/shared";
 import { ensureHookLogDir } from "@cline/shared/storage";
 import type { CoreCompactionMode } from "../types/config";
+import { ClaudeHooks } from "./claude-hooks";
+import {
+	afterToolResultFromControl,
+	beforeToolResultFromControl,
+	type HookCommandControl,
+	type HookRunMeta,
+	type HookRunObserver,
+	logHookError,
+	mergeHookControls,
+	parseHookControl,
+	reportHookRun,
+	runStartResultFromControl,
+} from "./hook-control";
 import { createAgentHooksExtension } from "./hook-extension";
 import {
 	HOOK_CONFIG_FILE_EVENT_MAP,
 	listHookConfigFiles,
 } from "./hook-file-config";
-import {
-	type HookEventName,
-	type HookEventPayload,
-	truncateHookContext,
-} from "./subprocess";
+import type { HookEventName, HookEventPayload } from "./subprocess";
 import {
 	type RunSubprocessEventOptions,
 	type RunSubprocessEventResult,
@@ -38,22 +44,6 @@ type HookContextBase = {
 	agentId: string;
 	conversationId: string;
 	parentAgentId: string | null;
-};
-
-type HookCommandControl = Omit<HookControl, "appendMessages"> & {
-	systemPrompt?: string;
-	appendMessages?: unknown[];
-	/**
-	 * Error message accompanying `cancel: true`. Kept separate from `context`
-	 * so injectable context from one hook never leaks into another hook's
-	 * cancellation reason when controls are merged.
-	 */
-	cancelReason?: string;
-	/** Block this one tool call (or prompt) without stopping the run. */
-	deny?: boolean;
-	denyReason?: string;
-	/** Ask the user before this tool call, whatever the approval settings. */
-	ask?: boolean;
 };
 
 type HookCommandRunStartContext = HookContextBase & {
@@ -109,26 +99,6 @@ export interface FileHookSettings {
 	lifecycle?: "startup" | "resume" | "none";
 }
 
-export type HookRunStatus = "running" | "completed" | "failed" | "cancelled";
-
-export interface HookRunEvent {
-	/** Same for the running and final report of one hook execution. */
-	executionId: string;
-	/** Hook file name, such as `PreToolUse`. */
-	hookName: string;
-	/** Hook file path, or the command of a hooks.json entry. */
-	source: string;
-	toolName?: string;
-	toolCallId?: string;
-	itemIndex?: number;
-	status: HookRunStatus;
-	durationMs?: number;
-	error?: string;
-}
-
-/** Reports each hook execution, for host status UI. */
-export type HookRunObserver = (event: HookRunEvent) => void;
-
 type HookRuntimeOptions = {
 	cwd: string;
 	workspacePath: string;
@@ -138,6 +108,8 @@ type HookRuntimeOptions = {
 	requireExecutable?: boolean;
 	extraHookDirs?: readonly string[];
 	lifecycle?: FileHookSettings["lifecycle"];
+	/** Session mode (act, plan, yolo), for hooks.json `permission_mode`. */
+	mode?: string;
 	onHookRun?: HookRunObserver;
 	model?: { provider: string; slug: string };
 	/** Keep asynchronous hooks attached until exit. Intended for deterministic tests. */
@@ -203,144 +175,6 @@ function mapParams(input: unknown): Record<string, string> {
 	return output;
 }
 
-function logHookError(
-	logger: BasicLogger | undefined,
-	message: string,
-	error?: unknown,
-): void {
-	const detail = error instanceof Error ? `: ${error.message}` : "";
-	const text = `${message}${detail}`;
-	if (logger) {
-		try {
-			logger.log(text, {
-				severity: "warn",
-				...(error !== undefined ? { error } : {}),
-			});
-		} catch {
-			// Logging failures must not break hook execution.
-		}
-		return;
-	}
-	console.warn(text);
-}
-
-function mergeHookControls(
-	current: HookCommandControl | undefined,
-	next: HookCommandControl | undefined,
-): HookCommandControl | undefined {
-	if (!next) {
-		return current;
-	}
-	if (!current) {
-		return { ...next };
-	}
-	const contexts = [current.context, next.context]
-		.filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
-		)
-		.join("\n");
-	const cancelReasons = [current.cancelReason, next.cancelReason]
-		.filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
-		)
-		.join("\n");
-	const appendMessages = [
-		...(current.appendMessages ?? []),
-		...(next.appendMessages ?? []),
-	];
-	const denyReasons = [current.denyReason, next.denyReason]
-		.filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
-		)
-		.join("\n");
-	return {
-		cancel: current.cancel === true || next.cancel === true ? true : undefined,
-		deny: current.deny === true || next.deny === true ? true : undefined,
-		denyReason: denyReasons || undefined,
-		ask: current.ask === true || next.ask === true ? true : undefined,
-		review: current.review === true || next.review === true ? true : undefined,
-		context: contexts || undefined,
-		cancelReason: cancelReasons || undefined,
-		overrideInput:
-			next.overrideInput !== undefined
-				? next.overrideInput
-				: current.overrideInput,
-		systemPrompt:
-			next.systemPrompt !== undefined
-				? next.systemPrompt
-				: current.systemPrompt,
-		appendMessages: appendMessages.length > 0 ? appendMessages : undefined,
-	};
-}
-
-function nonEmptyString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim().length > 0
-		? value
-		: undefined;
-}
-
-/**
- * Reads Cline's own control fields and Claude Code's hook output fields
- * (`hookSpecificOutput`, `decision`, `continue`).
- */
-export function parseHookControl(
-	value: unknown,
-): HookCommandControl | undefined {
-	if (!value || typeof value !== "object") {
-		return undefined;
-	}
-	const record = value as Record<string, unknown>;
-	const specific =
-		record.hookSpecificOutput && typeof record.hookSpecificOutput === "object"
-			? (record.hookSpecificOutput as Record<string, unknown>)
-			: undefined;
-	const injectableContext =
-		typeof record.context === "string"
-			? record.context
-			: typeof record.contextModification === "string"
-				? record.contextModification
-				: undefined;
-	const errorMessage = nonEmptyString(record.errorMessage);
-	const stopRun = record.continue === false;
-	const cancel = stopRun
-		? true
-		: typeof record.cancel === "boolean"
-			? record.cancel
-			: undefined;
-	const deny =
-		specific?.permissionDecision === "deny" || record.decision === "block";
-	const additionalContext = nonEmptyString(specific?.additionalContext);
-	const context = [injectableContext ?? errorMessage, additionalContext]
-		.filter((text): text is string => Boolean(text?.trim()))
-		.join("\n");
-	return {
-		cancel,
-		review: typeof record.review === "boolean" ? record.review : undefined,
-		// A cancelling hook's message is its error/reason, not injectable
-		// conversation context; errorMessage takes precedence there.
-		context:
-			cancel === true ? undefined : truncateHookContext(context || undefined),
-		cancelReason:
-			cancel === true
-				? stopRun
-					? (nonEmptyString(record.stopReason) ?? errorMessage)
-					: (errorMessage ?? injectableContext)
-				: undefined,
-		deny: deny ? true : undefined,
-		denyReason: deny
-			? (nonEmptyString(specific?.permissionDecisionReason) ??
-				nonEmptyString(record.reason))
-			: undefined,
-		ask: specific?.permissionDecision === "ask" ? true : undefined,
-		overrideInput:
-			specific && Object.hasOwn(specific, "updatedInput")
-				? specific.updatedInput
-				: Object.hasOwn(record, "overrideInput")
-					? record.overrideInput
-					: undefined,
-	};
-}
-
 function isAbortReason(reason?: string): boolean {
 	const value = String(reason ?? "").toLowerCase();
 	return (
@@ -376,9 +210,6 @@ function createPayloadBase(
 type HookCommand = { command: string[]; path: string };
 type HookCommandMap = Partial<Record<HookEventName, HookCommand[]>>;
 
-/** Which tool call a hook run belongs to, for status reporting. */
-type HookRunMeta = Pick<HookRunEvent, "toolName" | "toolCallId" | "itemIndex">;
-
 const HOOK_FILE_NAME_BY_EVENT = new Map<HookEventName, string>(
 	Object.entries(HOOK_CONFIG_FILE_EVENT_MAP).flatMap(([fileName, event]) =>
 		event ? [[event, fileName] as const] : [],
@@ -387,39 +218,6 @@ const HOOK_FILE_NAME_BY_EVENT = new Map<HookEventName, string>(
 
 export function hookFileNameForEvent(event: HookEventName): string {
 	return HOOK_FILE_NAME_BY_EVENT.get(event) ?? event;
-}
-
-/** Starts reporting one hook execution; the returned function reports its end. */
-export function reportHookRun(
-	observer: HookRunObserver | undefined,
-	logger: BasicLogger | undefined,
-	start: Omit<HookRunEvent, "executionId" | "status" | "durationMs" | "error">,
-): (status: Exclude<HookRunStatus, "running">, error?: string) => void {
-	if (!observer) {
-		return () => {};
-	}
-	const executionId = randomUUID();
-	const startedAt = Date.now();
-	const emit = (event: HookRunEvent) => {
-		try {
-			observer(event);
-		} catch (error) {
-			logHookError(logger, "hook run observer failed", error);
-		}
-	};
-	emit({ ...start, executionId, status: "running" });
-	let finished = false;
-	return (status, error) => {
-		if (finished) return;
-		finished = true;
-		emit({
-			...start,
-			executionId,
-			status,
-			durationMs: Date.now() - startedAt,
-			...(error ? { error } : {}),
-		});
-	};
 }
 
 async function runHookCommand(
@@ -776,85 +574,6 @@ function textFromMessageContent(
 		.join("");
 }
 
-const DEFAULT_DENY_REASON = "Blocked by a PreToolUse hook";
-
-/** Stop beats deny, and deny beats ask. */
-export function beforeToolResultFromControl(
-	control: HookCommandControl | undefined,
-): AgentBeforeToolResult | undefined {
-	if (!control) {
-		return undefined;
-	}
-	const result: AgentBeforeToolResult = {};
-	if (control.cancel === true) {
-		result.stop = true;
-		if (control.cancelReason?.trim()) {
-			result.reason = control.cancelReason;
-		}
-		return result;
-	}
-	if (control.context?.trim()) {
-		// Context is injected only when the hook lets the run continue; a
-		// cancelling hook's message travels as cancelReason instead (legacy
-		// surfaced it as an error, never as conversation context).
-		result.appendContext = control.context;
-	}
-	if (control.deny === true) {
-		result.skip = true;
-		result.reason = control.denyReason ?? DEFAULT_DENY_REASON;
-		return result;
-	}
-	if (control.ask === true) {
-		result.policy = { requireApproval: true };
-	}
-	if (control.overrideInput !== undefined) {
-		result.input = control.overrideInput;
-	}
-	return Object.keys(result).length > 0 ? result : undefined;
-}
-
-/** afterTool may stop the run or add context; a deny reason becomes context. */
-export function afterToolResultFromControl(
-	control: HookCommandControl | undefined,
-): { stop?: boolean; reason?: string; appendContext?: string } | undefined {
-	if (!control) {
-		return undefined;
-	}
-	const result: { stop?: boolean; reason?: string; appendContext?: string } =
-		{};
-	if (control.cancel === true) {
-		result.stop = true;
-		if (control.cancelReason?.trim()) {
-			result.reason = control.cancelReason;
-		}
-		return result;
-	}
-	const context = [control.denyReason, control.context]
-		.filter((text): text is string => Boolean(text?.trim()))
-		.join("\n");
-	if (context) {
-		result.appendContext = context;
-	}
-	return Object.keys(result).length > 0 ? result : undefined;
-}
-
-/** beforeRun may stop the run or add context; a denied prompt stops the run. */
-export function runStartResultFromControl(
-	control: HookCommandControl | undefined,
-): { stop?: boolean; reason?: string; appendContext?: string } | undefined {
-	if (!control) {
-		return undefined;
-	}
-	if (control.cancel === true || control.deny === true) {
-		const reason =
-			control.cancel === true ? control.cancelReason : control.denyReason;
-		return { stop: true, ...(reason?.trim() ? { reason } : {}) };
-	}
-	return control.context?.trim()
-		? { appendContext: control.context }
-		: undefined;
-}
-
 export function createHookAuditHooks(options: {
 	rootSessionId?: string;
 	workspacePath: string;
@@ -1037,6 +756,16 @@ export function createHookConfigFileRuntime(
 	const timeoutMs = options.toolCallTimeoutMs ?? 120000;
 	let firstRun = true;
 	const submittedPromptIds = new Set<string>();
+	const claude = new ClaudeHooks({
+		workspacePath: options.workspacePath,
+		cwd: options.cwd,
+		extraHookDirs: options.extraHookDirs,
+		sessionId: options.rootSessionId ?? "",
+		mode: options.mode,
+		timeoutMs,
+		logger: options.logger,
+		onHookRun: options.onHookRun,
+	});
 
 	const runAsync = (event: HookEventName, payload: HookEventPayload) =>
 		runAsyncHookCommands({
@@ -1121,7 +850,13 @@ export function createHookConfigFileRuntime(
 
 	const hooks: AgentHooks = {
 		beforeRun: async (ctx: AgentRunLifecycleContext) => {
+			// A subagent's task is not a user prompt, and its run is not a
+			// session start; its tool calls still run the tool hooks.
+			if (ctx.snapshot.parentAgentId) {
+				return undefined;
+			}
 			commandMap = createHookCommandMap(options);
+			claude.reload();
 			const base = baseContextFromSnapshot(ctx.snapshot);
 			let control: HookCommandControl | undefined;
 			if (firstRun) {
@@ -1139,6 +874,13 @@ export function createHookConfigFileRuntime(
 					if (control?.cancel === true) {
 						return runStartResultFromControl(control);
 					}
+					const sessionContext = await claude.sessionStart(
+						lifecycle === "resume" ? "resume" : "startup",
+					);
+					control = mergeHookControls(
+						control,
+						sessionContext ? { context: sessionContext } : undefined,
+					);
 				}
 			}
 			// The prompt is either the run's input (a directly driven runtime)
@@ -1147,12 +889,14 @@ export function createHookConfigFileRuntime(
 			const prompt = latestUserPrompt(ctx);
 			if (prompt && !submittedPromptIds.has(prompt.id)) {
 				submittedPromptIds.add(prompt.id);
+				const text = textFromMessageContent(prompt.content);
 				control = mergeHookControls(
 					control,
-					await runPromptSubmit(
-						{ ...base, userMessage: textFromMessageContent(prompt.content) },
-						true,
-					),
+					await runPromptSubmit({ ...base, userMessage: text }, true),
+				);
+				control = mergeHookControls(
+					control,
+					await claude.userPromptSubmit(text),
 				);
 			}
 			return runStartResultFromControl(control);
@@ -1166,25 +910,22 @@ export function createHookConfigFileRuntime(
 				// Injected hook-context blocks are user-role messages with a
 				// system display role; they are not user prompts.
 				event.message.metadata?.displayRole === "system" ||
+				event.snapshot.parentAgentId ||
 				submittedPromptIds.has(event.message.id)
 			) {
 				return;
 			}
 			submittedPromptIds.add(event.message.id);
+			const text = textFromMessageContent(event.message.content);
+			void claude.userPromptSubmit(text);
 			await runPromptSubmit(
-				runStartContext(
-					{ snapshot: event.snapshot },
-					textFromMessageContent(event.message.content),
-				),
+				runStartContext({ snapshot: event.snapshot }, text),
 				false,
 			);
 		},
 		beforeTool: async (ctx: AgentBeforeToolContext) => {
-			if (commandsFor("tool_call").length === 0) {
-				return undefined;
-			}
 			const call = toolCallStartContext(ctx);
-			const control = await runBlocking(
+			const native = await runBlocking(
 				"tool_call",
 				{
 					...createPayloadBase(call, options),
@@ -1202,14 +943,23 @@ export function createHookConfigFileRuntime(
 				},
 				{ toolName: call.call.name, toolCallId: call.call.id },
 			);
+			if (native?.cancel === true || native?.deny === true) {
+				return beforeToolResultFromControl(native);
+			}
+			// hooks.json hooks see the input as the native hooks left it.
+			const control = mergeHookControls(
+				native,
+				await claude.preToolUse(
+					call.call.name,
+					call.call.id,
+					native?.overrideInput ?? call.call.input,
+				),
+			);
 			return beforeToolResultFromControl(control);
 		},
 		afterTool: async (ctx: AgentAfterToolContext) => {
-			if (commandsFor("tool_result").length === 0) {
-				return undefined;
-			}
 			const end = toolCallEndContext(ctx);
-			const control = await runBlocking(
+			const native = await runBlocking(
 				"tool_result",
 				{
 					...createPayloadBase(end, options),
@@ -1229,9 +979,21 @@ export function createHookConfigFileRuntime(
 				},
 				{ toolName: end.record.name, toolCallId: end.record.id },
 			);
+			const control = mergeHookControls(
+				native,
+				await claude.postToolUse(
+					end.record.name,
+					end.record.id,
+					end.record.input,
+					end.record.output,
+				),
+			);
 			return afterToolResultFromControl(control);
 		},
 		afterRun: async ({ snapshot, result }) => {
+			if (snapshot.parentAgentId) {
+				return;
+			}
 			const base = baseContextFromSnapshot(snapshot);
 			if (result.status === "completed") {
 				await runAsync("agent_end", {
@@ -1279,6 +1041,7 @@ export function createHookConfigFileRuntime(
 		// PreCompact runs blocking so it finishes before the conversation is
 		// rewritten; like Claude Code's, it cannot stop the compaction.
 		beforeCompact: async (input) => {
+			await claude.preCompact(input.mode === "manual" ? "manual" : "auto");
 			if (commandsFor("pre_compact").length === 0) {
 				return;
 			}
@@ -1303,7 +1066,7 @@ export function createHookConfigFileRuntime(
 				},
 			});
 		},
-		afterCompact: async () => undefined,
+		afterCompact: () => claude.sessionStart("compact"),
 	};
 
 	return { hooks, compaction };

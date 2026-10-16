@@ -4,7 +4,9 @@ import {
 	EDITOR_INPUT_CHAR_LIMIT,
 	type EditFileInput,
 	type ReadFileRequest,
+	ReadFilesInputUnionSchema,
 	RunCommandsInputUnionSchema,
+	SearchCodebaseUnionInputSchema,
 	type StructuredCommandInput,
 } from "./schemas";
 
@@ -225,6 +227,57 @@ export function normalizeReadFilesInput(input: unknown): unknown {
 		}
 	}
 	return coalesceOrphanReadRanges(normalized);
+}
+
+/** The read requests in any read_files input form the tool accepts. */
+export function normalizeReadFileRequests(input: unknown): ReadFileRequest[] {
+	const validate = validateWithZod(
+		ReadFilesInputUnionSchema,
+		normalizeReadFilesInput(input),
+	);
+	if (typeof validate === "string") {
+		return [{ path: validate }];
+	}
+	if (Array.isArray(validate)) {
+		return validate.map((value) =>
+			typeof value === "string" ? { path: value } : value,
+		);
+	}
+	if ("files" in validate) {
+		const files = Array.isArray(validate.files)
+			? validate.files
+			: [validate.files];
+		return files.map((file) =>
+			typeof file === "string" ? { path: file } : file,
+		);
+	}
+	if ("file_paths" in validate) {
+		const filePaths = Array.isArray(validate.file_paths)
+			? validate.file_paths
+			: [validate.file_paths];
+		return filePaths.map((path) => ({ path }));
+	}
+	if ("paths" in validate) {
+		const paths = Array.isArray(validate.paths)
+			? validate.paths
+			: [validate.paths];
+		return paths.map((path) => (typeof path === "string" ? { path } : path));
+	}
+	return [validate];
+}
+
+/** The queries in any search_codebase input form the tool accepts. */
+export function normalizeSearchQueries(input: unknown): string[] {
+	const validate = validateWithZod(SearchCodebaseUnionInputSchema, input);
+	if (Array.isArray(validate)) {
+		return validate;
+	}
+	if (typeof validate === "object") {
+		return Array.isArray(validate.queries)
+			? validate.queries
+			: [validate.queries];
+	}
+	return [validate];
 }
 
 export function normalizeRunCommandsInput(

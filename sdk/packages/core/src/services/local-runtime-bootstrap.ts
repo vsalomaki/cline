@@ -471,6 +471,7 @@ export async function prepareLocalRuntimeBootstrap(
 					provider: input.config.providerId,
 					slug: input.config.modelId,
 				},
+				mode: input.config.mode,
 				onHookRun: localConfig?.onHookRun,
 				// Detached hooks are never awaited, so their runtime is
 				// invisible today. Measuring it is what tells us whether

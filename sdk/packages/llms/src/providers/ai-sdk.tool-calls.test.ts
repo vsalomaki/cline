@@ -397,6 +397,21 @@ describe("repairMalformedToolCall", () => {
 		).toBeNull();
 	});
 
+	it("renames an MCP tool written the Claude Code way", async () => {
+		const call = {
+			toolCallId: "call_1",
+			toolName: "mcp__plugin_context-mode_context-mode__ctx_search",
+			input: '{"queries": ["x"]}',
+		};
+		expect(
+			await repairMalformedToolCall({
+				toolCall: call,
+				tools: { "context-mode__ctx_search": {}, run_commands: {} },
+				error: new NoSuchToolError({ toolName: call.toolName }),
+			}),
+		).toEqual({ ...call, toolName: "context-mode__ctx_search" });
+	});
+
 	it("keeps a shell alias that sets its own working directory un-renamed", async () => {
 		for (const input of [
 			'{"command": "ls", "cwd": "/elsewhere"}',

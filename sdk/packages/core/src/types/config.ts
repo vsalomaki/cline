@@ -23,10 +23,8 @@ import type {
 import type { ToolRoutingRule } from "../extensions/tools/model-tool-routing";
 import type { TeamEvent } from "../extensions/tools/team";
 import type { DefaultToolsConfig } from "../extensions/tools/types";
-import type {
-	FileHookSettings,
-	HookRunObserver,
-} from "../hooks/hook-file-hooks";
+import type { HookRunObserver } from "../hooks/hook-control";
+import type { FileHookSettings } from "../hooks/hook-file-hooks";
 import type { ContextLimitOverrides } from "../settings/context-limits";
 import type { ProviderConfig } from "./provider-settings";
 

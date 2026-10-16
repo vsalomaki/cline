@@ -1,3 +1,9 @@
+export {
+	type HookRunEvent,
+	type HookRunObserver,
+	type HookRunStatus,
+	parseHookControl,
+} from "./hook-control";
 export { createAgentHooksExtension } from "./hook-extension";
 export {
 	HOOK_CONFIG_FILE_EVENT_MAP,
@@ -17,9 +23,6 @@ export {
 	createHookConfigFileRuntime,
 	type FileHookSettings,
 	type HookConfigFileRuntime,
-	type HookRunEvent,
-	type HookRunObserver,
-	type HookRunStatus,
 	mergeAgentHooks,
 	resolveFileHookOptions,
 } from "./hook-file-hooks";

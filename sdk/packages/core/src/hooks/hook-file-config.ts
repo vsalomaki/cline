@@ -1,5 +1,5 @@
 import { accessSync, constants, existsSync, readdirSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import {
 	HOOKS_CONFIG_DIRECTORY_NAME,
 	resolveHooksConfigSearchPaths as resolveHooksConfigSearchPathsFromShared,
@@ -97,18 +97,41 @@ function isExecutable(path: string): boolean {
 	}
 }
 
+/** Claude Code–style hook configuration, one per hook directory. */
+export const CLAUDE_HOOKS_CONFIG_FILE_NAME = "hooks.json";
+
+function hookDirectories(
+	workspacePath: string | undefined,
+	extraDirectories: readonly string[] | undefined,
+): string[] {
+	// Resolved before de-duplication: the same directory spelled two ways
+	// would otherwise run its hooks twice.
+	return [
+		...new Set(
+			[
+				...resolveHooksConfigSearchPaths(workspacePath),
+				...(extraDirectories ?? []),
+			].map((directory) => resolve(directory)),
+		),
+	].filter((directory) => existsSync(directory));
+}
+
+export function listClaudeHookConfigFiles(
+	workspacePath?: string,
+	extraDirectories?: readonly string[],
+): string[] {
+	return hookDirectories(workspacePath, extraDirectories)
+		.map((directory) => join(directory, CLAUDE_HOOKS_CONFIG_FILE_NAME))
+		.filter((path) => existsSync(path));
+}
+
 export function listHookConfigFiles(
 	workspacePath?: string,
 	options: ListHookConfigFilesOptions = {},
 ): HookConfigFileEntry[] {
 	const entries: HookConfigFileEntry[] = [];
 	const seen = new Set<string>();
-	const directories = [
-		...new Set([
-			...resolveHooksConfigSearchPaths(workspacePath),
-			...(options.extraDirectories ?? []),
-		]),
-	].filter((directory) => existsSync(directory));
+	const directories = hookDirectories(workspacePath, options.extraDirectories);
 	const requireExecutable =
 		options.requireExecutable === true && process.platform !== "win32";
 

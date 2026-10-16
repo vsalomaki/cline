@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	canonicalInputForAlias,
 	canonicalToolForAlias,
+	mcpToolForClaudeName,
 	suggestToolForUnknownName,
 } from "./tool-name-hints";
 
@@ -129,5 +130,29 @@ describe("canonicalInputForAlias", () => {
 		expect(canonicalInputForAlias("read_files", read)).toBe(read);
 		expect(canonicalInputForAlias("editor", "{not json")).toBe("{not json");
 		expect(canonicalInputForAlias("editor", '["a"]')).toBe('["a"]');
+	});
+});
+
+describe("mcpToolForClaudeName", () => {
+	const tools = ["context-mode__ctx_search", "github__search", "run_commands"];
+
+	it("maps mcp__<server>__<tool> to the session's tool", () => {
+		expect(mcpToolForClaudeName("mcp__github__search", tools)).toBe(
+			"github__search",
+		);
+	});
+
+	it("maps a plugin server's name to the server's own tool", () => {
+		expect(
+			mcpToolForClaudeName(
+				"mcp__plugin_context-mode_context-mode__ctx_search",
+				tools,
+			),
+		).toBe("context-mode__ctx_search");
+	});
+
+	it("leaves other names and unknown tools alone", () => {
+		expect(mcpToolForClaudeName("ctx_search", tools)).toBeUndefined();
+		expect(mcpToolForClaudeName("mcp__other__missing", tools)).toBeUndefined();
 	});
 });

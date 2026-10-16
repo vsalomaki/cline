@@ -25,6 +25,7 @@ import {
 	formatMessagesForAiSdk,
 	GeneratedMediaSchema,
 	generatedMediaModalityFromMediaType,
+	mcpToolForClaudeName,
 	modelProducesImages,
 	modelSupportsToolCalling,
 	parseJsonStream,
@@ -906,7 +907,8 @@ interface RepairableToolCall {
  * Last-chance repair for a tool call the AI SDK rejected.
  *
  * A call under another agent's name for one of our tools (`Read`, `Bash`,
- * `grep`, `ls`, `WebFetch`, …; see `canonicalToolForAlias`) is renamed to that
+ * `grep`, `ls`, `WebFetch`, …; see `canonicalToolForAlias`), or an MCP tool
+ * under its Claude Code name (`mcp__<server>__<tool>`), is renamed to that
  * tool when the session has it, and still runs through that tool's approval
  * and mode policies. A shell alias that sets its own working directory is not
  * renamed, because `run_commands` would run it in the session's cwd. Arguments
@@ -925,6 +927,13 @@ export async function repairMalformedToolCall<T extends RepairableToolCall>({
 	error: unknown;
 }): Promise<T | null> {
 	if (NoSuchToolError.isInstance(error)) {
+		const mcpTool =
+			tools === undefined
+				? undefined
+				: mcpToolForClaudeName(toolCall.toolName, Object.keys(tools));
+		if (mcpTool !== undefined) {
+			return { ...toolCall, toolName: mcpTool };
+		}
 		const canonical = canonicalToolForAlias(toolCall.toolName);
 		if (
 			canonical === undefined ||
