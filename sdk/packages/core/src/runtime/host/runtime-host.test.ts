@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createFakeCodeIntelligence } from "../../extensions/tools/code-intelligence/fake-provider.fixtures";
 import { SessionRunInProgressError } from "../orchestration/session-runtime-orchestrator";
 import {
 	isSessionNotFoundError,
 	isUnusableSessionError,
 	SessionNotFoundError,
+	splitCoreSessionConfig,
 } from "./runtime-host";
 
 describe("isUnusableSessionError", () => {
@@ -78,5 +80,30 @@ describe("SessionRunInProgressError", () => {
 		expect(new SessionRunInProgressError().message).toBe(
 			"SessionRuntime.shutdown called while a run is in progress",
 		);
+	});
+});
+
+describe("splitCoreSessionConfig", () => {
+	it("keeps the code-intelligence provider local and the settings serializable", () => {
+		const codeIntelligence = createFakeCodeIntelligence();
+		const split = splitCoreSessionConfig({
+			providerId: "anthropic",
+			modelId: "m",
+			systemPrompt: "",
+			enableTools: true,
+			enableSpawnAgent: false,
+			enableAgentTeams: false,
+			codeIntelligence,
+			languageServers: { enabled: false },
+			problemsAfterEdit: "warnings",
+			problemsTimeoutMs: 500,
+		});
+		expect(split.localRuntime?.codeIntelligence).toBe(codeIntelligence);
+		expect(split.config).not.toHaveProperty("codeIntelligence");
+		expect(split.config).toMatchObject({
+			languageServers: { enabled: false },
+			problemsAfterEdit: "warnings",
+			problemsTimeoutMs: 500,
+		});
 	});
 });

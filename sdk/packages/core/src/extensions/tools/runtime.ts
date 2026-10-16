@@ -66,6 +66,12 @@ const BASE_TOOL_CATALOG: readonly RuntimeToolCatalogEntry[] = [
 		headlessToolNames: ["list_files"],
 	},
 	{
+		id: "code_intelligence",
+		description:
+			"Go to definition, find references, hover, list symbols and get problems through language servers. Available only when the session has language servers.",
+		headlessToolNames: ["code_intelligence"],
+	},
+	{
 		id: "run_commands",
 		description:
 			"Run shell commands from the root of the workspace for checking git status, builds, tests, and similar tasks.",
@@ -124,6 +130,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 			| "enableReadFiles"
 			| "enableSearch"
 			| "enableListFiles"
+			| "enableCodeIntelligence"
 			| "enableBash"
 			| "enableWebFetch"
 			| "enableApplyPatch"
@@ -137,6 +144,7 @@ const TOOL_NAME_TO_FLAG: Partial<
 	read_files: "enableReadFiles",
 	search_codebase: "enableSearch",
 	list_files: "enableListFiles",
+	code_intelligence: "enableCodeIntelligence",
 	run_commands: "enableBash",
 	fetch_web_content: "enableWebFetch",
 	apply_patch: "enableApplyPatch",
@@ -156,6 +164,7 @@ type ResolvedToolFlags = Pick<
 	| "enableReadFiles"
 	| "enableSearch"
 	| "enableListFiles"
+	| "enableCodeIntelligence"
 	| "enableBash"
 	| "enableWebFetch"
 	| "enableApplyPatch"

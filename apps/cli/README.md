@@ -264,6 +264,10 @@ Schedules can route results back to chat surfaces with `--delivery-adapter`, `--
 | `--max-parallel-tool-calls <count>` | Maximum read-only tool calls run concurrently (default: `4`; `1` runs every call in order) |
 | `--no-parallel-tool-calls` | Ask the model for one tool call per response (`--parallel-tool-calls` restores the default) |
 | `--no-read-before-write` | Allow edits to existing files the agent has not read (`--read-before-write` restores the default) |
+| `--no-language-servers` | Do not start language servers, so there is no `code_intelligence` tool and no problems after edits (`--language-servers` restores the default) |
+| `--no-code-intelligence-tool` | Do not offer the `code_intelligence` tool to the model; problems after edits keep working (`--code-intelligence-tool` restores the default) |
+| `--problems-after-edit <level>` | New problems reported after an edit: `off`, `errors` (default) or `warnings` (errors and warnings) |
+| `--problems-timeout-ms <ms>` | How long an edit waits for language-server problems (default: `3000`) |
 | `--json` | Output NDJSON instead of styled text |
 | `--data-dir <path>` | Use isolated local state at `<path>` instead of `~/.cline/data` (enables sandbox mode automatically) |
 | `--auto-approve [true\|false]` | Set tool auto-approval for all tools |

@@ -98,6 +98,12 @@ export interface ParsedArgs {
 	invalidMaxParallelToolCalls?: string;
 	parallelToolCalls?: boolean;
 	readBeforeWrite?: boolean;
+	languageServers?: boolean;
+	codeIntelligenceTool?: boolean;
+	problemsAfterEdit?: "off" | "errors" | "warnings";
+	invalidProblemsAfterEdit?: string;
+	problemsTimeoutMs?: number;
+	invalidProblemsTimeoutMs?: string;
 	cwd?: string;
 	teamName?: string;
 	defaultToolAutoApprove: boolean;

@@ -38,6 +38,7 @@ const TOOL_NAME_TO_FLAG: Record<
 		| "enableReadFiles"
 		| "enableSearch"
 		| "enableListFiles"
+		| "enableCodeIntelligence"
 		| "enableBash"
 		| "enableWebFetch"
 		| "enableApplyPatch"
@@ -50,6 +51,7 @@ const TOOL_NAME_TO_FLAG: Record<
 	read_files: "enableReadFiles",
 	search_codebase: "enableSearch",
 	list_files: "enableListFiles",
+	code_intelligence: "enableCodeIntelligence",
 	run_commands: "enableBash",
 	fetch_web_content: "enableWebFetch",
 	apply_patch: "enableApplyPatch",

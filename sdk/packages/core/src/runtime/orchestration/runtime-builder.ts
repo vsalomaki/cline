@@ -693,6 +693,9 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			telemetry: input.telemetry ?? config.telemetry,
 			workspaceMetadata: config.workspaceMetadata,
 			contextLimits: config.contextLimits,
+			codeIntelligence: config.codeIntelligence,
+			problemsAfterEdit: config.problemsAfterEdit,
+			problemsTimeoutMs: config.problemsTimeoutMs,
 		});
 		if (normalized.enableSpawnAgent) {
 			if (configuredAgents.configs.length > 0) {

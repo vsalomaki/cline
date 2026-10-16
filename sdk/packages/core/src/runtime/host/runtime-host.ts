@@ -100,7 +100,8 @@ type LocalOnlyCoreSessionConfigKeys =
 	| "extraTools"
 	| "extensions"
 	| "onTeamEvent"
-	| "onConsecutiveMistakeLimitReached";
+	| "onConsecutiveMistakeLimitReached"
+	| "codeIntelligence";
 
 export type RuntimeSessionConfig = Omit<
 	CoreSessionConfig,
@@ -140,6 +141,7 @@ export interface LocalRuntimeStartOptions {
 	extensions?: LocalRuntimeBootstrapConfig["extensions"];
 	onTeamEvent?: LocalRuntimeBootstrapConfig["onTeamEvent"];
 	onConsecutiveMistakeLimitReached?: LocalRuntimeBootstrapConfig["onConsecutiveMistakeLimitReached"];
+	codeIntelligence?: LocalRuntimeBootstrapConfig["codeIntelligence"];
 	checkpoint?: LocalRuntimeBootstrapConfig["checkpoint"];
 	compaction?: LocalRuntimeBootstrapConfig["compaction"];
 	modelCatalogDefaults?: Partial<NonNullable<ProviderSettings["modelCatalog"]>>;
@@ -196,6 +198,7 @@ export function splitCoreSessionConfig(config: ClineCoreStartConfig): {
 		extensions,
 		onTeamEvent,
 		onConsecutiveMistakeLimitReached,
+		codeIntelligence,
 		checkpoint,
 		compaction,
 		...transportConfig
@@ -213,6 +216,9 @@ export function splitCoreSessionConfig(config: ClineCoreStartConfig): {
 	if (onConsecutiveMistakeLimitReached) {
 		localConfigOverrides.onConsecutiveMistakeLimitReached =
 			onConsecutiveMistakeLimitReached;
+	}
+	if (codeIntelligence) {
+		localConfigOverrides.codeIntelligence = codeIntelligence;
 	}
 	if (checkpoint?.createCheckpoint) {
 		localConfigOverrides.checkpoint = checkpoint;

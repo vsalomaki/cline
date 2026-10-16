@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONTEXT_LIMITS } from "../../settings/context-limits";
+import type { CodeIntelligenceProvider } from "./code-intelligence/types";
+import { createBuiltinTools } from "./index";
 import {
 	applySessionToolOptions,
 	resolveSessionToolOptions,
@@ -18,6 +20,27 @@ describe("resolveSessionToolOptions", () => {
 		);
 		expect(options.editorTimeoutMs).toBe(60_000);
 		expect(options.ripgrepTimeoutMs).toBe(20_000);
+	});
+
+	it("passes the code-intelligence provider unless the tool is switched off", () => {
+		const codeIntelligence = {} as CodeIntelligenceProvider;
+		const toolNames = (codeIntelligenceTool?: boolean) =>
+			createBuiltinTools(
+				applySessionToolOptions(
+					{ cwd: "/repo" },
+					resolveSessionToolOptions({ codeIntelligence, codeIntelligenceTool }),
+				),
+			).map((tool) => tool.name);
+
+		expect(toolNames()).toContain("code_intelligence");
+		expect(toolNames(true)).toContain("code_intelligence");
+		expect(toolNames(false)).not.toContain("code_intelligence");
+		expect(
+			resolveSessionToolOptions({
+				codeIntelligence,
+				codeIntelligenceTool: false,
+			}).codeIntelligence,
+		).toBeUndefined();
 	});
 });
 

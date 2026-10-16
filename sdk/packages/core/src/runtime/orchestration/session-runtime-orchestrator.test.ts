@@ -37,6 +37,8 @@ import {
 } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createContextCompactionPrepareTurn } from "../../extensions/context/compaction";
+import { createFakeCodeIntelligence } from "../../extensions/tools/code-intelligence/fake-provider.fixtures";
+import { getCodeIntelligence } from "../../extensions/tools/code-intelligence/problems-after-edit";
 import { FileReadLedger } from "../../session/services/file-read-ledger";
 import { MESSAGE_BUILDER_LIMIT_ENV } from "../../session/services/message-builder";
 import type { CoreCompactionContext } from "../../types/config";
@@ -944,6 +946,58 @@ describe("SessionRuntime message preparation", () => {
 
 		expect(configs[0]?.toolContextMetadata).not.toHaveProperty(
 			"fileReadLedger",
+		);
+	});
+
+	it("hands the code-intelligence provider and problem settings to tools", async () => {
+		const provider = createFakeCodeIntelligence();
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(
+			{
+				...makeAgentConfig(),
+				codeIntelligence: provider,
+				problemsAfterEdit: "warnings",
+				problemsTimeoutMs: 1234,
+			},
+			deps,
+		);
+		await session.run("go");
+
+		const metadata = configs[0]?.toolContextMetadata;
+		expect(getCodeIntelligence(metadata)).toBe(provider);
+		expect(metadata?.problemsAfterEdit).toEqual({
+			level: "warnings",
+			timeoutMs: 1234,
+		});
+	});
+
+	it("omits the problem settings when problems after edit is off", async () => {
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(
+			{
+				...makeAgentConfig(),
+				codeIntelligence: createFakeCodeIntelligence(),
+				problemsAfterEdit: "off",
+			},
+			deps,
+		);
+		await session.run("go");
+
+		const metadata = configs[0]?.toolContextMetadata;
+		expect(getCodeIntelligence(metadata)).toBeDefined();
+		expect(metadata).not.toHaveProperty("problemsAfterEdit");
+	});
+
+	it("omits code intelligence when the session has no provider", async () => {
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(makeAgentConfig(), deps);
+		await session.run("go");
+
+		expect(configs[0]?.toolContextMetadata).not.toHaveProperty(
+			"codeIntelligence",
+		);
+		expect(configs[0]?.toolContextMetadata).not.toHaveProperty(
+			"problemsAfterEdit",
 		);
 	});
 

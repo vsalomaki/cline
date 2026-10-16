@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { getFileReadLedger } from "../../../session/services/file-read-ledger";
+import { startProblemsCheck } from "../code-intelligence/problems-after-edit";
 import type { ApplyPatchInput } from "../schemas";
 import type { ApplyPatchExecutor } from "../types";
 import {
@@ -444,6 +445,16 @@ export function createApplyPatchExecutor(
 				}
 			}
 		}
+		const problems = await startProblemsCheck(
+			context,
+			// A moved file has no baseline at its destination, so its old problems would all look new.
+			Object.entries(changes)
+				.filter(
+					([, change]) =>
+						change.type !== PatchActionType.DELETE && !change.movePath,
+				)
+				.map(([filePath]) => resolveFilePath(cwd, filePath, restrictToCwd)),
+		);
 		const touched = await applyChanges(changes, cwd, encoding, restrictToCwd);
 		if (ledger) {
 			for (const [filePath, change] of Object.entries(changes)) {
@@ -462,6 +473,6 @@ export function createApplyPatchExecutor(
 		if (fuzz > 0) {
 			responseLines.push(`Note: Patch applied with fuzz factor ${fuzz}`);
 		}
-		return responseLines.join("\n");
+		return responseLines.join("\n") + ((await problems?.report(cwd)) ?? "");
 	};
 }

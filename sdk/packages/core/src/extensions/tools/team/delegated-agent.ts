@@ -64,6 +64,9 @@ export interface DelegatedAgentRuntimeConfig
 	sessionId?: string;
 	/** The parent's context limits, so delegated tools and requests share its budgets. */
 	contextLimits?: SessionRuntimeConfig["contextLimits"];
+	codeIntelligence?: SessionRuntimeConfig["codeIntelligence"];
+	problemsAfterEdit?: SessionRuntimeConfig["problemsAfterEdit"];
+	problemsTimeoutMs?: SessionRuntimeConfig["problemsTimeoutMs"];
 }
 
 export interface DelegatedAgentConfigProvider {
@@ -154,6 +157,9 @@ export function buildDelegatedAgentConfig(
 		requestToolApproval: options.requestToolApproval,
 		logger: runtimeConfig.logger,
 		contextLimits: runtimeConfig.contextLimits,
+		codeIntelligence: runtimeConfig.codeIntelligence,
+		problemsAfterEdit: runtimeConfig.problemsAfterEdit,
+		problemsTimeoutMs: runtimeConfig.problemsTimeoutMs,
 		role: options.role,
 	};
 }

@@ -332,6 +332,42 @@ describe("global-settings", () => {
 		}
 	});
 
+	it("normalizes the persisted language-server settings", () => {
+		const languageServers = {
+			enabled: true,
+			servers: {
+				go: { command: ["gopls"], extensions: [".go"] },
+				rust: false as const,
+			},
+		};
+		expect(
+			GlobalSettingsSchema.parse({
+				languageServers,
+				codeIntelligenceTool: false,
+				problemsAfterEdit: "warnings",
+				problemsTimeoutMs: 0,
+			}),
+		).toEqual({
+			autoUpdateEnabled: true,
+			languageServers,
+			codeIntelligenceTool: false,
+			problemsAfterEdit: "warnings",
+			problemsTimeoutMs: 0,
+			telemetryOptOut: false,
+		});
+		expect(
+			GlobalSettingsSchema.parse({
+				languageServers: { servers: { go: { command: [] } } },
+				codeIntelligenceTool: "no",
+				problemsAfterEdit: "all",
+				problemsTimeoutMs: -1,
+			}),
+		).toEqual({
+			autoUpdateEnabled: true,
+			telemetryOptOut: false,
+		});
+	});
+
 	it("reads and writes the plan/act mode globally", async () => {
 		const root = await mkdtemp(join(tmpdir(), "core-global-settings-"));
 		try {

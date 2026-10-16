@@ -52,6 +52,11 @@ import {
 	type ToolCallRecord,
 	usesImageGenerationOperation,
 } from "@cline/shared";
+import { createCodeIntelligenceMetadata } from "../../extensions/tools/code-intelligence/problems-after-edit";
+import type {
+	CodeIntelligenceProvider,
+	ProblemsAfterEditLevel,
+} from "../../extensions/tools/code-intelligence/types";
 import { filterDisabledTools } from "../../services/global-settings";
 import {
 	createAgentModelFromConfig,
@@ -75,6 +80,7 @@ import {
 	ToolResultCache,
 } from "../../session/services/tool-result-cache";
 import { ConversationStore } from "../../session/stores/conversation-store";
+import { resolveCodeIntelligenceSettings } from "../../settings/code-intelligence";
 import type { ContextLimitOverrides } from "../../settings/context-limits";
 import { resolveToolCallSettings } from "../../settings/tool-calls";
 import {
@@ -324,6 +330,10 @@ export type ConnectionOverrides = ConnectionUpdate;
 export interface SessionRuntimeConfig extends AgentConfig {
 	/** Provider-request budgets; matching env vars take precedence. */
 	contextLimits?: ContextLimitOverrides;
+	/** Reaches the executors as `codeIntelligence` tool context metadata. */
+	codeIntelligence?: CodeIntelligenceProvider;
+	problemsAfterEdit?: ProblemsAfterEditLevel;
+	problemsTimeoutMs?: number;
 }
 
 /**
@@ -344,6 +354,7 @@ export class SessionRuntime {
 	private readonly conversation: ConversationStore;
 	private readonly toolResultCache: ToolResultCache;
 	private readonly fileReadLedger: FileReadLedger | undefined;
+	private readonly codeIntelligenceMetadata: Record<string, unknown>;
 	private cacheableToolNames = new Set<string>();
 	private readonly maxCachedResultChars: number;
 	private pendingTerminalError:
@@ -449,6 +460,10 @@ export class SessionRuntime {
 		this.fileReadLedger = resolveToolCallSettings(config).readBeforeWrite
 			? new FileReadLedger()
 			: undefined;
+		this.codeIntelligenceMetadata = createCodeIntelligenceMetadata(
+			config.codeIntelligence,
+			resolveCodeIntelligenceSettings(config),
+		);
 		const messageBuilderOptions = getMessageBuilderOptions(
 			config.contextLimits,
 		);
@@ -1042,6 +1057,7 @@ export class SessionRuntime {
 				...this.config.toolContextMetadata,
 				toolResultCache: this.toolResultCache,
 				...(this.fileReadLedger ? { fileReadLedger: this.fileReadLedger } : {}),
+				...this.codeIntelligenceMetadata,
 			},
 			hooks: this.createRuntimeHooks(),
 			prepareTurn: this.createRuntimePrepareTurn(modelInfo, tools),

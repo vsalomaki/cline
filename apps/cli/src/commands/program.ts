@@ -85,6 +85,27 @@ export function addRootOptions(cmd: Command): Command {
 				"Allow edits to files the agent has not read",
 			)
 			.option(
+				"--language-servers",
+				"Start language servers for the code_intelligence tool and problems after edits (default)",
+			)
+			.option("--no-language-servers", "Do not start language servers")
+			.option(
+				"--code-intelligence-tool",
+				"Offer the code_intelligence tool (default)",
+			)
+			.option(
+				"--no-code-intelligence-tool",
+				"Do not offer the code_intelligence tool; problems after edits still work",
+			)
+			.option(
+				"--problems-after-edit <level>",
+				"Problems reported after an edit: off, errors (default) or warnings (errors and warnings)",
+			)
+			.option(
+				"--problems-timeout-ms <ms>",
+				"How long an edit waits for language-server problems (default: 3000)",
+			)
+			.option(
 				"-t, --timeout <seconds>",
 				"Optional timeout in seconds (default: 0 for no timeout)",
 			)
@@ -248,6 +269,29 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.readBeforeWrite === "boolean") {
 		result.readBeforeWrite = opts.readBeforeWrite;
+	}
+	if (typeof opts.languageServers === "boolean") {
+		result.languageServers = opts.languageServers;
+	}
+	if (typeof opts.codeIntelligenceTool === "boolean") {
+		result.codeIntelligenceTool = opts.codeIntelligenceTool;
+	}
+	if (opts.problemsAfterEdit !== undefined) {
+		const raw = String(opts.problemsAfterEdit).trim().toLowerCase();
+		if (raw === "off" || raw === "errors" || raw === "warnings") {
+			result.problemsAfterEdit = raw;
+		} else {
+			result.invalidProblemsAfterEdit = String(opts.problemsAfterEdit);
+		}
+	}
+	if (opts.problemsTimeoutMs !== undefined) {
+		const raw = String(opts.problemsTimeoutMs).trim();
+		const parsed = Number.parseInt(raw, 10);
+		if (/^\d+$/.test(raw) && Number.isSafeInteger(parsed)) {
+			result.problemsTimeoutMs = parsed;
+		} else {
+			result.invalidProblemsTimeoutMs = raw;
+		}
 	}
 
 	// Simple string/number options
