@@ -694,6 +694,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			// The session never registers, so its stop/dispose paths will not
 			// run; release the plugin copies the bootstrap loaded for it.
 			await bootstrap.pluginSandboxShutdown?.().catch(() => undefined);
+			await bootstrap.releaseCodeIntelligence?.().catch(() => undefined);
 			throw error;
 		}
 		const configWithProvider = bootstrap.config;
@@ -827,6 +828,9 @@ export class LocalRuntimeHost implements RuntimeHost {
 			maxParallelToolCalls: configWithProvider.maxParallelToolCalls,
 			parallelToolCalls: configWithProvider.parallelToolCalls,
 			readBeforeWrite: configWithProvider.readBeforeWrite,
+			codeIntelligence: configWithProvider.codeIntelligence,
+			problemsAfterEdit: configWithProvider.problemsAfterEdit,
+			problemsTimeoutMs: configWithProvider.problemsTimeoutMs,
 			systemPrompt: configWithProvider.systemPrompt,
 			maxIterations: configWithProvider.maxIterations,
 			execution: configWithProvider.execution,
@@ -985,6 +989,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			pendingPrompts: [],
 			drainingPendingPrompts: false,
 			pluginSandboxShutdown: bootstrap.pluginSandboxShutdown,
+			releaseCodeIntelligence: bootstrap.releaseCodeIntelligence,
 			submitAndExitObserved: false,
 			taskCompletedEmitted: false,
 			lastInteractiveTurnFinishReason: undefined,
@@ -2466,6 +2471,11 @@ export class LocalRuntimeHost implements RuntimeHost {
 		} catch (error) {
 			recordCleanupError("plugin_sandbox_shutdown", error);
 		}
+		try {
+			await session.releaseCodeIntelligence?.();
+		} catch (error) {
+			recordCleanupError("code_intelligence_release", error);
+		}
 		this.sessions.delete(session.sessionId);
 		this.emit({
 			type: "ended",
@@ -2542,6 +2552,11 @@ export class LocalRuntimeHost implements RuntimeHost {
 			await session.pluginSandboxShutdown?.();
 		} catch (error) {
 			recordCleanupError("plugin_sandbox_shutdown", error);
+		}
+		try {
+			await session.releaseCodeIntelligence?.();
+		} catch (error) {
+			recordCleanupError("code_intelligence_release", error);
 		}
 		this.sessions.delete(session.sessionId);
 		if (cleanupErrors.length > 0) {

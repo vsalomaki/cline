@@ -20,6 +20,22 @@ describe("isToolAutoApproved", () => {
 		expect(isToolAutoApproved("run_commands", settings)).toBe(false)
 	})
 
+	it("treats code_intelligence as a read tool", () => {
+		const actions = DEFAULT_AUTO_APPROVAL_SETTINGS.actions
+		expect(
+			isToolAutoApproved("code_intelligence", {
+				...DEFAULT_AUTO_APPROVAL_SETTINGS,
+				actions: { ...actions, readFiles: true },
+			}),
+		).toBe(true)
+		expect(
+			isToolAutoApproved("code_intelligence", {
+				...DEFAULT_AUTO_APPROVAL_SETTINGS,
+				actions: { ...actions, readFiles: false },
+			}),
+		).toBe(false)
+	})
+
 	it("auto-approves all MCP tools when the Use MCP servers toggle is on", () => {
 		const settings = {
 			...DEFAULT_AUTO_APPROVAL_SETTINGS,

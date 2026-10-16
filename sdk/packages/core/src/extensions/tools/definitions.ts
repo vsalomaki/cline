@@ -20,6 +20,7 @@ import {
 	DEFAULT_CONTEXT_LIMITS,
 	type ToolContextLimits,
 } from "../../settings/context-limits";
+import { createCodeIntelligenceTool } from "./code-intelligence/tool";
 import { CommandExitError, CommandTerminationError } from "./executors/bash";
 import {
 	coalesceOrphanReadRanges,
@@ -1011,6 +1012,7 @@ export function createDefaultTools(
 		enableReadFiles = true,
 		enableSearch = true,
 		enableListFiles = true,
+		enableCodeIntelligence = true,
 		enableBash = true,
 		enableWebFetch = true,
 		enableApplyPatch = false,
@@ -1035,6 +1037,12 @@ export function createDefaultTools(
 
 	if (enableListFiles && executors.listFiles) {
 		tools.push(createListFilesTool(executors.listFiles, config));
+	}
+
+	if (enableCodeIntelligence && config.codeIntelligence) {
+		tools.push(
+			createCodeIntelligenceTool(config.codeIntelligence, { cwd: config.cwd }),
+		);
 	}
 
 	// Add run_commands tool if enabled and executor provided

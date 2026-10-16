@@ -4247,6 +4247,23 @@ describe("tool display paths are relativized to the cwd", () => {
 		expect(tool.path).toBe("src")
 	})
 
+	it("renders a code_intelligence call as a search row", () => {
+		const state = stateWithCwd()
+		const result = translateSessionEvent(
+			toolEvent("content_start", "code_intelligence", {
+				operation: "references",
+				path: `${CWD}/src/a.ts`,
+				line: 3,
+				symbol: "foo",
+			}),
+			state,
+		)
+		const tool = parseTool(result.messages[0].text)
+		expect(tool.tool).toBe("searchFiles")
+		expect(tool.regex).toBe("references foo")
+		expect(tool.path).toBe("src/a.ts")
+	})
+
 	it("relativizes editor and delete_file paths", () => {
 		const editState = stateWithCwd()
 		const editResult = translateSessionEvent(

@@ -9,6 +9,7 @@ import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { getFileReadLedger } from "../../../session/services/file-read-ledger";
 import { DEFAULT_CONTEXT_LIMITS } from "../../../settings/context-limits";
+import { startProblemsCheck } from "../code-intelligence/problems-after-edit";
 import type { EditFileInput } from "../schemas";
 import type { EditorExecutor } from "../types";
 import {
@@ -278,8 +279,9 @@ export function createEditorExecutor(
 				throw new Error(refusal);
 			}
 		}
+		const problems = await startProblemsCheck(context, [filePath]);
 		const result = await applyEdit(input, filePath);
 		await ledger?.recordCurrent(filePath);
-		return result;
+		return result + ((await problems?.report(cwd)) ?? "");
 	};
 }

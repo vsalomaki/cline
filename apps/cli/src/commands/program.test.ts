@@ -118,3 +118,55 @@ describe("tool-call options", () => {
 		expect(parse(["--read-before-write"]).readBeforeWrite).toBe(true);
 	});
 });
+
+describe("language-server options", () => {
+	function parse(argv: string[]) {
+		const program = createProgram().configureOutput({ writeErr: () => {} });
+		program.parse(argv, { from: "user" });
+		return commanderToParsedArgs(program);
+	}
+
+	it("leaves every option unset by default", () => {
+		const args = parse([]);
+		expect(args.languageServers).toBeUndefined();
+		expect(args.codeIntelligenceTool).toBeUndefined();
+		expect(args.problemsAfterEdit).toBeUndefined();
+		expect(args.problemsTimeoutMs).toBeUndefined();
+	});
+
+	it("parses --no-language-servers and --language-servers", () => {
+		expect(parse(["--no-language-servers"]).languageServers).toBe(false);
+		expect(parse(["--language-servers"]).languageServers).toBe(true);
+	});
+
+	it("parses --no-code-intelligence-tool and --code-intelligence-tool", () => {
+		expect(parse(["--no-code-intelligence-tool"]).codeIntelligenceTool).toBe(
+			false,
+		);
+		expect(parse(["--code-intelligence-tool"]).codeIntelligenceTool).toBe(true);
+	});
+
+	it("parses --problems-after-edit and flags an unknown level", () => {
+		expect(parse(["--problems-after-edit", "warnings"]).problemsAfterEdit).toBe(
+			"warnings",
+		);
+		expect(parse(["--problems-after-edit", "OFF"]).problemsAfterEdit).toBe(
+			"off",
+		);
+		const invalid = parse(["--problems-after-edit", "all"]);
+		expect(invalid.problemsAfterEdit).toBeUndefined();
+		expect(invalid.invalidProblemsAfterEdit).toBe("all");
+	});
+
+	it("parses --problems-timeout-ms and flags a non-integer", () => {
+		expect(parse(["--problems-timeout-ms", "0"]).problemsTimeoutMs).toBe(0);
+		expect(parse(["--problems-timeout-ms", "5000"]).problemsTimeoutMs).toBe(
+			5000,
+		);
+		for (const raw of ["-1", "1.5", "soon"]) {
+			const args = parse(["--problems-timeout-ms", raw]);
+			expect(args.problemsTimeoutMs).toBeUndefined();
+			expect(args.invalidProblemsTimeoutMs).toBe(raw);
+		}
+	});
+});

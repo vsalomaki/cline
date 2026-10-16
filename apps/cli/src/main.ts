@@ -52,10 +52,14 @@ import {
 } from "./utils/provider-auth";
 import { resolveCliReasoning } from "./utils/reasoning";
 import {
+	resolveStartupCodeIntelligenceTool,
 	resolveStartupCompactionMode,
+	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
 	resolveStartupParallelToolCalls,
+	resolveStartupProblemsAfterEdit,
+	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
 	resolveStartupToolAutoApprove,
 } from "./utils/startup-settings";
@@ -787,6 +791,16 @@ export async function runCli(): Promise<void> {
 			`${c.dim}[warn] ignoring invalid --max-parallel-tool-calls value "${args.invalidMaxParallelToolCalls}" (expected integer >= 1)${c.reset}`,
 		);
 	}
+	if (args.invalidProblemsAfterEdit) {
+		writeln(
+			`${c.dim}[warn] ignoring invalid --problems-after-edit value "${args.invalidProblemsAfterEdit}" (expected off, errors or warnings)${c.reset}`,
+		);
+	}
+	if (args.invalidProblemsTimeoutMs) {
+		writeln(
+			`${c.dim}[warn] ignoring invalid --problems-timeout-ms value "${args.invalidProblemsTimeoutMs}" (expected integer >= 0)${c.reset}`,
+		);
+	}
 	if (args.hooksDir?.trim()) {
 		process.env.CLINE_HOOKS_DIR = args.hooksDir.trim();
 	}
@@ -916,6 +930,22 @@ export async function runCli(): Promise<void> {
 		persistedGlobalSettings,
 	);
 	const effectiveReadBeforeWrite = resolveStartupReadBeforeWrite(
+		args,
+		persistedGlobalSettings,
+	);
+	const effectiveLanguageServers = resolveStartupLanguageServers(
+		args,
+		persistedGlobalSettings,
+	);
+	const effectiveCodeIntelligenceTool = resolveStartupCodeIntelligenceTool(
+		args,
+		persistedGlobalSettings,
+	);
+	const effectiveProblemsAfterEdit = resolveStartupProblemsAfterEdit(
+		args,
+		persistedGlobalSettings,
+	);
+	const effectiveProblemsTimeoutMs = resolveStartupProblemsTimeoutMs(
 		args,
 		persistedGlobalSettings,
 	);
@@ -1097,6 +1127,10 @@ export async function runCli(): Promise<void> {
 			maxParallelToolCalls: effectiveMaxParallelToolCalls,
 			parallelToolCalls: effectiveParallelToolCalls,
 			readBeforeWrite: effectiveReadBeforeWrite,
+			languageServers: effectiveLanguageServers,
+			codeIntelligenceTool: effectiveCodeIntelligenceTool,
+			problemsAfterEdit: effectiveProblemsAfterEdit,
+			problemsTimeoutMs: effectiveProblemsTimeoutMs,
 			checkpoint: CLI_DEFAULT_CHECKPOINT_CONFIG,
 			compaction: buildCliCompactionConfig(effectiveCompactionMode),
 			timeoutSeconds: args.timeoutSeconds,

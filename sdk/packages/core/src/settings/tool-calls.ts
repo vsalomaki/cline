@@ -25,7 +25,7 @@ function parsePositiveIntEnv(raw: string | undefined): number | undefined {
 	return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
-function parseBooleanEnv(raw: string | undefined): boolean | undefined {
+export function parseBooleanEnv(raw: string | undefined): boolean | undefined {
 	switch (raw?.trim().toLowerCase()) {
 		case "1":
 		case "true":

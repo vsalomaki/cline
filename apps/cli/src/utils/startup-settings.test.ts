@@ -1,10 +1,14 @@
 import type { GlobalSettings } from "@cline/core";
 import { describe, expect, it } from "vitest";
 import {
+	resolveStartupCodeIntelligenceTool,
 	resolveStartupCompactionMode,
+	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
 	resolveStartupParallelToolCalls,
+	resolveStartupProblemsAfterEdit,
+	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
 	resolveStartupToolAutoApprove,
 } from "./startup-settings";
@@ -189,5 +193,73 @@ describe("resolveStartupReadBeforeWrite", () => {
 				makeSettings({ readBeforeWrite: false }),
 			),
 		).toBe(true);
+	});
+});
+
+describe("language-server startup settings", () => {
+	const servers = {
+		go: { command: ["gopls"], extensions: [".go"] },
+	};
+
+	it("keeps the persisted servers and lets the flag switch them on or off", () => {
+		expect(resolveStartupLanguageServers({}, makeSettings())).toBeUndefined();
+		expect(
+			resolveStartupLanguageServers(
+				{},
+				makeSettings({ languageServers: { servers } }),
+			),
+		).toEqual({ servers });
+		expect(
+			resolveStartupLanguageServers(
+				{ languageServers: false },
+				makeSettings({ languageServers: { enabled: true, servers } }),
+			),
+		).toEqual({ enabled: false, servers });
+	});
+
+	it("prefers the flag over the persisted code-intelligence tool switch", () => {
+		expect(
+			resolveStartupCodeIntelligenceTool({}, makeSettings()),
+		).toBeUndefined();
+		expect(
+			resolveStartupCodeIntelligenceTool(
+				{},
+				makeSettings({ codeIntelligenceTool: false }),
+			),
+		).toBe(false);
+		expect(
+			resolveStartupCodeIntelligenceTool(
+				{ codeIntelligenceTool: true },
+				makeSettings({ codeIntelligenceTool: false }),
+			),
+		).toBe(true);
+	});
+
+	it("prefers the flags over the persisted problem settings", () => {
+		expect(resolveStartupProblemsAfterEdit({}, makeSettings())).toBeUndefined();
+		expect(
+			resolveStartupProblemsAfterEdit(
+				{},
+				makeSettings({ problemsAfterEdit: "warnings" }),
+			),
+		).toBe("warnings");
+		expect(
+			resolveStartupProblemsAfterEdit(
+				{ problemsAfterEdit: "off" },
+				makeSettings({ problemsAfterEdit: "warnings" }),
+			),
+		).toBe("off");
+		expect(
+			resolveStartupProblemsTimeoutMs(
+				{ problemsTimeoutMs: 0 },
+				makeSettings({ problemsTimeoutMs: 5000 }),
+			),
+		).toBe(0);
+		expect(
+			resolveStartupProblemsTimeoutMs(
+				{},
+				makeSettings({ problemsTimeoutMs: 5000 }),
+			),
+		).toBe(5000);
 	});
 });

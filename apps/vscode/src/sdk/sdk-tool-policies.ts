@@ -22,7 +22,15 @@ export function buildToolPolicies(
 		}
 	}
 
-	set(["read_files", "read_file", "list_files", "list_code_definition_names", "search_codebase", "search_files"])
+	set([
+		"read_files",
+		"read_file",
+		"list_files",
+		"list_code_definition_names",
+		"search_codebase",
+		"search_files",
+		"code_intelligence",
+	])
 	set(["editor", "replace_in_file", "write_to_file", "apply_patch", "delete_file"])
 	set(["run_commands", "execute_command"])
 	set(["fetch_web_content", "web_fetch", "web_search"])
@@ -68,9 +76,15 @@ export function isToolAutoApproved(toolName: string, settings: AutoApprovalSetti
 }
 
 function isReadTool(toolName: string): boolean {
-	return ["read_files", "read_file", "list_files", "list_code_definition_names", "search_codebase", "search_files"].includes(
-		toolName,
-	)
+	return [
+		"read_files",
+		"read_file",
+		"list_files",
+		"list_code_definition_names",
+		"search_codebase",
+		"search_files",
+		"code_intelligence",
+	].includes(toolName)
 }
 
 export function isEditTool(toolName: string): boolean {

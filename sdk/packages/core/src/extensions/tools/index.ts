@@ -6,6 +6,7 @@
 
 // Zod Utilities
 export { validateWithZod, zodToJsonSchema } from "@cline/shared";
+export * from "./code-intelligence";
 export {
 	createPlanModeCommandGuardExtension,
 	PLAN_MODE_COMMAND_GUARD_EXTENSION_NAME,

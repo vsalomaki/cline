@@ -200,7 +200,8 @@ export function classifyTool(toolName: string): ToolKind {
 	if (name === "read_files" || name === "list_files") return "read";
 	if (name === "editor" || name === "apply_patch") return "edit";
 	if (name === "run_commands") return "command";
-	if (name === "search_codebase") return "search";
+	if (name === "search_codebase" || name === "code_intelligence")
+		return "search";
 	if (name === "fetch_web_content") return "web";
 	if (name === "spawn_agent" || name.startsWith("subagent_")) return "spawn";
 	if (name === "team" || name === "teams" || name.startsWith("team_"))

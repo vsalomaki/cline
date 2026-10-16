@@ -16,6 +16,7 @@ import {
 	TOOL_RESULT_CACHE_MISS,
 	ToolResultCache,
 } from "../../../session/services/tool-result-cache";
+import { getCodeIntelligence } from "../code-intelligence/problems-after-edit";
 import type { ReadFileRequest } from "../schemas";
 import type { FileReadExecutor } from "../types";
 import { listDirectoryTopLevel } from "./list-files";
@@ -341,6 +342,7 @@ export function createFileReadExecutor(
 			context.signal,
 		);
 		await getFileReadLedger(context.metadata)?.record(resolvedPath, stat);
+		getCodeIntelligence(context.metadata)?.prepare(resolvedPath);
 		return text;
 	};
 }

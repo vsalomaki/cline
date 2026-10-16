@@ -1,3 +1,4 @@
+import { resolveCodeIntelligenceSettings } from "../../settings/code-intelligence";
 import { resolveContextLimits } from "../../settings/context-limits";
 import type { CoreSessionConfig } from "../../types/config";
 import type { CreateBuiltinToolsOptions } from "./index";
@@ -10,15 +11,26 @@ export type SessionToolOptions = Pick<
 	| "webFetchTimeoutMs"
 	| "applyPatchTimeoutMs"
 	| "editorTimeoutMs"
+	| "codeIntelligence"
 > & { ripgrepTimeoutMs?: number };
 
-/** The limit and timeout options a session's builtin tools share. */
+/** The limits, timeouts and code intelligence a session's builtin tools share; the one place the code_intelligence tool is switched off. */
 export function resolveSessionToolOptions(
-	config: Pick<CoreSessionConfig, "contextLimits" | "toolTimeouts">,
+	config: Pick<
+		CoreSessionConfig,
+		| "contextLimits"
+		| "toolTimeouts"
+		| "codeIntelligence"
+		| "codeIntelligenceTool"
+	>,
 ): SessionToolOptions {
 	return {
 		...config.toolTimeouts,
 		limits: resolveContextLimits(config.contextLimits ?? {}).tool,
+		...(config.codeIntelligence &&
+		resolveCodeIntelligenceSettings(config).codeIntelligenceTool
+			? { codeIntelligence: config.codeIntelligence }
+			: {}),
 	};
 }
 

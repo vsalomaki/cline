@@ -122,6 +122,10 @@ cline doctor log
 | `CLINE_MAX_PARALLEL_TOOL_CALLS` | Read-only tool calls run at once ([Tool calls](#tool-calls)) |
 | `CLINE_PARALLEL_TOOL_CALLS` | Whether the model may request several tool calls per response ([Tool calls](#tool-calls)) |
 | `CLINE_READ_BEFORE_WRITE` | Whether edits to unread or changed files are refused ([Tool calls](#tool-calls)) |
+| `CLINE_LANGUAGE_SERVERS` | Whether the CLI starts language servers ([Language servers](#language-servers)) |
+| `CLINE_CODE_INTELLIGENCE_TOOL` | Whether the `code_intelligence` tool is offered ([Language servers](#language-servers)) |
+| `CLINE_PROBLEMS_AFTER_EDIT` | Which new problems are reported after an edit ([Language servers](#language-servers)) |
+| `CLINE_PROBLEMS_TIMEOUT_MS` | How long an edit waits for problems ([Language servers](#language-servers)) |
 | `CLINE_LOG_PATH` | CLI log file (default: `~/.cline/data/logs/cline.log`). `cline doctor log` opens it |
 
 ### CLINE_DATA_DIR
@@ -185,7 +189,7 @@ The **Model API** group there applies to every provider:
 ### Tool calls
 
 When the model requests several tool calls in one response, read-only tools
-(`read_files`, `search_codebase`, `list_files`, `fetch_web_content`, skills) run
+(`read_files`, `search_codebase`, `list_files`, `code_intelligence`, `fetch_web_content`, skills) run
 concurrently. Everything else runs in order, and approvals are still asked one at
 a time.
 
@@ -204,6 +208,105 @@ The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls` a
 `global-settings.json`. An env var wins over the flag and the file, and the flag wins
 over the file. Values that are not valid (a non-positive or non-integer count, an
 unrecognized boolean) are ignored.
+
+### Language servers
+
+When a session has language servers (the editor's in VS Code, servers the CLI
+starts itself), the agent gets a read-only `code_intelligence` tool. It goes to a
+definition or implementation, finds references, shows hover text, lists a file's
+symbols, searches workspace symbols, and reports a file's current problems. The
+agent names a position by file, line and the symbol on that line; the tool finds
+the column. Results are capped at 50 entries. Without language servers the tool
+is not offered. Switching the tool off (`CLINE_CODE_INTELLIGENCE_TOOL=0`,
+`--no-code-intelligence-tool`, `codeIntelligenceTool: false`, or **Settings → Agent
+Limits → Language servers** in VS Code) saves its tokens in every request; problems
+after edits keep working.
+
+After `editor` or `apply_patch` writes a file, the problems the edit introduced
+are appended to the tool result:
+
+```
+New problems after this edit:
+src/foo.ts
+  12:5 error: Cannot find name 'bar'. [ts 2304]
+```
+
+A problem counts as new when the file did not already have one with the same
+severity, message, source and code, so problems that only moved to another line
+are not repeated. At most 20 are listed per file. When the language server fails
+or does not answer in time, the edit still succeeds and nothing is appended.
+`read_files` opens each file it reads in the language server, so the problems a
+file already had are known before it is edited.
+
+| Variable | Default | Governs |
+|----------|---------|---------|
+| `CLINE_LANGUAGE_SERVERS` | `true` | `false` (or `0`, `off`) keeps the CLI from starting language servers |
+| `CLINE_CODE_INTELLIGENCE_TOOL` | `true` | `false` (or `0`, `off`) removes the `code_intelligence` tool but keeps the problems after edits |
+| `CLINE_PROBLEMS_AFTER_EDIT` | `errors` | `errors`, `warnings` (errors and warnings) or `off` |
+| `CLINE_PROBLEMS_TIMEOUT_MS` | `3000` | How long an edit waits for the problems to settle, in milliseconds |
+
+The CLI takes `--no-language-servers`, `--no-code-intelligence-tool`,
+`--problems-after-edit <off|errors|warnings>` and `--problems-timeout-ms <ms>`, and
+reads `languageServers`, `codeIntelligenceTool`, `problemsAfterEdit` and
+`problemsTimeoutMs` from `global-settings.json`. `languageServers` is an object:
+
+```json
+{
+  "languageServers": {
+    "enabled": true,
+    "servers": {
+      "go": { "command": ["gopls"], "extensions": [".go"] },
+      "rust": false
+    }
+  }
+}
+```
+
+Each `servers` entry gives the command that starts a server over stdio and the file
+extensions it handles, plus optional `languageIds` (language id per extension),
+`initializationOptions` and `startupTimeoutMs`. An entry named after a built-in
+server replaces it, `false` turns it off, and a new name adds a server. The
+`--language-servers` flags switch `enabled` and keep the configured servers. As
+with the tool-call settings, an env var wins over the flag and the file, the flag
+wins over the file, and values that are not valid are ignored.
+
+#### Built-in servers
+
+The CLI knows these servers and uses each one whose binary it finds in the
+workspace's `node_modules/.bin` or on `PATH` when the session starts. When it finds
+none, the session has no `code_intelligence` tool.
+
+| Name | Files | Command | Install |
+|------|-------|---------|---------|
+| `typescript` | `.ts .tsx .mts .cts .js .jsx .mjs .cjs` | `typescript-language-server --stdio` | `npm i -g typescript-language-server typescript@6` |
+| `python` | `.py .pyi` | `pyright-langserver --stdio`, else `basedpyright-langserver --stdio` | `npm i -g pyright` |
+| `java` | `.java` | `jdtls -data <data dir>/jdtls/<workspace hash>` | [Eclipse JDT Language Server](https://github.com/eclipse-jdtls/eclipse.jdt.ls) |
+| `go` | `.go` | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+| `rust` | `.rs` | `rust-analyzer` | `rustup component add rust-analyzer` |
+
+`typescript-language-server` runs on the workspace's own `typescript` package when
+it has one, otherwise on the one installed next to it. It needs TypeScript 6 or
+earlier: TypeScript 7 has no `tsserver`. TypeScript 7 ships its own language server
+instead, which you can configure in place of the built-in one:
+
+```json
+{
+  "languageServers": {
+    "servers": {
+      "typescript": {
+        "command": ["tsc", "--lsp", "--stdio"],
+        "extensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]
+      }
+    }
+  }
+}
+```
+
+A server starts the first time a file it handles is read or queried, and gets 20
+seconds to start (60 for `jdtls`; set `startupTimeoutMs` to change it). Sessions in
+the same process share servers, and a server stays up for two minutes after the
+last session using it ends, so the next session starts warm. A server that crashes
+is not restarted until a new session starts.
 
 ## Related Docs
 

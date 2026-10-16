@@ -2,9 +2,12 @@ import {
 	type ContextLimitOverrides,
 	type CoreSessionConfig,
 	type CoreToolTimeouts,
+	getCodeIntelligenceEnvSources,
 	getContextLimitEnvSources,
 	getToolCallEnvSources,
 	type MessageContextLimits,
+	type ProblemsAfterEditLevel,
+	resolveCodeIntelligenceSettings,
 	resolveContextLimits,
 	resolveToolCallSettings,
 	type ToolContextLimits,
@@ -26,9 +29,20 @@ const TIMEOUT_FIELDS = {
 	"timeout.applyPatch": "applyPatchTimeoutMs",
 } as const satisfies Partial<Record<AgentLimitId, keyof CoreToolTimeouts>>
 
+/** Indexed by the stored "session.problemsAfterEdit" choice. */
+const PROBLEMS_AFTER_EDIT_LEVELS: readonly ProblemsAfterEditLevel[] = ["off", "errors", "warnings"]
+
 export type AgentLimitSessionConfig = Pick<
 	CoreSessionConfig,
-	"contextLimits" | "toolTimeouts" | "execution" | "maxParallelToolCalls" | "parallelToolCalls" | "readBeforeWrite"
+	| "contextLimits"
+	| "toolTimeouts"
+	| "execution"
+	| "maxParallelToolCalls"
+	| "parallelToolCalls"
+	| "readBeforeWrite"
+	| "codeIntelligenceTool"
+	| "problemsAfterEdit"
+	| "problemsTimeoutMs"
 > & {
 	compaction?: Pick<NonNullable<CoreSessionConfig["compaction"]>, "triggerRatio" | "preserveRecentTokens">
 	providerConfig?: { timeoutMs?: number; maxRetries?: number }
@@ -93,6 +107,16 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	if (values?.["session.readBeforeWrite"] !== undefined) {
 		config.readBeforeWrite = values["session.readBeforeWrite"] !== 0
 	}
+	if (values?.["session.codeIntelligenceTool"] !== undefined) {
+		config.codeIntelligenceTool = values["session.codeIntelligenceTool"] !== 0
+	}
+	const problemsLevel = values?.["session.problemsAfterEdit"]
+	if (problemsLevel !== undefined && PROBLEMS_AFTER_EDIT_LEVELS[problemsLevel]) {
+		config.problemsAfterEdit = PROBLEMS_AFTER_EDIT_LEVELS[problemsLevel]
+	}
+	if (values?.["session.problemsTimeout"] !== undefined) {
+		config.problemsTimeoutMs = values["session.problemsTimeout"]
+	}
 
 	const execution: NonNullable<CoreSessionConfig["execution"]> = {}
 	if (values?.["session.maxConsecutiveMistakes"] !== undefined) {
@@ -148,6 +172,8 @@ export function getAgentLimitsState(
 	const sessionConfig = buildAgentLimitSessionConfig(values)
 	const toolCalls = resolveToolCallSettings(sessionConfig, env)
 	const toolCallEnvSources = getToolCallEnvSources(env)
+	const codeIntelligence = resolveCodeIntelligenceSettings(sessionConfig, env)
+	const codeIntelligenceEnvSources = getCodeIntelligenceEnvSources(env)
 	const effective: AgentLimitsState["effective"] = {}
 	const envOverrides: AgentLimitsState["envOverrides"] = {}
 
@@ -180,6 +206,18 @@ export function getAgentLimitsState(
 	}
 	if (toolCallEnvSources.readBeforeWrite) {
 		envOverrides["session.readBeforeWrite"] = toolCallEnvSources.readBeforeWrite
+	}
+	effective["session.codeIntelligenceTool"] = codeIntelligence.codeIntelligenceTool ? 1 : 0
+	if (codeIntelligenceEnvSources.codeIntelligenceTool) {
+		envOverrides["session.codeIntelligenceTool"] = codeIntelligenceEnvSources.codeIntelligenceTool
+	}
+	effective["session.problemsAfterEdit"] = PROBLEMS_AFTER_EDIT_LEVELS.indexOf(codeIntelligence.problemsAfterEdit)
+	effective["session.problemsTimeout"] = codeIntelligence.problemsTimeoutMs
+	if (codeIntelligenceEnvSources.problemsAfterEdit) {
+		envOverrides["session.problemsAfterEdit"] = codeIntelligenceEnvSources.problemsAfterEdit
+	}
+	if (codeIntelligenceEnvSources.problemsTimeoutMs) {
+		envOverrides["session.problemsTimeout"] = codeIntelligenceEnvSources.problemsTimeoutMs
 	}
 	const soft = getAgentLimitValue(values, "session.loopSoftThreshold")
 	if (getAgentLimitValue(values, "session.loopHardThreshold") <= soft) {

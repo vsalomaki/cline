@@ -11,6 +11,7 @@ import type {
 	TextContent,
 } from "@cline/shared";
 import type { ToolContextLimits } from "../../settings/context-limits";
+import type { CodeIntelligenceProvider } from "./code-intelligence/types";
 import type {
 	ApplyPatchInput,
 	EditFileInput,
@@ -249,6 +250,7 @@ export type DefaultToolName =
 	| "read_files"
 	| "search_codebase"
 	| "list_files"
+	| "code_intelligence"
 	| "run_commands"
 	| "fetch_web_content"
 	| "apply_patch"
@@ -292,6 +294,16 @@ export interface DefaultToolsConfig {
 	 * @default true
 	 */
 	enableListFiles?: boolean;
+
+	/**
+	 * Enable the code_intelligence tool. It is created only when
+	 * `codeIntelligence` is set.
+	 * @default true
+	 */
+	enableCodeIntelligence?: boolean;
+
+	/** Language intelligence behind the code_intelligence tool. */
+	codeIntelligence?: CodeIntelligenceProvider;
 
 	/**
 	 * Enable the run_commands tool

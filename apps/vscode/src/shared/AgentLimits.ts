@@ -11,6 +11,7 @@
 export type AgentLimitGroup =
 	| "modelApi"
 	| "toolCalls"
+	| "languageServers"
 	| "toolOutput"
 	| "toolInput"
 	| "providerRequest"
@@ -18,7 +19,12 @@ export type AgentLimitGroup =
 	| "loop"
 	| "compaction"
 
-export type AgentLimitUnit = "chars" | "bytes" | "lines" | "milliseconds" | "count" | "tokens" | "percent" | "toggle"
+export type AgentLimitUnit = "chars" | "bytes" | "lines" | "milliseconds" | "count" | "tokens" | "percent" | "toggle" | "choice"
+
+export interface AgentLimitOption {
+	value: number
+	label: string
+}
 
 export interface AgentLimitDefinition {
 	id: string
@@ -29,6 +35,8 @@ export interface AgentLimitDefinition {
 	default: number
 	min: number
 	max: number
+	/** The values a "choice" limit can take. */
+	options?: readonly AgentLimitOption[]
 	/** Env var that overrides the setting when the editor was launched with it. */
 	envVar?: string
 }
@@ -95,6 +103,46 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		min: 0,
 		max: 1,
 		envVar: "CLINE_READ_BEFORE_WRITE",
+	},
+	{
+		id: "session.codeIntelligenceTool",
+		group: "languageServers",
+		label: "Code intelligence tool",
+		description:
+			"Let the agent ask the editor's language extensions for definitions, references, types and symbols. Off removes the tool, which saves about 300 tokens per request; problems after edits still work.",
+		unit: "toggle",
+		default: 1,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_CODE_INTELLIGENCE_TOOL",
+	},
+	{
+		id: "session.problemsAfterEdit",
+		group: "languageServers",
+		label: "Problems after edit",
+		description: "After an edit, tell the agent about new problems VS Code reports in the changed files, so it can fix them.",
+		unit: "choice",
+		options: [
+			{ value: 0, label: "Off" },
+			{ value: 1, label: "Errors" },
+			{ value: 2, label: "Errors and warnings" },
+		],
+		default: 1,
+		min: 0,
+		max: 2,
+		envVar: "CLINE_PROBLEMS_AFTER_EDIT",
+	},
+	{
+		id: "session.problemsTimeout",
+		group: "languageServers",
+		label: "Problems wait",
+		description:
+			"Longest an edit waits for the language extensions to check the changed files. It ends sooner once their problems settle.",
+		unit: "milliseconds",
+		default: 3_000,
+		min: 0,
+		max: 60_000,
+		envVar: "CLINE_PROBLEMS_TIMEOUT_MS",
 	},
 	{
 		id: "tool.commandOutputChars",
@@ -428,6 +476,11 @@ export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: str
 	{ id: "modelApi", title: "Model API", description: "Applies to every provider." },
 	{ id: "toolCalls", title: "Tool calls", description: "How Cline runs the tool calls in one model response." },
 	{
+		id: "languageServers",
+		title: "Language servers",
+		description: "Cline uses the language extensions installed in VS Code to navigate code and to check its edits.",
+	},
+	{
 		id: "toolOutput",
 		title: "Tool output",
 		description: "How much each tool returns. A tool result is re-sent on every later turn, so larger values cost tokens.",
@@ -457,6 +510,9 @@ export function normalizeAgentLimitValue(id: string, value: number | undefined):
 	}
 	if (definition.unit === "toggle") {
 		return value > 0 ? 1 : 0
+	}
+	if (definition.options) {
+		return definition.options.some((option) => option.value === value) ? value : undefined
 	}
 	return Math.min(definition.max, Math.max(definition.min, Math.round(value)))
 }

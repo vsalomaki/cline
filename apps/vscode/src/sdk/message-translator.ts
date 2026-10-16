@@ -708,6 +708,7 @@ function relativizePatchPaths(patch: string | undefined, cwd: string): string | 
  *   delete_file                        → fileDeleted
  *   run_commands/execute_command       → (uses say="command", NOT say="tool")
  *   search_codebase/search_files       → searchFiles
+ *   code_intelligence                  → searchFiles (operation and symbol as the query)
  *   fetch_web_content/web_fetch        → webFetch
  *   web_search                         → webSearch
  *   skills/use_skill                   → useSkill
@@ -839,6 +840,16 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 				regex,
 				path,
 				filePattern,
+			}
+		}
+
+		case "code_intelligence": {
+			const operation = getStringField(parsedInput, "operation") ?? ""
+			const target = getStringField(parsedInput, "symbol") ?? getStringField(parsedInput, "query")
+			return {
+				tool: "searchFiles",
+				regex: target ? `${operation} ${target}` : operation,
+				path: getStringField(parsedInput, "path"),
 			}
 		}
 

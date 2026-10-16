@@ -1,4 +1,8 @@
-import type { GlobalSettings } from "@cline/core";
+import type {
+	GlobalSettings,
+	LanguageServerSettings,
+	ProblemsAfterEditLevel,
+} from "@cline/core";
 import type { CliAgentMode, CliCompactionMode, ParsedArgs } from "./types";
 
 /**
@@ -53,6 +57,38 @@ export function resolveStartupReadBeforeWrite(
 	settings: GlobalSettings,
 ): boolean | undefined {
 	return args.readBeforeWrite ?? settings.readBeforeWrite;
+}
+
+/** The flag only switches the servers on or off; the server list stays the persisted one. */
+export function resolveStartupLanguageServers(
+	args: Pick<ParsedArgs, "languageServers">,
+	settings: GlobalSettings,
+): LanguageServerSettings | undefined {
+	if (args.languageServers === undefined) {
+		return settings.languageServers;
+	}
+	return { ...settings.languageServers, enabled: args.languageServers };
+}
+
+export function resolveStartupCodeIntelligenceTool(
+	args: Pick<ParsedArgs, "codeIntelligenceTool">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.codeIntelligenceTool ?? settings.codeIntelligenceTool;
+}
+
+export function resolveStartupProblemsAfterEdit(
+	args: Pick<ParsedArgs, "problemsAfterEdit">,
+	settings: GlobalSettings,
+): ProblemsAfterEditLevel | undefined {
+	return args.problemsAfterEdit ?? settings.problemsAfterEdit;
+}
+
+export function resolveStartupProblemsTimeoutMs(
+	args: Pick<ParsedArgs, "problemsTimeoutMs">,
+	settings: GlobalSettings,
+): number | undefined {
+	return args.problemsTimeoutMs ?? settings.problemsTimeoutMs;
 }
 
 /**

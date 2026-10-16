@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { setHomeDir } from "@cline/shared/storage";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { version as corePackageVersion } from "../../package.json";
+import { createFakeCodeIntelligence } from "../extensions/tools/code-intelligence/fake-provider.fixtures";
 import type { ProviderSettings } from "../types/provider-settings";
 import { CORE_TELEMETRY_EVENTS } from "./telemetry/core-events";
 
@@ -52,6 +53,7 @@ describe("prepareLocalRuntimeBootstrap", () => {
 	afterEach(() => {
 		process.env.CLINE_GLOBAL_SETTINGS_PATH = previousGlobalSettingsPath;
 		vi.doUnmock("../extensions/plugin/plugin-config-loader");
+		vi.doUnmock("./lsp/create-language-server-provider");
 		if (resetModulesAfterEach) {
 			vi.resetModules();
 			resetModulesAfterEach = false;
@@ -750,6 +752,81 @@ describe("prepareLocalRuntimeBootstrap", () => {
 		expect(bootstrap.runtimeBuilderInput.pluginSkillDirectories).toEqual([
 			activeSkillDirectory,
 		]);
+	});
+
+	async function bootstrapWithLanguageServerFactory(
+		config: Record<string, unknown>,
+		localRuntime?: Record<string, unknown>,
+	) {
+		vi.resetModules();
+		resetModulesAfterEach = true;
+		const provider = createFakeCodeIntelligence();
+		const release = vi.fn(async () => {});
+		const createLanguageServerProvider = vi.fn(() => ({ provider, release }));
+		vi.doMock("./lsp/create-language-server-provider", () => ({
+			createLanguageServerProvider,
+		}));
+		const { prepareLocalRuntimeBootstrap } = await import(
+			"./local-runtime-bootstrap"
+		);
+		const input = createStartInput();
+		const bootstrap = await prepareLocalRuntimeBootstrap({
+			input: { ...input, config: { ...input.config, ...config } },
+			localRuntime: localRuntime as never,
+			sessionId: "sess-lsp",
+			providerSettingsManager: createProviderSettingsManager() as never,
+			defaultTelemetry: undefined,
+			defaultToolPolicies: undefined,
+			onPluginEvent: () => {},
+			onTeamEvent: () => {},
+			createSpawnTool,
+			readSessionMetadata: async () => undefined,
+			writeSessionMetadata: async () => {},
+		});
+		return { bootstrap, provider, release, createLanguageServerProvider };
+	}
+
+	it("starts the SDK's language servers when the host supplies no provider", async () => {
+		const languageServers = {
+			servers: { go: { command: ["gopls"], extensions: [".go"] } },
+		};
+		const { bootstrap, provider, release, createLanguageServerProvider } =
+			await bootstrapWithLanguageServerFactory({ languageServers });
+
+		expect(createLanguageServerProvider).toHaveBeenCalledWith(
+			expect.objectContaining({
+				workspaceRoot: "/tmp/project",
+				settings: languageServers,
+			}),
+		);
+		expect(bootstrap.config.codeIntelligence).toBe(provider);
+		expect(bootstrap.runtimeBuilderInput.config.codeIntelligence).toBe(
+			provider,
+		);
+		expect(bootstrap.releaseCodeIntelligence).toBe(release);
+	});
+
+	it("uses the host's provider and starts no language servers", async () => {
+		const hostProvider = createFakeCodeIntelligence();
+		const { bootstrap, createLanguageServerProvider } =
+			await bootstrapWithLanguageServerFactory(
+				{},
+				{ codeIntelligence: hostProvider },
+			);
+
+		expect(createLanguageServerProvider).not.toHaveBeenCalled();
+		expect(bootstrap.config.codeIntelligence).toBe(hostProvider);
+		expect(bootstrap.releaseCodeIntelligence).toBeUndefined();
+	});
+
+	it("starts no language servers when they are disabled", async () => {
+		const { bootstrap, createLanguageServerProvider } =
+			await bootstrapWithLanguageServerFactory({
+				languageServers: { enabled: false },
+			});
+
+		expect(createLanguageServerProvider).not.toHaveBeenCalled();
+		expect(bootstrap.config.codeIntelligence).toBeUndefined();
 	});
 
 	it("threads defaultFetch into providerConfig.fetch", async () => {

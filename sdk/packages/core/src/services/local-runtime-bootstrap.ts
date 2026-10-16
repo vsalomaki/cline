@@ -52,6 +52,7 @@ import type {
 } from "../runtime/host/runtime-host";
 import type { RuntimeBuilderInput } from "../runtime/orchestration/session-runtime";
 import type { SessionHistoryOriginMetadata } from "../session/history-origin";
+import { resolveCodeIntelligenceSettings } from "../settings/code-intelligence";
 import { SessionSource } from "../types/common";
 import type { CoreSessionConfig } from "../types/config";
 import {
@@ -64,6 +65,10 @@ import {
 	filterExtensionToolRegistrations,
 	resolveDisabledAgentPluginNames,
 } from "./global-settings";
+import {
+	createLanguageServerProvider,
+	type SessionCodeIntelligence,
+} from "./lsp/create-language-server-provider";
 import { hasRuntimeHooks, mergeAgentExtensions } from "./session-data";
 import type { ProviderSettingsManager } from "./storage/provider-settings-manager";
 import { captureDetachedHookRuntime } from "./telemetry/core-events";
@@ -319,9 +324,28 @@ export interface LocalRuntimeBootstrap {
 		request: ToolApprovalRequest,
 	) => Promise<ToolApprovalResult> | ToolApprovalResult;
 	pluginSandboxShutdown?: () => Promise<void>;
+	/** Releases the language servers the SDK started for this session. */
+	releaseCodeIntelligence?: () => Promise<void>;
 	/** Plugins the session asked for but does not have (failed or disabled). */
 	pluginIssues: SessionPluginIssue[];
 	runtimeBuilderInput: RuntimeBuilderInput;
+}
+
+function createSessionCodeIntelligence(
+	config: CoreSessionConfig,
+	workspaceRoot: string,
+): SessionCodeIntelligence | undefined {
+	if (
+		config.codeIntelligence ||
+		!resolveCodeIntelligenceSettings(config).languageServers
+	) {
+		return undefined;
+	}
+	return createLanguageServerProvider({
+		workspaceRoot,
+		settings: config.languageServers,
+		logger: config.logger,
+	});
 }
 
 export async function prepareLocalRuntimeBootstrap(
@@ -565,6 +589,13 @@ export async function prepareLocalRuntimeBootstrap(
 		telemetry: extensionContext.telemetry,
 		logger: extensionContext.logger,
 	};
+	const sessionCodeIntelligence = createSessionCodeIntelligence(
+		baseConfig,
+		workspacePath,
+	);
+	if (sessionCodeIntelligence) {
+		baseConfig.codeIntelligence = sessionCodeIntelligence.provider;
+	}
 	const providerConfig = buildProviderConfig(
 		baseConfig,
 		sessionId,
@@ -626,6 +657,7 @@ export async function prepareLocalRuntimeBootstrap(
 		toolPolicies,
 		requestToolApproval,
 		pluginSandboxShutdown: loadedPlugins?.shutdown,
+		releaseCodeIntelligence: sessionCodeIntelligence?.release,
 		pluginIssues,
 		runtimeBuilderInput: {
 			config,

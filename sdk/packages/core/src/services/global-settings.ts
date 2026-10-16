@@ -10,6 +10,10 @@ import {
 } from "@cline/shared";
 import { resolveGlobalSettingsPath } from "@cline/shared/storage";
 import { z } from "zod";
+import type {
+	LanguageServerSettings,
+	ProblemsAfterEditLevel,
+} from "../extensions/tools/code-intelligence/types";
 import { captureTelemetryOptOut } from "./telemetry/core-events";
 
 type AgentExtension = NonNullable<AgentConfig["extensions"]>[number];
@@ -56,6 +60,28 @@ export type GlobalCompactionMode = GlobalCompactionStrategy | "off";
 
 const GlobalPlanActModeSchema = z.enum(["plan", "act"]);
 
+const LanguageServerConfigSchema = z
+	.object({
+		command: z.array(z.string()).min(1),
+		extensions: z.array(z.string()),
+		languageIds: z.record(z.string(), z.string()).optional(),
+		initializationOptions: z.unknown().optional(),
+		startupTimeoutMs: z.number().int().nonnegative().optional(),
+	})
+	.strip();
+
+const LanguageServerSettingsSchema: z.ZodType<LanguageServerSettings> = z
+	.object({
+		enabled: z.boolean().optional(),
+		servers: z
+			.record(
+				z.string(),
+				z.union([z.literal(false), LanguageServerConfigSchema]),
+			)
+			.optional(),
+	})
+	.strip();
+
 export type GlobalPlanActMode = z.infer<typeof GlobalPlanActModeSchema>;
 
 export const GlobalSettingsSchema = z
@@ -74,6 +100,18 @@ export const GlobalSettingsSchema = z
 			.catch(undefined),
 		parallelToolCalls: z.boolean().optional().catch(undefined),
 		readBeforeWrite: z.boolean().optional().catch(undefined),
+		languageServers: LanguageServerSettingsSchema.optional().catch(undefined),
+		codeIntelligenceTool: z.boolean().optional().catch(undefined),
+		problemsAfterEdit: z
+			.enum(["off", "errors", "warnings"])
+			.optional()
+			.catch(undefined),
+		problemsTimeoutMs: z
+			.number()
+			.int()
+			.nonnegative()
+			.optional()
+			.catch(undefined),
 		tuiTheme: z.string().optional().catch(undefined),
 		disabledTools: GlobalSettingsStringListSchema.optional(),
 		tools: ModelToolSettingsSchema,
@@ -92,6 +130,10 @@ export const GlobalSettingsSchema = z
 			maxParallelToolCalls?: number;
 			parallelToolCalls?: boolean;
 			readBeforeWrite?: boolean;
+			languageServers?: LanguageServerSettings;
+			codeIntelligenceTool?: boolean;
+			problemsAfterEdit?: ProblemsAfterEditLevel;
+			problemsTimeoutMs?: number;
 			tuiTheme?: string;
 			disabledTools?: string[];
 			tools?: ModelToolSettings;
@@ -121,6 +163,18 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.readBeforeWrite !== undefined) {
 			normalized.readBeforeWrite = settings.readBeforeWrite;
+		}
+		if (settings.languageServers !== undefined) {
+			normalized.languageServers = settings.languageServers;
+		}
+		if (settings.codeIntelligenceTool !== undefined) {
+			normalized.codeIntelligenceTool = settings.codeIntelligenceTool;
+		}
+		if (settings.problemsAfterEdit !== undefined) {
+			normalized.problemsAfterEdit = settings.problemsAfterEdit;
+		}
+		if (settings.problemsTimeoutMs !== undefined) {
+			normalized.problemsTimeoutMs = settings.problemsTimeoutMs;
 		}
 		if (settings.tuiTheme?.trim()) {
 			normalized.tuiTheme = settings.tuiTheme.trim();

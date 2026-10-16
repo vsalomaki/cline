@@ -49,6 +49,33 @@ describe("AGENT_LIMIT_DEFINITIONS", () => {
 		expect(byId.get("api.parallelToolCalls")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.parallelToolCalls })
 		expect(byId.get("session.readBeforeWrite")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.readBeforeWrite })
 	})
+
+	it("matches the SDK's code-intelligence defaults and env var names", async () => {
+		const realModulePath = path.resolve(
+			import.meta.dirname,
+			"../../../../sdk/packages/core/src/settings/code-intelligence.ts",
+		)
+		const { CODE_INTELLIGENCE_ENV, DEFAULT_PROBLEMS_AFTER_EDIT, DEFAULT_PROBLEMS_TIMEOUT_MS } = (await import(
+			/* @vite-ignore */ realModulePath
+		)) as Pick<
+			typeof CoreContextLimits,
+			"CODE_INTELLIGENCE_ENV" | "DEFAULT_PROBLEMS_AFTER_EDIT" | "DEFAULT_PROBLEMS_TIMEOUT_MS"
+		>
+		const byId = new Map<string, AgentLimitDefinition>(AGENT_LIMIT_DEFINITIONS.map((d) => [d.id, d]))
+		expect(byId.get("session.codeIntelligenceTool")).toMatchObject({
+			default: 1,
+			envVar: CODE_INTELLIGENCE_ENV.codeIntelligenceTool,
+		})
+		const choice = byId.get("session.problemsAfterEdit")
+		expect(choice?.envVar).toBe(CODE_INTELLIGENCE_ENV.problemsAfterEdit)
+		expect(buildAgentLimitSessionConfig({ "session.problemsAfterEdit": choice?.default }).problemsAfterEdit).toBe(
+			DEFAULT_PROBLEMS_AFTER_EDIT,
+		)
+		expect(byId.get("session.problemsTimeout")).toMatchObject({
+			default: DEFAULT_PROBLEMS_TIMEOUT_MS,
+			envVar: CODE_INTELLIGENCE_ENV.problemsTimeoutMs,
+		})
+	})
 })
 
 describe("buildAgentLimitSessionConfig", () => {
@@ -97,6 +124,21 @@ describe("buildAgentLimitSessionConfig", () => {
 		expect(buildAgentLimitSessionConfig({ "session.readBeforeWrite": 0 })).toEqual({ readBeforeWrite: false })
 	})
 
+	it("maps the code-intelligence tool switch", () => {
+		expect(buildAgentLimitSessionConfig({ "session.codeIntelligenceTool": 0 })).toEqual({ codeIntelligenceTool: false })
+		expect(buildAgentLimitSessionConfig({ "session.codeIntelligenceTool": 1 })).toEqual({ codeIntelligenceTool: true })
+	})
+
+	it("maps the problems-after-edit choice and wait", () => {
+		expect(buildAgentLimitSessionConfig({ "session.problemsAfterEdit": 0 })).toEqual({ problemsAfterEdit: "off" })
+		expect(buildAgentLimitSessionConfig({ "session.problemsAfterEdit": 1 })).toEqual({ problemsAfterEdit: "errors" })
+		expect(buildAgentLimitSessionConfig({ "session.problemsAfterEdit": 2, "session.problemsTimeout": 0 })).toEqual({
+			problemsAfterEdit: "warnings",
+			problemsTimeoutMs: 0,
+		})
+		expect(buildAgentLimitSessionConfig({ "session.problemsAfterEdit": 7 })).toEqual({})
+	})
+
 	it("turns loop detection off", () => {
 		const config = buildAgentLimitSessionConfig({ "session.loopDetection": 0, "session.loopSoftThreshold": 4 })
 
@@ -129,6 +171,16 @@ describe("getAgentLimitsState", () => {
 		expect(state.effective["tool.readLines"]).toBe(500)
 		expect(state.effective["timeout.hook"]).toBe(60_000)
 		expect(state.effective["session.maxConsecutiveMistakes"]).toBe(6)
+		expect(state.effective["session.codeIntelligenceTool"]).toBe(1)
+		expect(state.effective["session.problemsAfterEdit"]).toBe(1)
+		expect(state.effective["session.problemsTimeout"]).toBe(3_000)
 		expect(state.envOverrides).toEqual({})
+	})
+
+	it("reports the problems-after-edit choice as its stored number", () => {
+		const state = getAgentLimitsState({ "session.problemsAfterEdit": 2, "session.problemsTimeout": 5_000 }, {})
+
+		expect(state.effective["session.problemsAfterEdit"]).toBe(2)
+		expect(state.effective["session.problemsTimeout"]).toBe(5_000)
 	})
 })

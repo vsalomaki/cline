@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFakeCodeIntelligence } from "../code-intelligence/fake-provider.fixtures";
 import {
 	buildDelegatedAgentConfig,
 	createDelegatedAgentConfigProvider,
@@ -42,6 +43,28 @@ describe("buildDelegatedAgentConfig", () => {
 		});
 
 		expect(config.contextLimits).toBe(contextLimits);
+	});
+
+	it("inherits the parent's code intelligence and problem settings", () => {
+		const codeIntelligence = createFakeCodeIntelligence();
+		const configProvider = createDelegatedAgentConfigProvider({
+			providerId: "anthropic",
+			modelId: "claude-sonnet-4-5",
+			codeIntelligence,
+			problemsAfterEdit: "warnings",
+			problemsTimeoutMs: 500,
+		});
+
+		const config = buildDelegatedAgentConfig({
+			kind: "teammate",
+			prompt: "review the diff",
+			tools: [],
+			configProvider,
+		});
+
+		expect(config.codeIntelligence).toBe(codeIntelligence);
+		expect(config.problemsAfterEdit).toBe("warnings");
+		expect(config.problemsTimeoutMs).toBe(500);
 	});
 
 	it("leaves identity fields undefined when the parent has none", () => {

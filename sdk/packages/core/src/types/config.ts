@@ -15,6 +15,11 @@ import type {
 	SessionPromptConfig,
 	SessionWorkspaceConfig,
 } from "@cline/shared";
+import type {
+	CodeIntelligenceProvider,
+	LanguageServerSettings,
+	ProblemsAfterEditLevel,
+} from "../extensions/tools/code-intelligence/types";
 import type { ToolRoutingRule } from "../extensions/tools/model-tool-routing";
 import type { TeamEvent } from "../extensions/tools/team";
 import type { DefaultToolsConfig } from "../extensions/tools/types";
@@ -325,6 +330,35 @@ export interface CoreSessionConfig
 	 * @default true
 	 */
 	readBeforeWrite?: boolean;
+	/**
+	 * Language intelligence the host supplies in process (the VS Code
+	 * extension passes its editor's). Never serialized; without it the SDK
+	 * starts its own language servers per `languageServers`.
+	 */
+	codeIntelligence?: CodeIntelligenceProvider;
+	/**
+	 * Language servers the SDK starts when no `codeIntelligence` is supplied.
+	 * `CLINE_LANGUAGE_SERVERS` takes precedence over `enabled`.
+	 */
+	languageServers?: LanguageServerSettings;
+	/**
+	 * Offer the code_intelligence tool. Off keeps the provider for problems
+	 * after edits. `CLINE_CODE_INTELLIGENCE_TOOL` takes precedence.
+	 * @default true
+	 */
+	codeIntelligenceTool?: boolean;
+	/**
+	 * Problems reported after an edit: "errors", "warnings" (errors and
+	 * warnings) or "off". `CLINE_PROBLEMS_AFTER_EDIT` takes precedence.
+	 * @default "errors"
+	 */
+	problemsAfterEdit?: ProblemsAfterEditLevel;
+	/**
+	 * How long an edit waits for diagnostics to settle.
+	 * `CLINE_PROBLEMS_TIMEOUT_MS` takes precedence.
+	 * @default 3000
+	 */
+	problemsTimeoutMs?: number;
 	toolTimeouts?: CoreToolTimeouts;
 	onTeamEvent?: (event: TeamEvent) => void;
 	onConsecutiveMistakeLimitReached?: (

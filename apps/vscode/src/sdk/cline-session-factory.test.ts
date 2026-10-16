@@ -518,6 +518,30 @@ describe("buildSessionConfig", () => {
 		expect(config.compaction).toMatchObject({ enabled: true, triggerRatio: 0.75 })
 	})
 
+	it("hands the session VS Code's code intelligence and keeps the SDK's language servers off", async () => {
+		const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+		expect(config.languageServers).toEqual({ enabled: false })
+		expect(typeof config.codeIntelligence?.diagnosticsAfterChange).toBe("function")
+	})
+
+	it("passes no code intelligence on the standalone host", async () => {
+		const previous = process.env.IS_STANDALONE
+		process.env.IS_STANDALONE = "true"
+		try {
+			const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+			expect(config.languageServers).toEqual({ enabled: false })
+			expect(config.codeIntelligence).toBeUndefined()
+		} finally {
+			if (previous === undefined) {
+				delete process.env.IS_STANDALONE
+			} else {
+				process.env.IS_STANDALONE = previous
+			}
+		}
+	})
+
 	it("resolves the OpenAI Compatible base URL when the provider is stored under its SDK spelling", async () => {
 		mocks.stateManager.getApiConfiguration.mockReturnValue({
 			actModeApiProvider: "openai-compatible",
