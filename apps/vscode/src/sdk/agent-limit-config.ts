@@ -40,6 +40,7 @@ export type AgentLimitSessionConfig = Pick<
 	| "maxParallelToolCalls"
 	| "parallelToolCalls"
 	| "readBeforeWrite"
+	| "reviewBeforeFinish"
 	| "codeIntelligenceTool"
 	| "problemsAfterEdit"
 	| "problemsTimeoutMs"
@@ -106,6 +107,9 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	}
 	if (values?.["session.readBeforeWrite"] !== undefined) {
 		config.readBeforeWrite = values["session.readBeforeWrite"] !== 0
+	}
+	if (values?.["session.reviewBeforeFinish"] !== undefined) {
+		config.reviewBeforeFinish = values["session.reviewBeforeFinish"] !== 0
 	}
 	if (values?.["session.codeIntelligenceTool"] !== undefined) {
 		config.codeIntelligenceTool = values["session.codeIntelligenceTool"] !== 0
@@ -198,6 +202,7 @@ export function getAgentLimitsState(
 	effective["session.maxParallelToolCalls"] = toolCalls.maxParallelToolCalls
 	effective["api.parallelToolCalls"] = toolCalls.parallelToolCalls ? 1 : 0
 	effective["session.readBeforeWrite"] = toolCalls.readBeforeWrite ? 1 : 0
+	effective["session.reviewBeforeFinish"] = toolCalls.reviewBeforeFinish ? 1 : 0
 	if (toolCallEnvSources.maxParallelToolCalls) {
 		envOverrides["session.maxParallelToolCalls"] = toolCallEnvSources.maxParallelToolCalls
 	}
@@ -206,6 +211,9 @@ export function getAgentLimitsState(
 	}
 	if (toolCallEnvSources.readBeforeWrite) {
 		envOverrides["session.readBeforeWrite"] = toolCallEnvSources.readBeforeWrite
+	}
+	if (toolCallEnvSources.reviewBeforeFinish) {
+		envOverrides["session.reviewBeforeFinish"] = toolCallEnvSources.reviewBeforeFinish
 	}
 	effective["session.codeIntelligenceTool"] = codeIntelligence.codeIntelligenceTool ? 1 : 0
 	if (codeIntelligenceEnvSources.codeIntelligenceTool) {

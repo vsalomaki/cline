@@ -583,7 +583,7 @@ export interface AgentRuntimeConfig {
 	maxIterations?: number;
 	completionPolicy?: {
 		requireCompletionTool?: boolean;
-		completionGuard?: () => string | undefined;
+		completionGuard?: () => string | undefined | Promise<string | undefined>;
 	};
 	toolExecution?: "sequential" | "parallel";
 	/** Cap on concurrently running tools within a group of adjacent parallel calls (default: no cap). */

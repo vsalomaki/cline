@@ -2626,6 +2626,45 @@ describe("AgentRuntime", () => {
 		expect(model.requests).toHaveLength(2);
 	});
 
+	it("awaits an async completionGuard and finishes once it returns nothing", async () => {
+		let asked = false;
+		const model = new ScriptedModel([
+			() => [
+				{ type: "text-delta", text: "first report" },
+				{ type: "finish", reason: "stop" },
+			],
+			(request) => {
+				const reminder = request.messages.at(-1);
+				expect(
+					reminder?.content.some(
+						(part) => part.type === "text" && part.text.includes("review"),
+					),
+				).toBe(true);
+				return [
+					{ type: "text-delta", text: "reviewed report" },
+					{ type: "finish", reason: "stop" },
+				];
+			},
+		]);
+		const runtime = new AgentRuntime({
+			model,
+			tools: [],
+			completionPolicy: {
+				completionGuard: async () => {
+					if (asked) return undefined;
+					asked = true;
+					return "[SYSTEM] review the run";
+				},
+			},
+		});
+
+		const result = await runtime.run("Start");
+
+		expect(result.status).toBe("completed");
+		expect(result.outputText).toBe("reviewed report");
+		expect(model.requests).toHaveLength(2);
+	});
+
 	it("announces and enforces required completion tools from tool lifecycle metadata", async () => {
 		const submitTool: AgentTool<{ summary: string }, string> = {
 			name: "custom_finish",

@@ -117,6 +117,12 @@ describe("tool-call options", () => {
 		expect(parse(["--no-read-before-write"]).readBeforeWrite).toBe(false);
 		expect(parse(["--read-before-write"]).readBeforeWrite).toBe(true);
 	});
+
+	it("parses --no-review-before-finish and --review-before-finish", () => {
+		expect(parse([]).reviewBeforeFinish).toBeUndefined();
+		expect(parse(["--no-review-before-finish"]).reviewBeforeFinish).toBe(false);
+		expect(parse(["--review-before-finish"]).reviewBeforeFinish).toBe(true);
+	});
 });
 
 describe("language-server options", () => {
