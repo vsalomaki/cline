@@ -666,6 +666,60 @@ describe("SessionRuntime message preparation", () => {
 		});
 	});
 
+	it("keeps every layer's tool hook context and merges policies", async () => {
+		const extension: AgentExtension = {
+			name: "tool-hook-ext",
+			manifest: { capabilities: ["hooks"] },
+			hooks: {
+				beforeTool: () => ({
+					appendContext: "ext-before",
+					policy: { requireApproval: true },
+				}),
+				afterTool: () => ({ appendContext: "ext-after" }),
+			},
+		};
+		const { deps } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(
+			makeAgentConfig({
+				extensions: [extension],
+				hooks: {
+					beforeTool: () => ({
+						appendContext: "config-before",
+						policy: { autoApprove: false },
+					}),
+					afterTool: () => ({ appendContext: "config-after" }),
+				},
+			}),
+			deps,
+		);
+		await (
+			session as unknown as {
+				ensureExtensionsInitialized(): Promise<void>;
+			}
+		).ensureExtensionsInitialized();
+		const hooks = (
+			session as unknown as {
+				createRuntimeHooks(): AgentRuntimeConfig["hooks"];
+			}
+		).createRuntimeHooks();
+		const toolContext = {
+			snapshot: makeSnapshot(),
+			tool: { name: "read_files" },
+			input: {},
+		} as never;
+
+		expect(await hooks?.beforeTool?.(toolContext)).toEqual({
+			appendContext: "config-before\n\next-before",
+			policy: { autoApprove: false, requireApproval: true },
+		});
+		expect(
+			await hooks?.afterTool?.({
+				...(toolContext as object),
+				result: { output: "ok" },
+			} as never),
+		).toEqual({ appendContext: "config-after\n\next-after" });
+	});
+
 	it("returns a stopping beforeRun result without aggregating context into it", async () => {
 		const { deps } = makeRecordingRuntimeFactory();
 		const session = new SessionRuntime(

@@ -4773,3 +4773,104 @@ describe("createContextCompactionPrepareTurn", () => {
 		).toBeDefined();
 	});
 });
+
+describe("compaction hooks", () => {
+	const summary = {
+		role: "user" as const,
+		content: "summary",
+		metadata: { kind: "compaction_summary", displayRole: "system" },
+	};
+	const compacted = [summary, { role: "user" as const, content: "tail" }];
+
+	function prepare(
+		hooks: Parameters<typeof createContextCompactionPrepareTurn>[1],
+	) {
+		return createContextCompactionPrepareTurn(
+			{
+				providerId: "openai",
+				modelId: "gpt",
+				providerConfig: {
+					providerId: "openai",
+					modelId: "gpt",
+				} as LlmsProviders.ProviderConfig,
+				compaction: {
+					enabled: true,
+					compact: async () => ({ messages: compacted }),
+				},
+				logger: undefined,
+			},
+			{ mode: "manual", ...hooks },
+		);
+	}
+
+	function turn(overflowRecovery = false) {
+		const messages: LlmsProviders.Message[] = [
+			{ role: "user", content: "task" },
+			{ role: "assistant", content: "answer" },
+			{ role: "user", content: "next" },
+		];
+		return {
+			agentId: "agent-1",
+			conversationId: "conv-1",
+			parentAgentId: null,
+			iteration: 1,
+			abortSignal: new AbortController().signal,
+			systemPrompt: "",
+			tools: [],
+			messages,
+			apiMessages: messages,
+			overflowRecovery,
+			model: {
+				id: "gpt",
+				provider: "openai",
+				info: { id: "gpt", maxInputTokens: 100_000 },
+			},
+		};
+	}
+
+	it("runs PreCompact first and adds the post-compaction context after the summary", async () => {
+		const calls: string[] = [];
+		const result = await prepare({
+			hooks: {
+				beforeCompact: async (input) => {
+					calls.push(`before:${input.mode}`);
+				},
+				afterCompact: async () => {
+					calls.push("after");
+					return "restored state";
+				},
+			},
+		})?.(turn());
+		expect(calls).toEqual(["before:manual", "after"]);
+		expect(result?.messages?.[0]).toBe(summary);
+		expect(JSON.stringify(result?.messages?.[1])).toContain(
+			'<hook_context source=\\"SessionStart\\">\\nrestored state',
+		);
+		expect(result?.messages?.[2]).toEqual({ role: "user", content: "tail" });
+	});
+
+	it("adds no hook context to overflow recovery", async () => {
+		const afterCompact = vi.fn(async () => "restored state");
+		const result = await prepare({
+			hooks: { beforeCompact: async () => {}, afterCompact },
+		})?.(turn(true));
+		expect(afterCompact).not.toHaveBeenCalled();
+		expect(JSON.stringify(result?.messages ?? [])).not.toContain(
+			"hook_context",
+		);
+	});
+
+	it("compacts even when a hook throws", async () => {
+		const result = await prepare({
+			hooks: {
+				beforeCompact: async () => {
+					throw new Error("boom");
+				},
+				afterCompact: async () => {
+					throw new Error("boom");
+				},
+			},
+		})?.(turn());
+		expect(result?.messages).toEqual(compacted);
+	});
+});

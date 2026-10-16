@@ -3408,6 +3408,12 @@ describe("AgentRuntime", () => {
 			snapshot: expect.objectContaining({
 				conversationId: "conversation_plugin",
 			}),
+			input: [
+				expect.objectContaining({
+					role: "user",
+					content: [{ type: "text", text: "Run plugin" }],
+				}),
+			],
 		});
 		expect(result.status).toBe("completed");
 		expect(result.outputText).toBe("plugin complete");

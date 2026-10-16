@@ -84,6 +84,26 @@ describe("SessionRunInProgressError", () => {
 });
 
 describe("splitCoreSessionConfig", () => {
+	it("keeps the hook run observer local and the file hook settings serializable", () => {
+		const onHookRun = () => {};
+		const split = splitCoreSessionConfig({
+			providerId: "anthropic",
+			modelId: "m",
+			systemPrompt: "",
+			enableTools: true,
+			enableSpawnAgent: false,
+			enableAgentTeams: false,
+			onHookRun,
+			fileHooks: { timeoutMs: 1000, lifecycle: "none" },
+		});
+		expect(split.localRuntime?.onHookRun).toBe(onHookRun);
+		expect(split.config).not.toHaveProperty("onHookRun");
+		expect(split.config.fileHooks).toEqual({
+			timeoutMs: 1000,
+			lifecycle: "none",
+		});
+	});
+
 	it("keeps the code-intelligence provider local and the settings serializable", () => {
 		const codeIntelligence = createFakeCodeIntelligence();
 		const split = splitCoreSessionConfig({

@@ -87,6 +87,11 @@ function parseStdout(stdout: string): {
 	try {
 		return { parsedJson: JSON.parse(candidate) };
 	} catch (error) {
+		const trailing =
+			prefixed.length > 0 ? undefined : trailingJsonObject(lines);
+		if (trailing !== undefined) {
+			return { parsedJson: trailing };
+		}
 		return {
 			parseError:
 				error instanceof Error
@@ -94,6 +99,22 @@ function parseStdout(stdout: string): {
 					: "Failed to parse subprocess stdout JSON",
 		};
 	}
+}
+
+/** Hooks may print diagnostic lines before their JSON control output. */
+function trailingJsonObject(lines: string[]): unknown {
+	for (let start = lines.length - 1; start >= 0; start--) {
+		if (!lines[start].startsWith("{")) {
+			continue;
+		}
+		try {
+			const value: unknown = JSON.parse(lines.slice(start).join("\n"));
+			return value && typeof value === "object" ? value : undefined;
+		} catch {
+			// Keep looking for an earlier line where the object starts.
+		}
+	}
+	return undefined;
 }
 
 function formatSpawnError(error: unknown, command: string[]): Error {
@@ -127,6 +148,21 @@ function releaseStdio(child: ReturnType<typeof spawn>): void {
 		stream.removeAllListeners("data");
 		stream.destroy();
 	}
+}
+
+function killHook(
+	child: ReturnType<typeof spawn>,
+	ownProcessGroup: boolean,
+): void {
+	if (ownProcessGroup && child.pid !== undefined) {
+		try {
+			process.kill(-child.pid, "SIGKILL");
+			return;
+		} catch {
+			// The group is already gone; fall back to the direct child.
+		}
+	}
+	child.kill("SIGKILL");
 }
 
 async function writeToChildStdin(
@@ -190,11 +226,14 @@ export async function runSubprocessEvent(
 	}
 
 	const detached = !!options.detached;
+	// A blocking hook gets its own process group on Unix so a timeout also
+	// kills what it started, such as the command a shell wrapper runs.
+	const ownProcessGroup = !detached && process.platform !== "win32";
 	const child = spawn(command[0], command.slice(1), {
 		cwd: options.cwd,
 		env: withResolvedClineBuildEnv(options.env),
 		stdio: detached ? ["pipe", "ignore", "ignore"] : ["pipe", "pipe", "pipe"],
-		detached,
+		detached: detached || ownProcessGroup,
 		// Prevent a console window from flashing on Windows (especially when
 		// detached, which would otherwise allocate a new console).
 		windowsHide: true,
@@ -287,7 +326,7 @@ export async function runSubprocessEvent(
 	if (!detached && (options.timeoutMs ?? 0) > 0) {
 		timeoutId = setTimeout(() => {
 			timedOut = true;
-			child.kill("SIGKILL");
+			killHook(child, ownProcessGroup);
 		}, options.timeoutMs);
 	}
 

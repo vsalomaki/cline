@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import {
 	HOOKS_CONFIG_DIRECTORY_NAME,
@@ -38,7 +38,7 @@ export const HOOK_CONFIG_FILE_EVENT_MAP: Readonly<
 	[HookConfigFileName.PreToolUse]: "tool_call",
 	[HookConfigFileName.PostToolUse]: "tool_result",
 	[HookConfigFileName.UserPromptSubmit]: "prompt_submit",
-	[HookConfigFileName.PreCompact]: undefined,
+	[HookConfigFileName.PreCompact]: "pre_compact",
 	[HookConfigFileName.SessionShutdown]: "session_shutdown",
 };
 
@@ -78,14 +78,39 @@ export interface HookConfigFileEntry {
 	path: string;
 }
 
+export interface ListHookConfigFilesOptions {
+	/** Searched after the standard directories, such as other workspace roots. */
+	extraDirectories?: readonly string[];
+	/**
+	 * Skip files without the executable bit (not on Windows). Lets a host
+	 * disable a hook by clearing that bit.
+	 */
+	requireExecutable?: boolean;
+}
+
+function isExecutable(path: string): boolean {
+	try {
+		accessSync(path, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function listHookConfigFiles(
 	workspacePath?: string,
+	options: ListHookConfigFilesOptions = {},
 ): HookConfigFileEntry[] {
 	const entries: HookConfigFileEntry[] = [];
 	const seen = new Set<string>();
-	const directories = resolveHooksConfigSearchPaths(workspacePath).filter(
-		(directory) => existsSync(directory),
-	);
+	const directories = [
+		...new Set([
+			...resolveHooksConfigSearchPaths(workspacePath),
+			...(options.extraDirectories ?? []),
+		]),
+	].filter((directory) => existsSync(directory));
+	const requireExecutable =
+		options.requireExecutable === true && process.platform !== "win32";
 
 	for (const directory of directories) {
 		try {
@@ -98,7 +123,7 @@ export function listHookConfigFiles(
 					continue;
 				}
 				const path = join(directory, entry.name);
-				if (seen.has(path)) {
+				if (seen.has(path) || (requireExecutable && !isExecutable(path))) {
 					continue;
 				}
 				seen.add(path);

@@ -189,6 +189,17 @@ function filterAvailableExtensionTools(
 	return filterDisabledTools(filterToolsByPolicies(tools, toolPolicies));
 }
 
+function joinHookContexts(
+	current: string | undefined,
+	next: string | undefined,
+): string | undefined {
+	return (
+		[current, next]
+			.filter((value): value is string => Boolean(value?.trim()))
+			.join("\n\n") || undefined
+	);
+}
+
 function mergeRuntimeHooks(
 	layers: Array<Partial<AgentRuntimeHooks> | undefined>,
 ): Partial<AgentRuntimeHooks> {
@@ -264,8 +275,20 @@ function mergeRuntimeHooks(
 			for (const hook of hooks) {
 				const result = await hook.beforeTool?.({ ...ctx, input });
 				if (!result) continue;
-				if (result.stop || result.skip) return result;
-				aggregate = { ...aggregate, ...result };
+				const policy =
+					aggregate?.policy || result.policy
+						? { ...aggregate?.policy, ...result.policy }
+						: undefined;
+				aggregate = {
+					...aggregate,
+					...result,
+					appendContext: joinHookContexts(
+						aggregate?.appendContext,
+						result.appendContext,
+					),
+					...(policy ? { policy } : {}),
+				};
+				if (result.stop || result.skip) return aggregate;
 				if (Object.hasOwn(result, "input")) {
 					input = result.input;
 				}
@@ -280,8 +303,15 @@ function mergeRuntimeHooks(
 			for (const hook of hooks) {
 				const next = await hook.afterTool?.({ ...ctx, result });
 				if (!next) continue;
-				if (next.stop) return next;
-				aggregate = { ...aggregate, ...next };
+				aggregate = {
+					...aggregate,
+					...next,
+					appendContext: joinHookContexts(
+						aggregate?.appendContext,
+						next.appendContext,
+					),
+				};
+				if (next.stop) return aggregate;
 				if (next.result) {
 					result = next.result;
 				}

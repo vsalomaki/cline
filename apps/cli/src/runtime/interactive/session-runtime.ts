@@ -232,11 +232,18 @@ export function createInteractiveSessionRuntime(input: {
 	): Promise<void> => {
 		const generation = sessionStartGeneration;
 		const manager = await ensureSessionManager();
+		const sessionConfig = buildSessionConfig();
 		const started = await manager.start({
 			source: SessionSource.CLI,
 			config: {
-				...buildSessionConfig(),
-				...(sessionId ? { sessionId } : {}),
+				...sessionConfig,
+				// The same conversation continues, so no TaskStart/TaskResume.
+				...(sessionId
+					? {
+							sessionId,
+							fileHooks: { ...sessionConfig.fileHooks, lifecycle: "none" },
+						}
+					: {}),
 			},
 			toolPolicies: input.config.toolPolicies,
 			interactive: true,

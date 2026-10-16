@@ -23,6 +23,10 @@ import type {
 import type { ToolRoutingRule } from "../extensions/tools/model-tool-routing";
 import type { TeamEvent } from "../extensions/tools/team";
 import type { DefaultToolsConfig } from "../extensions/tools/types";
+import type {
+	FileHookSettings,
+	HookRunObserver,
+} from "../hooks/hook-file-hooks";
 import type { ContextLimitOverrides } from "../settings/context-limits";
 import type { ProviderConfig } from "./provider-settings";
 
@@ -295,6 +299,10 @@ export interface CoreSessionConfig
 	missionLogIntervalSteps?: number;
 	missionLogIntervalMs?: number;
 	hooks?: AgentHooks;
+	/** How hook files from the hook directories are found and run. */
+	fileHooks?: FileHookSettings;
+	/** Reports each file hook execution, for status UI. Local runtime only. */
+	onHookRun?: HookRunObserver;
 	hookErrorMode?: HookErrorMode;
 	logger?: BasicLogger;
 	telemetry?: ITelemetryService;

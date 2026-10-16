@@ -1,7 +1,122 @@
 ---
 title: "Hooks"
 sidebarTitle: "Hooks"
-description: "See details under SDK Plugins page."
+description: "Run your own scripts at points in a Cline run: before a tool call, after it, when a prompt is sent, before compaction."
 ---
 
-See details under [SDK Plugins](/sdk/plugins).
+Hooks are scripts that Cline runs at fixed points in a run. A hook gets a JSON description of the event on stdin and can print JSON on stdout to block a tool call, ask for approval, rewrite the tool input, add context for the model, or stop the run.
+
+For hooks written in code, see [SDK Plugins](/sdk/plugins).
+
+## Where hooks live
+
+Cline looks for hook files in these directories, in this order:
+
+| Directory | Scope |
+|---|---|
+| `~/Documents/Cline/Hooks/` | Global |
+| `~/.cline/hooks/` | Global |
+| `<workspace>/.clinerules/hooks/` | Workspace |
+| `<workspace>/.cline/hooks/` | Workspace |
+
+A hook file is named after its event, such as `PreToolUse`. The name is case-insensitive and may have one of these extensions: none, `.sh`, `.bash`, `.zsh`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.py` or `.ps1`. A shebang line picks the interpreter; otherwise the extension does, and a file without either runs with `bash`. Several files for the same event run one after another, in path order.
+
+Hook files are found again at the start of every run, so a hook you add mid-session runs from your next message on.
+
+## Events
+
+| File name | When it runs | Waits for the hook |
+|---|---|---|
+| `TaskStart` | The first run of a new conversation | Only when the host asks for it (see below) |
+| `TaskResume` | The first run of a conversation with earlier history | Same as `TaskStart` |
+| `UserPromptSubmit` | Before the run for each prompt you send | Yes |
+| `PreToolUse` | Before each tool call | Yes |
+| `PostToolUse` | After each tool call | Yes |
+| `PreCompact` | Before the conversation is compacted, automatically or with `/compact` | Yes |
+| `TaskComplete` | When a run finishes | No |
+| `TaskCancel` | When a run is cancelled | No |
+| `TaskError` | When a run fails | No |
+| `SessionShutdown` | After a cancelled run | No |
+
+`TaskStart` and `TaskResume` run in the background by default, so a slow script does not delay the start of every run. A host can make them blocking, in which case they can stop the run or add context like the other blocking hooks.
+
+`UserPromptSubmit` waits only for the prompt that starts a run. Messages you send while a run is in progress also fire it, but in the background, and its output is ignored.
+
+## Input
+
+Each hook gets one JSON object on stdin. Common fields:
+
+```json
+{
+  "clineVersion": "4.1.24",
+  "hookName": "tool_call",
+  "timestamp": "2026-10-16T10:00:00.000Z",
+  "taskId": "conv_…",
+  "sessionContext": { "rootSessionId": "1792…_ab12c" },
+  "workspaceRoots": ["/path/to/project"],
+  "userId": "…",
+  "model": { "provider": "anthropic", "slug": "claude-sonnet-5-5" },
+  "agent_id": "…",
+  "parent_agent_id": null
+}
+```
+
+Event fields:
+
+| Event | Fields |
+|---|---|
+| `PreToolUse` | `tool_call: {id, name, input}`, and `preToolUse: {toolName, parameters}` with every parameter as a string |
+| `PostToolUse` | `tool_result: {id, name, input, output, error, durationMs}`, and `postToolUse: {toolName, parameters, result, success, executionTimeMs}` |
+| `UserPromptSubmit` | `userPromptSubmit: {prompt}` |
+| `PreCompact` | `preCompact: {trigger, contextSize, compactionStrategy}`, where `trigger` is `manual` or `auto` |
+| `TaskError` | `error: {name, message}` |
+
+## Output
+
+A hook may print nothing. To influence the run, it prints one JSON object. Lines printed before the JSON, such as debug output, are ignored. The exit code is not used.
+
+Cline reads both its own fields and the fields Claude Code hooks print:
+
+| Output | `PreToolUse` | `PostToolUse` | `UserPromptSubmit` |
+|---|---|---|---|
+| `{"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "…"}}` or `{"decision": "block", "reason": "…"}` | Skips this tool call. The reason is the tool result the model sees, and the run continues. | The reason is added as context. | Stops the run. |
+| `{"hookSpecificOutput": {"permissionDecision": "ask"}}` | Asks you to approve the call, even when auto-approve would allow it. | — | — |
+| `{"hookSpecificOutput": {"updatedInput": {…}}}` or `{"overrideInput": {…}}` | Replaces the tool input. | — | — |
+| `{"hookSpecificOutput": {"additionalContext": "…"}}` or `{"contextModification": "…"}` | Adds context for the model. | Same | Same |
+| `{"continue": false, "stopReason": "…"}` or `{"cancel": true, "errorMessage": "…"}` | Stops the run. | Same | Same |
+
+When several hooks answer the same event, stopping the run wins over skipping the call, and skipping wins over asking for approval. Context from every hook is kept.
+
+`PreCompact` and the run-end hooks cannot block anything.
+
+## Settings
+
+| Setting | Effect |
+|---|---|
+| `CLINE_HOOK_TIMEOUT_MS` | How long a blocking hook may run before it is stopped, together with anything it started. Default 120000. |
+
+## Examples
+
+Block `rm -rf` in shell commands:
+
+```bash
+#!/usr/bin/env bash
+# .cline/hooks/PreToolUse
+input=$(cat)
+if echo "$input" | jq -e '.tool_call.name == "run_commands" and (.tool_call.input | tostring | test("rm -rf"))' > /dev/null; then
+  echo '{"decision": "block", "reason": "rm -rf is not allowed here; delete files one by one."}'
+fi
+```
+
+Add the current branch to every prompt:
+
+```bash
+#!/usr/bin/env bash
+# .cline/hooks/UserPromptSubmit
+cat > /dev/null
+jq -n --arg branch "$(git branch --show-current)" '{hookSpecificOutput: {additionalContext: ("Current branch: " + $branch)}}'
+```
+
+<Warning>
+Hooks run with your user's permissions. Review a hook before adding it, especially one that comes with a repository.
+</Warning>

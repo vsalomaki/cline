@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -7,11 +14,20 @@ import {
 	setClineDir,
 	setHomeDir,
 } from "@cline/shared/storage";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import {
 	createHookAuditHooks,
 	createHookConfigFileExtension,
 	createHookConfigFileHooks,
+	createHookConfigFileRuntime,
 	getWindowsPythonFallbackCommand,
 	mergeAgentHooks,
 } from "./hook-file-hooks";
@@ -153,7 +169,7 @@ describe("createHookConfigFileHooks", () => {
 				workspacePath: workspace,
 				detachAsyncHooks: false,
 			});
-			expect(hooks).toBeUndefined();
+			expect(await hooks.beforeTool?.(beforeToolContext())).toBeUndefined();
 		} finally {
 			await rm(workspace, {
 				recursive: true,
@@ -943,5 +959,356 @@ describe("createHookConfigFileHooks", () => {
 			});
 			await rm(outputPath, { force: true });
 		}
+	});
+});
+
+describe("file hook lifecycle and controls", () => {
+	const originalHomeDir = dirname(
+		dirname(resolveDocumentsClineDirectoryPath()),
+	);
+	const originalClineDir = resolveClineDir();
+	let root = "";
+	let workspace = "";
+	let hooksDir = "";
+	let logPath = "";
+
+	beforeAll(async () => {
+		root = await mkdtemp(join(tmpdir(), "hooks-lifecycle-"));
+		await mkdir(join(root, "home"), { recursive: true });
+		await mkdir(join(root, "cline"), { recursive: true });
+		setHomeDir(join(root, "home"));
+		setClineDir(join(root, "cline"));
+	});
+
+	afterAll(async () => {
+		setHomeDir(originalHomeDir);
+		setClineDir(originalClineDir);
+		await rm(root, { recursive: true, force: true });
+	});
+
+	beforeEach(async () => {
+		workspace = await mkdtemp(join(root, "ws-"));
+		hooksDir = join(workspace, ".clinerules", "hooks");
+		await mkdir(hooksDir, { recursive: true });
+		logPath = join(workspace, "hook-log.jsonl");
+	});
+
+	/** A hook that appends its stdin to the log and prints `stdout`. */
+	async function addHook(fileName: string, stdout = "", dir = hooksDir) {
+		const path = join(dir, fileName);
+		await writeFile(
+			path,
+			`let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{require('node:fs').appendFileSync(${JSON.stringify(logPath)}, d.replace(/\\n/g,' ')+'\\n');process.stdout.write(${JSON.stringify(stdout)});});\n`,
+			"utf8",
+		);
+		return path;
+	}
+
+	async function readLog(): Promise<Array<Record<string, any>>> {
+		try {
+			const text = await readFile(logPath, "utf8");
+			return text
+				.trim()
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => JSON.parse(line));
+		} catch {
+			return [];
+		}
+	}
+
+	function message(id: string, role: "user" | "assistant", text: string) {
+		return {
+			id,
+			role,
+			content: [{ type: "text" as const, text }],
+			createdAt: 0,
+		};
+	}
+
+	function runContext(
+		messages: ReturnType<typeof message>[],
+		input?: ReturnType<typeof message>[],
+	) {
+		return {
+			snapshot: { ...beforeToolContext().snapshot, messages },
+			...(input ? { input } : {}),
+		};
+	}
+
+	function createHooks(extra: Record<string, unknown> = {}) {
+		return createHookConfigFileRuntime({
+			cwd: workspace,
+			workspacePath: workspace,
+			detachAsyncHooks: false,
+			...extra,
+		});
+	}
+
+	it("runs UserPromptSubmit blocking for the seeded prompt, once", async () => {
+		await addHook(
+			"UserPromptSubmit.js",
+			'{"contextModification":"prompt ctx"}',
+		);
+		const { hooks } = createHooks();
+		const ctx = runContext([message("m1", "user", "hello")]);
+		expect(await hooks.beforeRun?.(ctx)).toEqual({
+			appendContext: "prompt ctx",
+		});
+		expect(await hooks.beforeRun?.(ctx)).toBeUndefined();
+		const log = await readLog();
+		expect(log).toHaveLength(1);
+		expect(log[0].userPromptSubmit.prompt).toBe("hello");
+	});
+
+	it("takes the prompt from run input and does not fire again when it is added", async () => {
+		await addHook("UserPromptSubmit.js");
+		const { hooks } = createHooks();
+		const prompt = message("m2", "user", "from input");
+		await hooks.beforeRun?.(runContext([], [prompt]));
+		await hooks.onEvent?.({
+			type: "message-added",
+			snapshot: runContext([prompt]).snapshot,
+			message: prompt,
+		} as never);
+		const log = await readLog();
+		expect(log.map((entry) => entry.userPromptSubmit.prompt)).toEqual([
+			"from input",
+		]);
+	});
+
+	it("stops the run when UserPromptSubmit blocks the prompt", async () => {
+		await addHook("UserPromptSubmit.js", '{"decision":"block","reason":"no"}');
+		const { hooks } = createHooks();
+		expect(
+			await hooks.beforeRun?.(runContext([message("m3", "user", "x")])),
+		).toEqual({ stop: true, reason: "no" });
+	});
+
+	it("fires TaskStart on the first run only, and TaskResume for a resumed conversation", async () => {
+		await addHook("TaskStart.js");
+		await addHook("TaskResume.js");
+		const started = createHooks({ blockingRunStartHooks: true }).hooks;
+		await started.beforeRun?.(runContext([message("a", "user", "1")]));
+		await started.beforeRun?.(runContext([message("b", "user", "2")]));
+		const resumed = createHooks({ blockingRunStartHooks: true }).hooks;
+		await resumed.beforeRun?.(
+			runContext([
+				message("c", "user", "1"),
+				message("d", "assistant", "done"),
+				message("e", "user", "2"),
+			]),
+		);
+		const rebuilt = createHooks({
+			blockingRunStartHooks: true,
+			lifecycle: "none",
+		}).hooks;
+		await rebuilt.beforeRun?.(
+			runContext([message("f", "assistant", "x"), message("g", "user", "y")]),
+		);
+		expect((await readLog()).map((entry) => entry.hookName)).toEqual([
+			"agent_start",
+			"agent_resume",
+		]);
+	});
+
+	it("sends the model in the payload", async () => {
+		await addHook("TaskStart.js");
+		const { hooks } = createHooks({
+			blockingRunStartHooks: true,
+			model: { provider: "openai", slug: "gpt" },
+		});
+		await hooks.beforeRun?.(runContext([message("a", "user", "1")]));
+		expect((await readLog())[0].model).toEqual({
+			provider: "openai",
+			slug: "gpt",
+		});
+	});
+
+	it("fires TaskCancel for an aborted run without an error", async () => {
+		await addHook("TaskCancel.js");
+		const { hooks } = createHooks();
+		await hooks.afterRun?.({
+			snapshot: beforeToolContext().snapshot,
+			result: {
+				agentId: "agent_1",
+				runId: "run_1",
+				status: "aborted",
+				iterations: 1,
+				outputText: "",
+				messages: [],
+				usage: beforeToolContext().snapshot.usage,
+			},
+		} as never);
+		expect((await readLog()).map((entry) => entry.hookName)).toEqual([
+			"agent_abort",
+		]);
+	});
+
+	it("picks up a hook added after the session started", async () => {
+		const { hooks } = createHooks();
+		expect(await hooks.beforeTool?.(beforeToolContext())).toBeUndefined();
+		await addHook("PreToolUse.js", '{"cancel":true}');
+		await hooks.beforeRun?.(runContext([]));
+		expect(await hooks.beforeTool?.(beforeToolContext())).toMatchObject({
+			stop: true,
+		});
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"skips hooks without the executable bit when asked to",
+		async () => {
+			const path = await addHook("PreToolUse.js", '{"cancel":true}');
+			await chmod(path, 0o644);
+			expect(
+				await createHooks({ requireExecutable: true }).hooks.beforeTool?.(
+					beforeToolContext(),
+				),
+			).toBeUndefined();
+			await chmod(path, 0o755);
+			expect(
+				await createHooks({ requireExecutable: true }).hooks.beforeTool?.(
+					beforeToolContext(),
+				),
+			).toMatchObject({ stop: true });
+		},
+	);
+
+	it("searches extra hook directories", async () => {
+		const extraDir = join(workspace, "other-root", ".clinerules", "hooks");
+		await mkdir(extraDir, { recursive: true });
+		await addHook("PreToolUse.js", '{"cancel":true}', extraDir);
+		expect(
+			await createHooks({ extraHookDirs: [extraDir] }).hooks.beforeTool?.(
+				beforeToolContext(),
+			),
+		).toMatchObject({ stop: true });
+	});
+
+	it("reads JSON printed after debug lines", async () => {
+		await addHook(
+			"PreToolUse.js",
+			'debug: starting\n{\n  "contextModification": "late json"\n}\n',
+		);
+		expect(await createHooks().hooks.beforeTool?.(beforeToolContext())).toEqual(
+			{ appendContext: "late json" },
+		);
+	});
+
+	it("maps Claude Code style output onto the tool call", async () => {
+		await addHook(
+			"PreToolUse.js",
+			JSON.stringify({
+				hookSpecificOutput: {
+					permissionDecision: "deny",
+					permissionDecisionReason: "use the other tool",
+					additionalContext: "extra",
+				},
+			}),
+		);
+		expect(await createHooks().hooks.beforeTool?.(beforeToolContext())).toEqual(
+			{
+				skip: true,
+				reason: "use the other tool",
+				appendContext: "extra",
+			},
+		);
+	});
+
+	it("asks for approval and rewrites input", async () => {
+		await addHook(
+			"PreToolUse.js",
+			JSON.stringify({
+				hookSpecificOutput: {
+					permissionDecision: "ask",
+					updatedInput: { path: "OTHER.md" },
+				},
+			}),
+		);
+		expect(await createHooks().hooks.beforeTool?.(beforeToolContext())).toEqual(
+			{
+				policy: { requireApproval: true },
+				input: { path: "OTHER.md" },
+			},
+		);
+	});
+
+	it("lets cancel win over deny, and deny win over ask", async () => {
+		await addHook(
+			"PreToolUse.js",
+			JSON.stringify({ hookSpecificOutput: { permissionDecision: "ask" } }),
+		);
+		await writeFile(
+			join(hooksDir, "PreToolUse.sh"),
+			'echo \'{"decision":"block","reason":"b"}\'\n',
+		);
+		expect(await createHooks().hooks.beforeTool?.(beforeToolContext())).toEqual(
+			{
+				skip: true,
+				reason: "b",
+			},
+		);
+		await writeFile(
+			join(hooksDir, "PreToolUse.py"),
+			'print(\'{"continue": false, "stopReason": "halt"}\')\n',
+		);
+		expect(await createHooks().hooks.beforeTool?.(beforeToolContext())).toEqual(
+			{
+				stop: true,
+				reason: "halt",
+			},
+		);
+	});
+
+	it("reports each hook run with one execution id", async () => {
+		await addHook("PreToolUse.js", "{}");
+		const events: Array<Record<string, unknown>> = [];
+		await createHooks({
+			onHookRun: (event: Record<string, unknown>) => events.push(event),
+		}).hooks.beforeTool?.(beforeToolContext());
+		expect(events.map((event) => event.status)).toEqual([
+			"running",
+			"completed",
+		]);
+		expect(events[0].executionId).toBe(events[1].executionId);
+		expect(events[1]).toMatchObject({
+			hookName: "PreToolUse",
+			toolName: "read_file",
+			toolCallId: "call_1",
+		});
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"kills what a timed-out hook started",
+		async () => {
+			const marker = join(workspace, "late-marker");
+			await writeFile(
+				join(hooksDir, "PreToolUse.sh"),
+				`(sleep 1; echo late > ${JSON.stringify(marker)}) &\nsleep 5\n`,
+				"utf8",
+			);
+			await createHooks({ toolCallTimeoutMs: 200 }).hooks.beforeTool?.(
+				beforeToolContext(),
+			);
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+			await expect(readFile(marker, "utf8")).rejects.toThrow();
+		},
+	);
+
+	it("runs PreCompact before compaction", async () => {
+		await addHook("PreCompact.js");
+		await createHooks().compaction.beforeCompact({
+			mode: "manual",
+			agentId: "agent_1",
+			conversationId: "conv_1",
+			parentAgentId: null,
+			tokensBefore: 1234,
+		});
+		const [entry] = await readLog();
+		expect(entry.hookName).toBe("pre_compact");
+		expect(entry.preCompact).toMatchObject({
+			trigger: "manual",
+			contextSize: 1234,
+		});
 	});
 });

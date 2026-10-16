@@ -9,10 +9,19 @@ export {
 	toHookConfigFileName,
 } from "./hook-file-config";
 export {
+	type CompactionHookInput,
+	type CompactionHookRunner,
 	createHookAuditHooks,
 	createHookConfigFileExtension,
 	createHookConfigFileHooks,
+	createHookConfigFileRuntime,
+	type FileHookSettings,
+	type HookConfigFileRuntime,
+	type HookRunEvent,
+	type HookRunObserver,
+	type HookRunStatus,
 	mergeAgentHooks,
+	resolveFileHookOptions,
 } from "./hook-file-hooks";
 export {
 	createSubprocessHooks,
