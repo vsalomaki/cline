@@ -294,6 +294,11 @@ export class SdkSessionLifecycle {
 
 		const { startResult, sdkHost } = await this.startNewSession({
 			...options.startInput,
+			// The same conversation goes on, so no TaskStart/TaskResume hooks.
+			config: {
+				...options.startInput.config,
+				fileHooks: { ...options.startInput.config.fileHooks, lifecycle: "none" },
+			},
 			...(options.initialMessages ? { initialMessages: options.initialMessages } : {}),
 		})
 		this.setRunning(false)

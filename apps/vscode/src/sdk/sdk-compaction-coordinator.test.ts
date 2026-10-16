@@ -11,6 +11,10 @@ vi.mock("@cline/core", () => ({
 	})),
 }))
 
+vi.mock("./hook-engine", () => ({
+	createManualCompactionHooks: vi.fn(() => undefined),
+}))
+
 const mockCreateContextCompactionPrepareTurn = createContextCompactionPrepareTurn as unknown as ReturnType<typeof vi.fn>
 
 vi.mock("@/shared/services/Logger", () => ({

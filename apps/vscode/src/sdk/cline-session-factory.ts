@@ -46,6 +46,7 @@ import { getDistinctId } from "@/services/logging/distinctId"
 import { fetch, fetchWithoutIdleTimeouts } from "@/shared/net"
 import { buildAgentLimitSessionConfig, readAgentLimitValues } from "./agent-limit-config"
 import { type BedrockProviderConfig, buildBedrockProviderConfig } from "./bedrock-config"
+import { buildFileHookSettings, readHookEngine } from "./hook-engine"
 import { buildAgentHooks } from "./hooks-adapter"
 import { readTaskHistory, resolveDataDir } from "./legacy-state-reader"
 import type { ResolvedModelSelection } from "./model-catalog/contracts"
@@ -1110,6 +1111,7 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	const compactionStrategy = readCompactionStrategyGlobally()
 	const enableCheckpoints = stateManager.getGlobalSettingsKey("enableCheckpointsSetting") ?? true
 	const useAutoCondense = input.taskSettings?.useAutoCondense ?? globalUseAutoCondense
+	const hookEngine = readHookEngine(stateManager)
 	const {
 		compaction: compactionLimits,
 		providerConfig: providerLimits,
@@ -1228,7 +1230,9 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 			},
 			logger: sdkLogger,
 		},
-		hooks: buildAgentHooks(StateManager.get()),
+		...(hookEngine === "legacy"
+			? { hooks: buildAgentHooks(stateManager) }
+			: { fileHooks: await buildFileHookSettings(stateManager) }),
 	}
 
 	return config

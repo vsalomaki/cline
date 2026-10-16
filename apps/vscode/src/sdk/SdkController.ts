@@ -835,6 +835,10 @@ export class Controller {
 		this.sessionConfigChanges.handleTerminalExecutionModeChanged(previous, next)
 	}
 
+	handleHooksSettingChanged(previous: boolean, next: boolean): void {
+		this.sessionConfigChanges.handleHooksSettingChanged(previous, next)
+	}
+
 	handleCheckpointsSettingChanged(previous: boolean, next: boolean): void {
 		this.sessionConfigChanges.handleCheckpointsSettingChanged(previous, next)
 	}

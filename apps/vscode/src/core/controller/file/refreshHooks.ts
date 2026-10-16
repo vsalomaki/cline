@@ -3,14 +3,23 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { HostProvider } from "@/hosts/host-provider"
+import { readHookEngine } from "@/sdk/hook-engine"
+import { listSdkHooks } from "../../hooks/sdk-hook-files"
 import { resolveExistingHookPath, VALID_HOOK_TYPES } from "../../hooks/utils"
 import { Controller } from ".."
 
 export async function refreshHooks(
-	_controller: Controller,
+	controller: Controller,
 	_request?: any,
 	globalHooksDirOverride?: string,
 ): Promise<HooksToggles> {
+	if (controller.stateManager && readHookEngine(controller.stateManager) === "sdk") {
+		const { paths } = await HostProvider.workspace.getWorkspacePaths({})
+		return HooksToggles.create({
+			...(await listSdkHooks(paths, globalHooksDirOverride)),
+			isWindows: process.platform === "win32",
+		})
+	}
 	const globalHooksDir = globalHooksDirOverride || path.join(os.homedir(), "Documents", "Cline", "Hooks")
 	const isWindows = process.platform === "win32"
 

@@ -68,6 +68,19 @@ export class SdkSessionConfigChangeCoordinator {
 		})
 	}
 
+	/** The SDK file hooks are added to a session when it is built. */
+	handleHooksSettingChanged(previous: boolean, next: boolean): void {
+		if (previous === next) {
+			return
+		}
+		this.requestRebuild({
+			reason: "hooks",
+			description: `hooks ${previous ? "enabled" : "disabled"} -> ${next ? "enabled" : "disabled"}`,
+			disposeReason: "hooksSettingChange",
+			failureMessage: "Failed to reload hooks. The change may not apply until the next task.",
+		})
+	}
+
 	handleCheckpointsSettingChanged(previous: boolean, next: boolean): void {
 		if (previous === next) {
 			return

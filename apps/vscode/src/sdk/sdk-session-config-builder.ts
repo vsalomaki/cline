@@ -1,6 +1,7 @@
 import type { CoreSessionConfig } from "@cline/core"
 import type { StateManager } from "@/core/storage/StateManager"
 import { buildSessionConfig, type SessionConfigInput } from "./cline-session-factory"
+import { createHookRunChipEmitter, readHookEngine } from "./hook-engine"
 import { buildAgentHooks, type HookMessageEmitter } from "./hooks-adapter"
 
 export interface SdkSessionConfigBuilderOptions {
@@ -25,7 +26,11 @@ export class SdkSessionConfigBuilder {
 			config.onConsecutiveMistakeLimitReached = this.options.onConsecutiveMistakeLimitReached
 		}
 
-		config.hooks = buildAgentHooks(this.options.stateManager, this.options.emitHookMessage, input.cwd)
+		if (readHookEngine(this.options.stateManager) === "legacy") {
+			config.hooks = buildAgentHooks(this.options.stateManager, this.options.emitHookMessage, input.cwd)
+		} else {
+			config.onHookRun = createHookRunChipEmitter(this.options.emitHookMessage)
+		}
 
 		return config
 	}

@@ -330,13 +330,14 @@ const ClineRulesToggleModal: React.FC = () => {
 	}
 
 	// Toggle hook handler
-	const toggleHook = (isGlobal: boolean, hookName: string, enabled: boolean, workspaceName?: string) => {
+	const toggleHook = (isGlobal: boolean, hookName: string, enabled: boolean, absolutePath: string, workspaceName?: string) => {
 		FileServiceClient.toggleHook({
 			metadata: {} as any,
 			hookName,
 			isGlobal,
 			enabled,
 			workspaceName,
+			absolutePath,
 		})
 			.then((response) => {
 				setGlobalHooks(response.hooksToggles?.globalHooks || [])
@@ -715,8 +716,8 @@ const ClineRulesToggleModal: React.FC = () => {
 														setGlobalHooks(hooksToggles.globalHooks || [])
 														setWorkspaceHooks(hooksToggles.workspaceHooks || [])
 													}}
-													onToggle={(name: string, newEnabled: boolean) =>
-														toggleHook(true, name, newEnabled)
+													onToggle={(name: string, newEnabled: boolean, absolutePath: string) =>
+														toggleHook(true, name, newEnabled, absolutePath)
 													}
 												/>
 											))}
@@ -752,8 +753,14 @@ const ClineRulesToggleModal: React.FC = () => {
 															setGlobalHooks(hooksToggles.globalHooks || [])
 															setWorkspaceHooks(hooksToggles.workspaceHooks || [])
 														}}
-														onToggle={(name: string, newEnabled: boolean) =>
-															toggleHook(false, name, newEnabled, workspace.workspaceName)
+														onToggle={(name: string, newEnabled: boolean, absolutePath: string) =>
+															toggleHook(
+																false,
+																name,
+																newEnabled,
+																absolutePath,
+																workspace.workspaceName,
+															)
 														}
 														workspaceName={workspace.workspaceName}
 													/>

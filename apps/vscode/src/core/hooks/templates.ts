@@ -227,7 +227,7 @@ function getPreToolUseTemplate(): string {
 #
 # PreToolUse Hook
 # 
-# Executes before any tool is used (read_file, write_to_file, execute_command, etc.)
+# Executes before any tool is used (read_files, editor, run_commands, etc.)
 # 
 # Input: { taskId, preToolUse: { toolName: string, parameters: object }, ... }
 # Output: { cancel: boolean, contextModification?: string, errorMessage?: string }
@@ -244,14 +244,14 @@ INPUT=$(cat)
 # Parse input using jq (or fallback to basic parsing)
 if command -v jq &> /dev/null; then
   TOOL=$(echo "$INPUT" | jq -r '.preToolUse.toolName')
-  COMMAND=$(echo "$INPUT" | jq -r '.preToolUse.parameters.command // empty')
+  COMMAND=$(echo "$INPUT" | jq -r '.preToolUse.parameters.commands // empty')
 else
   TOOL="<tool>"
   COMMAND=""
 fi
 
 # Example: Block dangerous operations
-if [[ "$TOOL" == "execute_command" ]] && [[ "$COMMAND" == *"rm -rf /"* ]]; then
+if [[ "$TOOL" == "run_commands" ]] && [[ "$COMMAND" == *"rm -rf /"* ]]; then
   echo '{"cancel":true,"errorMessage":"Dangerous command blocked by PreToolUse hook"}'
   exit 0
 fi

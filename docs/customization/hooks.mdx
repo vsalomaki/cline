@@ -38,7 +38,7 @@ Hook files are found again at the start of every run, so a hook you add mid-sess
 | `TaskError` | When a run fails | No |
 | `SessionShutdown` | After a cancelled run | No |
 
-`TaskStart` and `TaskResume` run in the background by default, so a slow script does not delay the start of every run. A host can make them blocking, in which case they can stop the run or add context like the other blocking hooks.
+`TaskStart` and `TaskResume` run in the background by default, so a slow script does not delay the start of every run. A host can make them blocking (the VS Code extension does), in which case they can stop the run or add context like the other blocking hooks.
 
 `UserPromptSubmit` waits only for the prompt that starts a run. Messages you send while a run is in progress also fire it, but in the background, and its output is ignored.
 
@@ -147,6 +147,24 @@ When a model calls an MCP tool by its Claude Code name, such as `mcp__plugin_con
 | Setting | Effect |
 |---|---|
 | `CLINE_HOOK_TIMEOUT_MS` | How long a blocking hook may run before it is stopped, together with anything it started. Default 120000. |
+
+## In the VS Code extension
+
+Hooks run when **Hooks** is on under **Settings → Features**. The **Hooks** tab of the rules panel lists the hook files and creates new ones.
+
+**Settings → Agent Limits → Hooks** has two settings:
+
+- **Hook engine.** **SDK** (the default) runs hooks as described on this page, the same way as the Cline CLI. **Legacy** is the engine of earlier versions: it runs only files named exactly after the event (`.ps1` on Windows), sends `hookName` as the file name, and does not read `hooks.json` or the Claude Code output fields.
+- **Hook script.** How long a hook may run, default 30 seconds.
+
+With the SDK engine, the extension:
+
+- runs `TaskStart` and `TaskResume` blocking, so they can stop the run or add context;
+- skips a hook file without the executable bit, which is how the Hooks tab switches a hook off (not on Windows, where every hook file runs);
+- also looks in `.clinerules/hooks/` and `.cline/hooks/` of every folder in a multi-root workspace;
+- shows each hook run as a status row in the chat.
+
+`hooks.json` cannot be switched off in the Hooks tab; edit or delete it instead.
 
 ## Examples
 
