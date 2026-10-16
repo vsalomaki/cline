@@ -18,6 +18,7 @@ import type {
 import {
 	type AiSdkFormatterMessage,
 	type AiSdkFormatterPart,
+	canonicalInputForAlias,
 	canonicalToolForAlias,
 	captureSdkError,
 	createMediaBudgetState,
@@ -933,7 +934,11 @@ export async function repairMalformedToolCall<T extends RepairableToolCall>({
 		) {
 			return null;
 		}
-		return { ...toolCall, toolName: canonical };
+		return {
+			...toolCall,
+			toolName: canonical,
+			input: canonicalInputForAlias(canonical, toolCall.input),
+		};
 	}
 	if (typeof toolCall.input !== "string" || toolCall.input.trim() === "") {
 		return null;

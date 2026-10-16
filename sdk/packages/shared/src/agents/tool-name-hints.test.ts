@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	canonicalInputForAlias,
 	canonicalToolForAlias,
 	suggestToolForUnknownName,
 } from "./tool-name-hints";
@@ -78,11 +79,11 @@ describe("canonicalToolForAlias", () => {
 		expect(canonicalToolForAlias("Bash")).toBe("run_commands");
 		expect(canonicalToolForAlias("run_shell_command")).toBe("run_commands");
 		expect(canonicalToolForAlias("WebFetch")).toBe("fetch_web_content");
+		expect(canonicalToolForAlias("Edit")).toBe("editor");
 	});
 
-	it("leaves edit tools and unknown names unmapped", () => {
+	it("leaves other edit tools and unknown names unmapped", () => {
 		for (const name of [
-			"Edit",
 			"Write",
 			"MultiEdit",
 			"str_replace_editor",
@@ -92,5 +93,41 @@ describe("canonicalToolForAlias", () => {
 		]) {
 			expect(canonicalToolForAlias(name)).toBeUndefined();
 		}
+	});
+});
+
+describe("canonicalInputForAlias", () => {
+	it("renames Edit's fields to the editor's", () => {
+		expect(
+			JSON.parse(
+				canonicalInputForAlias(
+					"editor",
+					'{"file_path": "/repo/a.ts", "old_string": "a", "new_string": "b", "replace_all": false}',
+				),
+			),
+		).toEqual({
+			path: "/repo/a.ts",
+			old_text: "a",
+			new_text: "b",
+			replace_all: false,
+		});
+	});
+
+	it("keeps a field the call already sends under our name", () => {
+		expect(
+			JSON.parse(
+				canonicalInputForAlias(
+					"editor",
+					'{"path": "/repo/a.ts", "file_path": "/repo/b.ts", "new_text": "x"}',
+				),
+			),
+		).toEqual({ path: "/repo/a.ts", new_text: "x" });
+	});
+
+	it("returns other tools' input and unparseable input unchanged", () => {
+		const read = '{"file_path": "/repo/a.ts"}';
+		expect(canonicalInputForAlias("read_files", read)).toBe(read);
+		expect(canonicalInputForAlias("editor", "{not json")).toBe("{not json");
+		expect(canonicalInputForAlias("editor", '["a"]')).toBe('["a"]');
 	});
 });
