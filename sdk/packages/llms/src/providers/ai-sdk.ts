@@ -18,12 +18,12 @@ import type {
 import {
 	type AiSdkFormatterMessage,
 	type AiSdkFormatterPart,
+	canonicalToolForAlias,
 	captureSdkError,
 	createMediaBudgetState,
 	formatMessagesForAiSdk,
 	GeneratedMediaSchema,
 	generatedMediaModalityFromMediaType,
-	LIST_FILES_ALIASES,
 	modelProducesImages,
 	modelSupportsToolCalling,
 	parseJsonStream,
@@ -904,13 +904,15 @@ interface RepairableToolCall {
 /**
  * Last-chance repair for a tool call the AI SDK rejected.
  *
- * A directory-listing call under another agent's name (`list_directory`,
- * `ls`, …) is renamed to `list_files` when the session has it; it still runs
- * through that tool's approval and mode policies. Arguments that are not
- * valid JSON (truncated payloads, single quotes, unescaped newlines — common
- * with weaker models) go through the shared jsonrepair strategies. Any other
- * unknown tool name, and already-valid JSON, is left alone: returning null
- * keeps the AI SDK's original error.
+ * A call under another agent's name for one of our tools (`Read`, `Bash`,
+ * `grep`, `ls`, `WebFetch`, …; see `canonicalToolForAlias`) is renamed to that
+ * tool when the session has it, and still runs through that tool's approval
+ * and mode policies. A shell alias that sets its own working directory is not
+ * renamed, because `run_commands` would run it in the session's cwd. Arguments
+ * that are not valid JSON (truncated payloads, single quotes, unescaped
+ * newlines — common with weaker models) go through the shared jsonrepair
+ * strategies. Any other unknown tool name, and already-valid JSON, is left
+ * alone: returning null keeps the AI SDK's original error.
  */
 export async function repairMalformedToolCall<T extends RepairableToolCall>({
 	toolCall,
@@ -922,11 +924,16 @@ export async function repairMalformedToolCall<T extends RepairableToolCall>({
 	error: unknown;
 }): Promise<T | null> {
 	if (NoSuchToolError.isInstance(error)) {
-		return LIST_FILES_ALIASES.has(toolCall.toolName.toLowerCase()) &&
-			tools !== undefined &&
-			Object.hasOwn(tools, "list_files")
-			? { ...toolCall, toolName: "list_files" }
-			: null;
+		const canonical = canonicalToolForAlias(toolCall.toolName);
+		if (
+			canonical === undefined ||
+			tools === undefined ||
+			!Object.hasOwn(tools, canonical) ||
+			(canonical === "run_commands" && setsWorkingDirectory(toolCall.input))
+		) {
+			return null;
+		}
+		return { ...toolCall, toolName: canonical };
 	}
 	if (typeof toolCall.input !== "string" || toolCall.input.trim() === "") {
 		return null;
@@ -945,6 +952,31 @@ export async function repairMalformedToolCall<T extends RepairableToolCall>({
 		return null;
 	}
 	return { ...toolCall, input: JSON.stringify(repaired) };
+}
+
+const WORKING_DIRECTORY_KEYS = [
+	"cwd",
+	"directory",
+	"dir",
+	"workdir",
+	"working_directory",
+];
+
+function setsWorkingDirectory(input: string): boolean {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(input);
+	} catch {
+		return false;
+	}
+	if (parsed === null || typeof parsed !== "object") {
+		return false;
+	}
+	const record = parsed as Record<string, unknown>;
+	return WORKING_DIRECTORY_KEYS.some((key) => {
+		const value = record[key];
+		return typeof value === "string" && value.trim() !== "";
+	});
 }
 
 function normalizeAiSdkToolInputSchema(

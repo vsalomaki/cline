@@ -23,12 +23,12 @@ import {
 import { createCodeIntelligenceTool } from "./code-intelligence/tool";
 import { CommandExitError, CommandTerminationError } from "./executors/bash";
 import {
-	coalesceOrphanReadRanges,
 	formatError,
 	formatReadFileQuery,
 	formatRunCommandQueryPreview,
 	getEditorSizeError,
 	getReadFileRangeError,
+	normalizeReadFilesInput,
 	normalizeRunCommandsInput,
 	TimeoutError,
 	withTimeout,
@@ -44,6 +44,7 @@ import {
 	type EditFileInput,
 	type FetchWebContentInput,
 	FetchWebContentInputSchema,
+	FetchWebContentUnionInputSchema,
 	type ListFilesInput,
 	ListFilesInputSchema,
 	normalizeListFilesInput,
@@ -303,7 +304,7 @@ export function createReadFilesTool(
 		execute: async (input, context) => {
 			const validate = validateWithZod(
 				ReadFilesInputUnionSchema,
-				coalesceOrphanReadRanges(input),
+				normalizeReadFilesInput(input),
 			);
 			let requests: ReadFileRequest[];
 			if (typeof validate === "string") {
@@ -456,6 +457,7 @@ export function createListFilesTool(
 		description:
 			"List the files and subdirectories in a directory; directories end with `/`. " +
 			"Lists the top level only unless recursive is set (max_depth controls how deep, default 3). " +
+			"Set pattern (a glob like `**/*.ts`) to list only matching files, recursively; a pattern without `/` matches file names at any depth. " +
 			"Recursive listings skip .gitignored entries and show dependency or VCS directories such as node_modules without their contents. " +
 			"Returns at most `limit` entries (default 200). Use this instead of ls, find, or dir through run_commands.",
 		inputSchema: zodToJsonSchema(ListFilesInputSchema),
@@ -652,7 +654,10 @@ export function createWebFetchTool(
 		maxRetries: 2,
 		execute: async (input, context) => {
 			// Validate input with Zod schema
-			const validatedInput = validateWithZod(FetchWebContentInputSchema, input);
+			const validatedInput = validateWithZod(
+				FetchWebContentUnionInputSchema,
+				input,
+			);
 
 			return Promise.all(
 				validatedInput.requests.map(

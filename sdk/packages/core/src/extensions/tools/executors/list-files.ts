@@ -11,6 +11,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ListFilesExecutor } from "../types";
+import { globToRegExp } from "./glob-match";
 import { MAX_SEARCH_OUTPUT_CHARS } from "./output-limits";
 
 export interface ListFilesExecutorOptions {
@@ -63,10 +64,17 @@ export function createListFilesExecutor(
 
 	return async (request, cwd, context) => {
 		const root = path.resolve(cwd, request.path);
+		const pattern = request.pattern?.trim() || undefined;
 		const recursive =
-			request.recursive === true || request.max_depth !== undefined;
+			pattern !== undefined ||
+			request.recursive === true ||
+			request.max_depth !== undefined;
 		const depth = recursive
-			? clamp(request.max_depth ?? defaultDepth, 1, maxDepth)
+			? clamp(
+					request.max_depth ?? (pattern ? maxDepth : defaultDepth),
+					1,
+					maxDepth,
+				)
 			: 1;
 		const limit = clamp(request.limit ?? defaultLimit, 1, maxLimit);
 
@@ -93,8 +101,17 @@ export function createListFilesExecutor(
 			limit,
 			recursive,
 			excluded,
+			matches: pattern ? globToRegExp(pattern) : undefined,
 			signal: context.signal,
 		});
+		if (pattern) {
+			return formatMatches(root, pattern, entries, {
+				truncated,
+				limit,
+				maxOutputChars,
+				unreadable,
+			});
+		}
 		return formatListing(root, entries, {
 			truncated,
 			limit,
@@ -134,6 +151,8 @@ async function collectEntries(input: {
 	limit: number;
 	recursive: boolean;
 	excluded: ReadonlySet<string>;
+	/** Keeps only files whose relative path matches; directories are still walked. */
+	matches?: RegExp;
 	signal?: AbortSignal;
 }): Promise<{ entries: Entry[]; truncated: boolean; unreadable: string[] }> {
 	const entries: Entry[] = [];
@@ -185,6 +204,17 @@ async function collectEntries(input: {
 			for (const entry of batch) {
 				if (ignored.has(entry.relative)) {
 					continue;
+				}
+				if (input.matches) {
+					if (entry.isDirectory) {
+						if (!entry.collapsed) {
+							next.push(entry.relative);
+						}
+						continue;
+					}
+					if (!input.matches.test(entry.relative)) {
+						continue;
+					}
 				}
 				if (entries.length >= input.limit) {
 					return { entries, truncated: true, unreadable };
@@ -300,6 +330,50 @@ function formatListing(
 		);
 	}
 	return [root, body, ...notes].join("\n");
+}
+
+function formatMatches(
+	root: string,
+	pattern: string,
+	entries: Entry[],
+	options: {
+		truncated: boolean;
+		limit: number;
+		maxOutputChars: number;
+		unreadable: string[];
+	},
+): string {
+	if (entries.length === 0) {
+		return `${root}\nNo files found matching ${pattern}.`;
+	}
+	const paths = entries.map((entry) => entry.relative).sort(compareCodePoints);
+	let body = paths.join("\n");
+	let shown = paths.length;
+	if (body.length > options.maxOutputChars) {
+		const lastBreak = body.lastIndexOf("\n", options.maxOutputChars);
+		body = body.slice(0, lastBreak > 0 ? lastBreak : options.maxOutputChars);
+		shown = body.split("\n").length;
+	}
+	const notes: string[] = [];
+	if (options.truncated || shown < paths.length) {
+		notes.push(
+			`(Showing ${shown} files; more not shown. Narrow the pattern or path${options.truncated ? ", or raise limit" : ""}.)`,
+		);
+	}
+	if (options.unreadable.length > 0) {
+		notes.push(
+			`(Could not read: ${options.unreadable.map((dir) => `${dir}/`).join(", ")})`,
+		);
+	}
+	return [
+		`${root}\nFound ${paths.length} files matching ${pattern}:`,
+		body,
+		...notes,
+	].join("\n");
+}
+
+function compareCodePoints(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Sorts like a tree: each directory is followed by its own contents. */

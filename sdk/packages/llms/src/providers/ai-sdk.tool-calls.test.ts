@@ -246,13 +246,39 @@ describe("ai-sdk adapter malformed tool calls", () => {
 		expect(findToolInput(events)).toEqual({ dir_path: "/repo" });
 	});
 
-	it("names the tool to use instead of an unknown one", async () => {
+	it("runs a glob call as list_files", async () => {
 		const events = await streamToolCallEvents(
-			sseToolCall("read_file", '{"path": "/repo/a.ts"}'),
+			sseToolCall("glob", '{"pattern": "**/*.ts", "path": "/repo"}'),
+			[LIST_FILES_TOOL, RUN_COMMANDS_TOOL],
+		);
+
+		expect(findParseError(events)).toBeUndefined();
+		const call = events.find((event) => event.type === "tool-call-delta");
+		expect(call).toMatchObject({ toolName: "list_files" });
+		expect(findToolInput(events)).toEqual({
+			pattern: "**/*.ts",
+			path: "/repo",
+		});
+	});
+
+	it("runs a Claude Code Read call as read_files", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall("Read", '{"file_path": "/repo/a.ts", "offset": 10}'),
 			[RUN_COMMANDS_TOOL, READ_FILES_TOOL],
 		);
 
-		expect(findParseError(events)).toContain("Use read_files instead.");
+		expect(findParseError(events)).toBeUndefined();
+		const call = events.find((event) => event.type === "tool-call-delta");
+		expect(call).toMatchObject({ toolName: "read_files" });
+	});
+
+	it("names the tool to use instead of an unknown one", async () => {
+		const events = await streamToolCallEvents(
+			sseToolCall("bash", '{"command": "ls", "cwd": "/elsewhere"}'),
+			[RUN_COMMANDS_TOOL, READ_FILES_TOOL],
+		);
+
+		expect(findParseError(events)).toContain("Use run_commands instead.");
 	});
 
 	it("explains that edits are unavailable when no edit tool exists", async () => {
@@ -307,26 +333,63 @@ describe("repairMalformedToolCall", () => {
 		expect(repaired).toBeNull();
 	});
 
-	it("renames a listing alias only when list_files exists", async () => {
-		const call = {
-			toolCallId: "call_1",
-			toolName: "LS",
-			input: '{"path": "/repo"}',
-		};
-		const error = new NoSuchToolError({ toolName: "LS" });
+	it.each([
+		["Read", "read_files", '{"file_path": "/repo/a.ts"}'],
+		["read_many_files", "read_files", '{"paths": ["a.ts"]}'],
+		["LS", "list_files", '{"path": "/repo"}'],
+		["Glob", "list_files", '{"pattern": "**/*.ts"}'],
+		["Grep", "search_codebase", '{"pattern": "foo"}'],
+		["search_files", "search_codebase", '{"regex": "foo"}'],
+		["Bash", "run_commands", '{"command": "ls", "description": "List"}'],
+		["run_terminal_cmd", "run_commands", '{"command": "ls"}'],
+		["WebFetch", "fetch_web_content", '{"url": "https://example.com"}'],
+		["fetch_url", "fetch_web_content", '{"url": "https://example.com"}'],
+	])("renames %s to %s only when the session has it", async (alias, canonical, input) => {
+		const call = { toolCallId: "call_1", toolName: alias, input };
+		const error = new NoSuchToolError({ toolName: alias });
 
 		expect(
 			await repairMalformedToolCall({
 				toolCall: call,
-				tools: { list_files: {} },
+				tools: { [canonical]: {} },
 				error,
 			}),
-		).toEqual({ ...call, toolName: "list_files" });
+		).toEqual({ ...call, toolName: canonical });
 		expect(
 			await repairMalformedToolCall({
 				toolCall: call,
-				tools: { run_commands: {} },
+				tools: { editor: {} },
 				error,
+			}),
+		).toBeNull();
+	});
+
+	it("keeps a shell alias that sets its own working directory un-renamed", async () => {
+		for (const input of [
+			'{"command": "ls", "cwd": "/elsewhere"}',
+			'{"command": "ls", "directory": "packages/app"}',
+			'{"command": ["ls"], "workdir": "/elsewhere"}',
+		]) {
+			expect(
+				await repairMalformedToolCall({
+					toolCall: { toolCallId: "call_1", toolName: "bash", input },
+					tools: { run_commands: {} },
+					error: new NoSuchToolError({ toolName: "bash" }),
+				}),
+			).toBeNull();
+		}
+	});
+
+	it("does not rename edit tools", async () => {
+		expect(
+			await repairMalformedToolCall({
+				toolCall: {
+					toolCallId: "call_1",
+					toolName: "Edit",
+					input: '{"file_path": "/repo/a.ts"}',
+				},
+				tools: { editor: {}, read_files: {} },
+				error: new NoSuchToolError({ toolName: "Edit" }),
 			}),
 		).toBeNull();
 	});

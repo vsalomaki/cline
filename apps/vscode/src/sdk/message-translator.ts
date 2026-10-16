@@ -825,7 +825,12 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 				// Cases 1 & 2: input was an object with a "queries" field
 				const queries = getArrayField(parsedInput, "queries")
 				regex =
-					queries?.join(", ") ?? getStringField(parsedInput, "queries") ?? getStringField(parsedInput, "regex") ?? ""
+					queries?.join(", ") ??
+					getStringField(parsedInput, "queries") ??
+					getStringField(parsedInput, "regex") ??
+					getStringField(parsedInput, "pattern") ??
+					getStringField(parsedInput, "query") ??
+					""
 			} else if (Array.isArray(input)) {
 				// Case 3: bare array of query strings
 				regex = input.map(String).join(", ")
