@@ -297,8 +297,8 @@ function maskNonCommandText(command: string): string {
 	);
 }
 
-/** Check one command's tokens (command word + args) against the blacklist. */
-function checkTokens(tokens: string[]): string | undefined {
+/** Index of the command word, past env assignments, reserved words and wrappers. */
+function commandWordIndex(tokens: string[]): number {
 	let index = 0;
 	while (
 		index < tokens.length &&
@@ -322,6 +322,34 @@ function checkTokens(tokens: string[]): string | undefined {
 			index += 1;
 		}
 	}
+	return index;
+}
+
+/**
+ * First non-option arg is the subcommand; `git -C dir`, `git --work-tree dir`
+ * and the like take a value, so skip that too.
+ */
+function subcommandIndex(name: string, args: string[]): number {
+	let cursor = 0;
+	while (cursor < args.length && args[cursor].startsWith("-")) {
+		cursor += name === "git" && GIT_VALUE_OPTIONS.has(args[cursor]) ? 2 : 1;
+	}
+	return cursor;
+}
+
+/** Git global options whose value is the next argument. */
+const GIT_VALUE_OPTIONS = new Set([
+	"-c",
+	"-C",
+	"--git-dir",
+	"--work-tree",
+	"--namespace",
+	"--config-env",
+]);
+
+/** Check one command's tokens (command word + args) against the blacklist. */
+function checkTokens(tokens: string[]): string | undefined {
+	const index = commandWordIndex(tokens);
 	if (index >= tokens.length) {
 		return undefined;
 	}
@@ -351,12 +379,7 @@ function checkTokens(tokens: string[]): string | undefined {
 		) {
 			return undefined;
 		}
-		// First non-option arg is the subcommand; `git -c k=v` / `git -C dir`
-		// take a value, so skip that too.
-		let cursor = 0;
-		while (cursor < args.length && args[cursor].startsWith("-")) {
-			cursor += name === "git" && /^-[cC]$/.test(args[cursor]) ? 2 : 1;
-		}
+		const cursor = subcommandIndex(name, args);
 		const subcommand = args[cursor]?.toLowerCase();
 		if (subcommand && subcommands.has(subcommand)) {
 			const next = args[cursor + 1]?.toLowerCase();
@@ -503,6 +526,101 @@ export function findFileEditingCommand(
 		const blocked = checkTokens(segment.trim().split(/\s+/).filter(Boolean));
 		if (blocked) {
 			return blocked;
+		}
+	}
+	return undefined;
+}
+
+/** A short option cluster (`-fd`) or long option that includes `short`/`long`. */
+function hasOption(args: string[], short: string, long: string): boolean {
+	return args.some(
+		(arg) =>
+			arg === long ||
+			arg.startsWith(`${long}=`) ||
+			(/^-[A-Za-z]+$/.test(arg) && arg.includes(short)),
+	);
+}
+
+const SAFE_STASH_ACTIONS = new Set([
+	"list",
+	"show",
+	"pop",
+	"apply",
+	"branch",
+	"create",
+	"store",
+]);
+
+/** Whether `git <subcommand> <args>` throws away uncommitted work. */
+function discardsGitWork(subcommand: string, args: string[]): boolean {
+	switch (subcommand) {
+		case "checkout":
+			// Without `--`, `git checkout <name>` may name a branch or a file, so
+			// only bare and unforced branch-creating forms count as safe.
+			return (
+				args.length > 0 &&
+				(args.includes("--") ||
+					hasOption(args, "f", "--force") ||
+					!args.some((arg) => ["-b", "-B", "--orphan"].includes(arg)))
+			);
+		case "switch":
+			return (
+				hasOption(args, "f", "--force") || args.includes("--discard-changes")
+			);
+		case "restore":
+			return (
+				hasOption(args, "W", "--worktree") || !hasOption(args, "S", "--staged")
+			);
+		case "reset":
+			return args.includes("--hard") || args.includes("--merge");
+		case "clean":
+			return !hasOption(args, "n", "--dry-run");
+		case "stash": {
+			// Bare `git stash` and `git stash -m msg` are pushes too.
+			const action = args.find(
+				(arg, index) =>
+					!arg.startsWith("-") &&
+					!["-m", "--message"].includes(args[index - 1] ?? ""),
+			);
+			return action === undefined || !SAFE_STASH_ACTIONS.has(action);
+		}
+		default:
+			return false;
+	}
+}
+
+function checkGitDiscard(tokens: string[]): string | undefined {
+	const index = commandWordIndex(tokens);
+	if (index >= tokens.length || normalizeCommandName(tokens[index]) !== "git") {
+		return undefined;
+	}
+	// The shell drops quotes: `git reset "--hard"` is a hard reset.
+	const args = tokens.slice(index + 1).map((arg) => arg.replace(/["']/g, ""));
+	if (args.some((arg) => arg === "--help" || arg === "-h")) {
+		return undefined;
+	}
+	const cursor = subcommandIndex("git", args);
+	const subcommand = args[cursor]?.toLowerCase();
+	return subcommand && discardsGitWork(subcommand, args.slice(cursor + 1))
+		? `\`git ${subcommand}\``
+		: undefined;
+}
+
+/**
+ * Inspect a run_commands entry and return the git construct that throws away
+ * uncommitted changes (`git checkout -- file`, `git reset --hard`, `git clean
+ * -f`, `git stash`, …), or undefined when there is none.
+ */
+export function findWorkDiscardingGitCommand(
+	command: string | StructuredCommandInput,
+): string | undefined {
+	if (typeof command !== "string") {
+		return checkGitDiscard([command.command, ...(command.args ?? [])]);
+	}
+	for (const segment of maskNonCommandText(command).split(/[\n;|&()`]+/)) {
+		const found = checkGitDiscard(segment.trim().split(/\s+/).filter(Boolean));
+		if (found) {
+			return found;
 		}
 	}
 	return undefined;

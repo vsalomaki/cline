@@ -36,7 +36,7 @@ export interface ToolApprovalRequest {
 	toolCallId: string
 	toolName: string
 	input: unknown
-	policy: { enabled?: boolean; autoApprove?: boolean }
+	policy: { enabled?: boolean; autoApprove?: boolean; requireApproval?: boolean }
 }
 
 export interface SdkInteractionCoordinatorOptions {
@@ -116,7 +116,10 @@ export class SdkInteractionCoordinator {
 	}
 
 	async handleRequestToolApproval(request: ToolApprovalRequest): Promise<{ approved: boolean; reason?: string }> {
-		if (request.policy.autoApprove === true || this.options.shouldAutoApproveTool?.(request) === true) {
+		if (
+			!request.policy.requireApproval &&
+			(request.policy.autoApprove === true || this.options.shouldAutoApproveTool?.(request) === true)
+		) {
 			Logger.log(`[SdkController] Auto-approving tool execution: tool=${request.toolName}`)
 			return { approved: true }
 		}
