@@ -1389,7 +1389,9 @@ export class SessionRuntime {
 					endedAt,
 				};
 				this.currentRunToolCalls.push(record);
-				if (event.toolCall.execution) {
+				// An unknown tool name is neither progress nor a failed attempt;
+				// the error already names the tools to use.
+				if (event.toolCall.execution || event.unknownTool) {
 					break;
 				}
 				// Per-turn success/failure bookkeeping for MistakeTracker.

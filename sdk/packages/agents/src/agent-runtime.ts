@@ -312,6 +312,7 @@ interface PreparedToolExecution {
 	tool?: AgentTool;
 	input: unknown;
 	skipReason?: string;
+	unknownTool?: boolean;
 }
 
 interface HookBag {
@@ -2525,6 +2526,8 @@ export class AgentRuntime {
 			tool,
 			input,
 			skipReason,
+			unknownTool:
+				tool === undefined && toolSource?.executionMode !== "provider",
 		};
 	}
 
@@ -2676,6 +2679,7 @@ export class AgentRuntime {
 			iteration: this.state.iteration,
 			toolCall: prepared.toolCall,
 			message,
+			...(prepared.unknownTool ? { unknownTool: true } : {}),
 		});
 
 		return message;

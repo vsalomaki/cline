@@ -3061,6 +3061,67 @@ describe("AgentRuntime", () => {
 		]);
 	});
 
+	it("flags tool-finished events for calls to tools the agent does not have", async () => {
+		const model = new ScriptedModel([
+			() => [
+				{
+					type: "tool-call-delta",
+					toolCallId: "call_unknown",
+					toolName: "frobnicate",
+					inputText: "{}",
+				},
+				{
+					type: "tool-call-delta",
+					toolCallId: "call_rejected",
+					toolName: "Edit",
+					inputText: "{}",
+					metadata: {
+						inputParseError:
+							"Tool call Edit was rejected before execution: unavailable tool 'Edit'",
+					},
+				},
+				{
+					type: "tool-call-delta",
+					toolCallId: "call_failing",
+					toolName: "echo",
+					inputText: "{}",
+				},
+				{ type: "finish", reason: "tool-calls" },
+			],
+			() => [
+				{ type: "text-delta", text: "done" },
+				{ type: "finish", reason: "stop" },
+			],
+		]);
+		const runtime = new AgentRuntime({
+			model,
+			tools: [
+				{
+					name: "echo",
+					description: "Echo input text",
+					inputSchema: { type: "object" },
+					execute: async () => {
+						throw new Error("boom");
+					},
+				},
+			],
+		});
+		const finished: Record<string, boolean | undefined> = {};
+		runtime.subscribe((event) => {
+			if (event.type === "tool-finished") {
+				finished[event.toolCall.toolCallId] = event.unknownTool;
+			}
+		});
+
+		await runtime.run("Start");
+
+		expect(finished).toEqual({
+			call_unknown: true,
+			call_rejected: true,
+			call_failing: undefined,
+		});
+	});
+
 	it("normalizes JSON-encoded string fields when the tool schema expects arrays", async () => {
 		const executeTool = vi.fn(async (input: { commands: string[] }) => ({
 			joined: input.commands.join(" && "),

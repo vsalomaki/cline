@@ -684,6 +684,8 @@ export type AgentRuntimeEvent =
 			iteration: number;
 			toolCall: AgentToolCallPart;
 			message: AgentMessage;
+			/** The call named a tool this agent does not have. */
+			unknownTool?: boolean;
 	  }
 	| {
 			type: "usage-updated";

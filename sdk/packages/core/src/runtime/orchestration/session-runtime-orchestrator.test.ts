@@ -2663,6 +2663,54 @@ function makeScriptedRuntime(script: {
 	};
 }
 
+function toolTurnEvents(
+	iteration: number,
+	calls: ReadonlyArray<"failed" | "succeeded" | "unknown">,
+): AgentRuntimeEvent[] {
+	const events: AgentRuntimeEvent[] = [
+		{ type: "turn-started", iteration, snapshot: makeSnapshot() },
+	];
+	calls.forEach((outcome, index) => {
+		const toolCall = {
+			type: "tool-call" as const,
+			toolCallId: `tc_${iteration}_${index}`,
+			toolName: outcome === "unknown" ? "Frobnicate" : "t",
+			input: { n: index },
+		};
+		events.push(
+			{ type: "tool-started", iteration, toolCall, snapshot: makeSnapshot() },
+			{
+				type: "tool-finished",
+				iteration,
+				toolCall,
+				message: {
+					id: `m_${iteration}_${index}`,
+					role: "tool",
+					content: [
+						{
+							type: "tool-result",
+							toolCallId: toolCall.toolCallId,
+							toolName: toolCall.toolName,
+							output: outcome === "succeeded" ? "ok" : "fail",
+							isError: outcome !== "succeeded",
+						},
+					],
+					createdAt: 1,
+				},
+				...(outcome === "unknown" ? { unknownTool: true } : {}),
+				snapshot: makeSnapshot(),
+			},
+		);
+	});
+	events.push({
+		type: "turn-finished",
+		iteration,
+		toolCallCount: calls.length,
+		snapshot: makeSnapshot(),
+	});
+	return events;
+}
+
 function failedToolTurnEvents(): AgentRuntimeEvent[] {
 	return [
 		{ type: "turn-started", iteration: 1, snapshot: makeSnapshot() },
@@ -2777,6 +2825,60 @@ describe("SessionRuntime.run — tracker wiring (P1 #3)", () => {
 		await session.continue("two");
 		// Second failed turn — counter reaches 2, tracker calls abort.
 		expect(abortCalls.length).toBeGreaterThanOrEqual(1);
+	});
+
+	describe("unknown-tool calls", () => {
+		async function abortsAfter(turns: AgentRuntimeEvent[][]) {
+			const events: AgentRuntimeEvent[] = [];
+			const { deps, abortCalls } = makeScriptedRuntime({ events });
+			const session = new SessionRuntime(
+				makeAgentConfig({ execution: { maxConsecutiveMistakes: 2 } }),
+				deps,
+			);
+			for (const [index, turn] of turns.entries()) {
+				events.splice(0, events.length, ...turn);
+				await (index === 0 ? session.run("go") : session.continue("more"));
+			}
+			return abortCalls.length > 0;
+		}
+
+		it("does not record a mistake for a turn with only unknown tools", async () => {
+			expect(
+				await abortsAfter([
+					toolTurnEvents(1, ["failed"]),
+					toolTurnEvents(2, ["unknown", "unknown"]),
+				]),
+			).toBe(false);
+		});
+
+		it("does not reset the tracker for a turn with only unknown tools", async () => {
+			expect(
+				await abortsAfter([
+					toolTurnEvents(1, ["failed"]),
+					toolTurnEvents(2, ["unknown"]),
+					toolTurnEvents(3, ["failed"]),
+				]),
+			).toBe(true);
+		});
+
+		it("records a mistake when a real failure accompanies an unknown tool", async () => {
+			expect(
+				await abortsAfter([
+					toolTurnEvents(1, ["failed"]),
+					toolTurnEvents(2, ["unknown", "failed"]),
+				]),
+			).toBe(true);
+		});
+
+		it("resets the tracker when a success accompanies an unknown tool", async () => {
+			expect(
+				await abortsAfter([
+					toolTurnEvents(1, ["failed"]),
+					toolTurnEvents(2, ["unknown", "succeeded"]),
+					toolTurnEvents(3, ["failed"]),
+				]),
+			).toBe(false);
+		});
 	});
 
 	it("serializes structured tool errors in mistake details", async () => {
