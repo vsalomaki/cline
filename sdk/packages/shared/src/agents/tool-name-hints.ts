@@ -66,6 +66,37 @@ export function canonicalToolForAlias(toolName: string): string | undefined {
 }
 
 /**
+ * The session's MCP tool (`<server>__<tool>`) for a name written the Claude
+ * Code way: `mcp__<server>__<tool>`, or `mcp__plugin_<plugin>_<server>__<tool>`
+ * for a plugin's server. Undefined when no single tool matches.
+ */
+export function mcpToolForClaudeName(
+	toolName: string,
+	available: readonly string[],
+): string | undefined {
+	if (!toolName.startsWith("mcp__")) {
+		return undefined;
+	}
+	const rest = toolName.slice("mcp__".length);
+	const split = rest.lastIndexOf("__");
+	if (split <= 0) {
+		return undefined;
+	}
+	const server = rest.slice(0, split);
+	const tool = rest.slice(split + 2);
+	const exact = `${server}__${tool}`;
+	if (available.includes(exact)) {
+		return exact;
+	}
+	const matches = available.filter((name) => {
+		if (!name.endsWith(`__${tool}`)) return false;
+		const candidateServer = name.slice(0, -(tool.length + 2));
+		return candidateServer.length > 0 && server.endsWith(`_${candidateServer}`);
+	});
+	return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
  * The JSON arguments of an aliased call with their fields renamed to
  * `canonical`'s, or `input` unchanged when nothing needs renaming.
  */

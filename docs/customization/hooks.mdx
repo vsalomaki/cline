@@ -89,6 +89,59 @@ When several hooks answer the same event, stopping the run wins over skipping th
 
 `PreCompact` and the run-end hooks cannot block anything.
 
+## Claude Code hooks (`hooks.json`)
+
+Hooks written for Claude Code can run unchanged. Put a `hooks.json` file in any of the hook directories above, in the format of Claude Code's `hooks` setting:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|WebFetch",
+        "hooks": [{ "type": "command", "command": "node ~/my-hooks/pretooluse.mjs", "timeout": 30 }]
+      }
+    ]
+  }
+}
+```
+
+Each `command` runs through the shell, in the workspace, with `CLAUDE_PROJECT_DIR` set to the workspace root. `timeout` is in seconds. Every matching command for an event runs at the same time.
+
+Cline supports this part of Claude Code's hook system:
+
+| Event | The matcher is tested against | Notes |
+|---|---|---|
+| `PreToolUse` | The tool's Claude Code name or its Cline name | Can deny, ask, rewrite the input, or add context. |
+| `PostToolUse` | The tool's Claude Code name or its Cline name | Can add context, or block to show the model a reason. |
+| `UserPromptSubmit` | — | Can block the prompt or add context. |
+| `SessionStart` | `source`: `startup`, `resume` or `compact` | Adds context only. `compact` runs right after compaction. |
+| `PreCompact` | `trigger`: `manual` or `auto` | Runs before compaction; its output is ignored. |
+
+Other events, such as `Stop`, `SubagentStop` and `Notification`, are ignored, with a warning in the log.
+
+A matcher is a regular expression that only has to match part of the name; an empty matcher or `*` matches everything.
+
+**Input.** Every hook gets `session_id`, `cwd`, `hook_event_name` and `permission_mode` (`default` in act mode, `plan`, or `bypassPermissions` in yolo mode). Tool hooks also get `tool_name`, `tool_input`, `tool_use_id`, and for `PostToolUse` `tool_response`. There is no `transcript_path`.
+
+**Output.** Exit code 0 with JSON on stdout uses the fields in the table under [Output](#output). For `UserPromptSubmit` and `SessionStart`, plain text on stdout is added as context. Exit code 2 blocks, with stderr as the reason. Any other exit code is logged and the hook is ignored.
+
+**Tool names.** Cline's tools are shown to these hooks under Claude Code's names, with Claude Code's input:
+
+| Cline tool | Claude Code tool | Input |
+|---|---|---|
+| `run_commands` | `Bash` | `command` |
+| `read_files` | `Read` | `file_path`, `offset`, `limit` |
+| `search_codebase` | `Grep` | `pattern`, `path` |
+| `fetch_web_content` | `WebFetch` | `url`, `prompt` |
+| `editor` | `Edit`, or `Write` when it creates a file | `file_path`, `old_string`, `new_string` / `content` |
+| `spawn_agent` | `Agent` | `prompt` |
+| MCP tool `server__tool` | `mcp__server__tool` | The tool's own input |
+
+Other tools keep their Cline name and input. A call that runs several commands, reads several files or runs several searches runs the hook once for each, because the Claude Code tools take one at a time. If any of them is denied, the whole call is skipped; an `updatedInput` replaces only its own command, file or search.
+
+When a model calls an MCP tool by its Claude Code name, such as `mcp__plugin_context-mode_context-mode__ctx_search`, Cline runs the matching MCP tool, here `context-mode__ctx_search`.
+
 ## Settings
 
 | Setting | Effect |

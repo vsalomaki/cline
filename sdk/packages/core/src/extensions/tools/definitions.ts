@@ -28,8 +28,9 @@ import {
 	formatRunCommandQueryPreview,
 	getEditorSizeError,
 	getReadFileRangeError,
-	normalizeReadFilesInput,
+	normalizeReadFileRequests,
 	normalizeRunCommandsInput,
+	normalizeSearchQueries,
 	TimeoutError,
 	withTimeout,
 } from "./helpers";
@@ -48,13 +49,10 @@ import {
 	type ListFilesInput,
 	ListFilesInputSchema,
 	normalizeListFilesInput,
-	type ReadFileRequest,
 	type ReadFilesInput,
 	ReadFilesInputSchema,
-	ReadFilesInputUnionSchema,
 	type SearchCodebaseInput,
 	SearchCodebaseInputSchema,
-	SearchCodebaseUnionInputSchema,
 	type SkillsInput,
 	SkillsInputSchema,
 	type StructuredCommandInput,
@@ -302,39 +300,7 @@ export function createReadFilesTool(
 		retryable: true,
 		maxRetries: 1,
 		execute: async (input, context) => {
-			const validate = validateWithZod(
-				ReadFilesInputUnionSchema,
-				normalizeReadFilesInput(input),
-			);
-			let requests: ReadFileRequest[];
-			if (typeof validate === "string") {
-				requests = [{ path: validate }];
-			} else if (Array.isArray(validate)) {
-				requests = validate.map((value) =>
-					typeof value === "string" ? { path: value } : value,
-				);
-			} else if ("files" in validate) {
-				const files = Array.isArray(validate.files)
-					? validate.files
-					: [validate.files];
-				requests = files.map((file) =>
-					typeof file === "string" ? { path: file } : file,
-				);
-			} else if ("file_paths" in validate) {
-				const filePaths = Array.isArray(validate.file_paths)
-					? validate.file_paths
-					: [validate.file_paths];
-				requests = filePaths.map((path) => ({ path }));
-			} else if ("paths" in validate) {
-				const paths = Array.isArray(validate.paths)
-					? validate.paths
-					: [validate.paths];
-				requests = paths.map((path) =>
-					typeof path === "string" ? { path } : path,
-				);
-			} else {
-				requests = [validate];
-			}
+			const requests = normalizeReadFileRequests(input);
 
 			return Promise.all(
 				requests.map(async (request): Promise<ToolOperationResult> => {
@@ -400,15 +366,7 @@ export function createSearchTool(
 		retryable: true,
 		maxRetries: 1,
 		execute: async (input, context) => {
-			// Validate input with Zod schema
-			const validate = validateWithZod(SearchCodebaseUnionInputSchema, input);
-			const queries = Array.isArray(validate)
-				? validate
-				: typeof validate === "object"
-					? Array.isArray(validate.queries)
-						? validate.queries
-						: [validate.queries]
-					: [validate];
+			const queries = normalizeSearchQueries(input);
 
 			return Promise.all(
 				queries.map(async (query): Promise<ToolOperationResult> => {
