@@ -15,6 +15,12 @@ export interface ToolPolicy {
 	 * @default true
 	 */
 	autoApprove?: boolean;
+	/**
+	 * Ask the user even when the host's own auto-approval would allow the
+	 * call. Hooks set it for single calls, such as commands that discard
+	 * uncommitted changes.
+	 */
+	requireApproval?: boolean;
 }
 
 // =============================================================================

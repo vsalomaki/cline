@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	findFileEditingCommand,
+	findWorkDiscardingGitCommand,
 	formatPlanModeBlockedCommandError,
 } from "./command-guard";
 
@@ -378,5 +379,79 @@ describe("formatPlanModeBlockedCommandError", () => {
 		expect(message).toContain("PLAN MODE");
 		expect(message).toContain("not executed");
 		expect(message).toContain("act mode");
+	});
+});
+
+describe("findWorkDiscardingGitCommand", () => {
+	it.each([
+		"git checkout -- src/a.ts",
+		"git checkout src/a.ts",
+		"git checkout HEAD -- .",
+		"git checkout -f main",
+		"git checkout -f -b feature",
+		"git checkout -B feature --force",
+		'git reset "--hard"',
+		'git "reset" --hard',
+		"git --work-tree . reset --hard",
+		"git stash -m list",
+		"git -C /repo checkout .",
+		"cd /repo && git checkout -- a.ts",
+		"git switch --discard-changes main",
+		"git switch -f main",
+		"git restore src/a.ts",
+		"git restore --worktree --staged a.ts",
+		"git restore -SW a.ts",
+		"git reset --hard",
+		"git reset --hard HEAD~1",
+		"git reset --merge",
+		"git clean -fd",
+		"git clean -fdx",
+		"git stash",
+		"git stash -u",
+		'git stash -m "wip"',
+		"git stash push -- a.ts",
+		"git stash drop",
+		"git stash clear",
+	])("flags %s", (command) => {
+		expect(findWorkDiscardingGitCommand(command)).toMatch(/^`git /);
+	});
+
+	it.each([
+		"git status",
+		"git diff -- a.ts",
+		"git log --oneline",
+		"git checkout",
+		"git checkout -b feature",
+		"git checkout -B feature origin/main",
+		"git switch main",
+		"git switch -c feature",
+		"git restore --staged a.ts",
+		"git reset",
+		"git reset --soft HEAD~1",
+		"git reset HEAD a.ts",
+		"git clean -n",
+		"git clean -nd",
+		"git clean --dry-run",
+		"git stash list",
+		"git stash show -p",
+		"git stash pop",
+		"git stash apply",
+		"git checkout --help",
+		'echo "git reset --hard"',
+		"grep -r 'git checkout --' docs",
+	])("allows %s", (command) => {
+		expect(findWorkDiscardingGitCommand(command)).toBeUndefined();
+	});
+
+	it("checks structured commands by argv", () => {
+		expect(
+			findWorkDiscardingGitCommand({
+				command: "git",
+				args: ["checkout", "--", "a.ts"],
+			}),
+		).toBe("`git checkout`");
+		expect(
+			findWorkDiscardingGitCommand({ command: "git", args: ["status"] }),
+		).toBeUndefined();
 	});
 });

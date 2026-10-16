@@ -2947,6 +2947,56 @@ describe("AgentRuntime", () => {
 		});
 	});
 
+	it("requests approval for an auto-approved tool when a hook requires it", async () => {
+		const executeTool = vi.fn(async () => ({ echoed: "hi" }));
+		const requestToolApproval = vi.fn(async () => ({ approved: true }));
+		const model = new ScriptedModel([
+			() => [
+				{
+					type: "tool-call-delta",
+					toolCallId: "call_required",
+					toolName: "echo",
+					inputText: '{"text":"hi"}',
+				},
+				{ type: "finish", reason: "tool-calls" },
+			],
+			() => [
+				{ type: "text-delta", text: "done" },
+				{ type: "finish", reason: "stop" },
+			],
+		]);
+		const runtime = new AgentRuntime({
+			sessionId: "session_test",
+			agentId: "agent_test",
+			conversationId: "conversation_test",
+			model,
+			tools: [
+				{
+					name: "echo",
+					description: "Echo input text",
+					inputSchema: { type: "object" },
+					execute: executeTool,
+				},
+			],
+			toolPolicies: { "*": { autoApprove: true } },
+			hooks: {
+				beforeTool: () => ({ policy: { requireApproval: true } }),
+			},
+			requestToolApproval,
+		});
+
+		const result = await runtime.run("Start");
+
+		expect(result.status).toBe("completed");
+		expect(requestToolApproval).toHaveBeenCalledWith(
+			expect.objectContaining({
+				toolCallId: "call_required",
+				policy: { autoApprove: true, requireApproval: true },
+			}),
+		);
+		expect(executeTool).toHaveBeenCalledTimes(1);
+	});
+
 	it("stores tool calls but skips execution when metadata disables external execution", async () => {
 		const executeTool = vi.fn(async () => ({ echoed: "hi" }));
 		const model = new ScriptedModel([

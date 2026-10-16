@@ -313,6 +313,35 @@ describe("SdkInteractionCoordinator", () => {
 		expect(recordApprovedToolMessage).not.toHaveBeenCalled()
 	})
 
+	it("asks the user when the policy requires approval, even if the settings allow the tool", async () => {
+		const task = createTaskProxy("session-123", vi.fn(), vi.fn())
+		const postStateToWebview = vi.fn().mockResolvedValue(undefined)
+		const coordinator = new SdkInteractionCoordinator({
+			messages: new SdkMessageCoordinator({ getTask: () => task }),
+			getSessionId: () => "session-123",
+			postStateToWebview,
+			shouldAutoApproveTool: () => true,
+			recordApprovedToolMessage: vi.fn(),
+		})
+
+		const approvalPromise = coordinator.handleRequestToolApproval({
+			agentId: "agent",
+			conversationId: "conversation",
+			iteration: 1,
+			toolCallId: "tool-call",
+			toolName: "run_commands",
+			input: { commands: ["git checkout -- src/a.ts"] },
+			policy: { autoApprove: true, requireApproval: true },
+		})
+		await vi.waitFor(() => expect(postStateToWebview).toHaveBeenCalled())
+
+		const clineMessages = task.messageStateHandler.getClineMessages()
+		expect(clineMessages).toHaveLength(1)
+		expect(clineMessages[0].ask).toBe("command")
+		expect(coordinator.resolvePendingToolApproval(undefined, "noButtonClicked")).toBe(true)
+		await expect(approvalPromise).resolves.toMatchObject({ approved: false })
+	})
+
 	it("emits an MCP approval ask with server, tool, and arguments", async () => {
 		const task = createTaskProxy("session-123", vi.fn(), vi.fn())
 		const coordinator = new SdkInteractionCoordinator({

@@ -37,7 +37,10 @@ import {
 	ToolPresets,
 	type ToolRoutingRule,
 } from "../../extensions/tools";
-import { createPlanModeCommandGuardExtension } from "../../extensions/tools/command-guard-extension";
+import {
+	createPlanModeCommandGuardExtension,
+	createUncommittedWorkGuardExtension,
+} from "../../extensions/tools/command-guard-extension";
 import {
 	applySessionToolOptions,
 	resolveSessionToolOptions,
@@ -593,9 +596,16 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 						telemetry: telemetry ?? config.telemetry,
 					})
 				: undefined;
+		// Outside plan mode, git commands that discard uncommitted changes
+		// always ask the user, and work a command lost is reported.
+		const uncommittedWorkGuard =
+			normalized.mode !== "plan" && normalized.enableTools
+				? createUncommittedWorkGuardExtension({ cwd: config.cwd })
+				: undefined;
 		const injectedExtensions = [
 			userInstructionPlugin,
 			planModeCommandGuard,
+			uncommittedWorkGuard,
 		].filter((extension) => extension !== undefined);
 		const runtimeExtensions =
 			injectedExtensions.length > 0

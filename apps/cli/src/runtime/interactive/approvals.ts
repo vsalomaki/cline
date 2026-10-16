@@ -39,10 +39,10 @@ export function createInteractiveApprovalController(config: Config) {
 	const requestToolApproval = async (
 		request: ToolApprovalRequest,
 	): Promise<ToolApprovalResult> => {
-		if (autoApproveAllRef.current) {
-			return { approved: true };
-		}
-		if (request.policy?.autoApprove === true) {
+		if (
+			!request.policy?.requireApproval &&
+			(autoApproveAllRef.current || request.policy?.autoApprove === true)
+		) {
 			return { approved: true };
 		}
 		if (refs.tuiToolApprover.current) {

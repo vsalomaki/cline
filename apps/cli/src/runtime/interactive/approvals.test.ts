@@ -49,6 +49,20 @@ describe("createInteractiveApprovalController", () => {
 		).resolves.toEqual({ approved: true });
 	});
 
+	it("uses the TUI approver for required approvals even with auto-approve on", async () => {
+		const controller = createInteractiveApprovalController(makeConfig(true));
+		controller.tuiToolApprover.current = async () => ({
+			approved: false,
+			reason: "no",
+		});
+
+		await expect(
+			controller.requestToolApproval(
+				makeRequest({ autoApprove: true, requireApproval: true }),
+			),
+		).resolves.toEqual({ approved: false, reason: "no" });
+	});
+
 	it("uses the TUI approver when global auto-approve is disabled", async () => {
 		const controller = createInteractiveApprovalController(makeConfig(false));
 		controller.tuiToolApprover.current = async () => ({

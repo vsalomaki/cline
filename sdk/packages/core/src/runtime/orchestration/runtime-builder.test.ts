@@ -17,7 +17,10 @@ import {
 import { setHomeDir } from "@cline/shared/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUserInstructionConfigService } from "../../extensions/config";
-import { PLAN_MODE_COMMAND_GUARD_EXTENSION_NAME } from "../../extensions/tools/command-guard-extension";
+import {
+	PLAN_MODE_COMMAND_GUARD_EXTENSION_NAME,
+	UNCOMMITTED_WORK_GUARD_EXTENSION_NAME,
+} from "../../extensions/tools/command-guard-extension";
 import { TelemetryService } from "../../services/telemetry/TelemetryService";
 import type { CoreSessionConfig } from "../../types/config";
 import { DefaultRuntimeBuilder } from "./runtime-builder";
@@ -303,6 +306,25 @@ Use the review guidance.`,
 		expect(
 			(actRuntime.extensions ?? []).map((extension) => extension.name),
 		).not.toContain(PLAN_MODE_COMMAND_GUARD_EXTENSION_NAME);
+	});
+
+	it("registers the uncommitted-work guard outside plan mode", async () => {
+		const names = async (config: Partial<CoreSessionConfig>) =>
+			(
+				(
+					await new DefaultRuntimeBuilder().build({
+						config: makeBaseConfig(config),
+					})
+				).extensions ?? []
+			).map((extension) => extension.name);
+
+		expect(await names({})).toContain(UNCOMMITTED_WORK_GUARD_EXTENSION_NAME);
+		expect(await names({ mode: "plan" })).not.toContain(
+			UNCOMMITTED_WORK_GUARD_EXTENSION_NAME,
+		);
+		expect(await names({ enableTools: false })).not.toContain(
+			UNCOMMITTED_WORK_GUARD_EXTENSION_NAME,
+		);
 	});
 
 	it("does not register the plan-mode command-guard when tools are disabled", async () => {

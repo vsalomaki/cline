@@ -2508,7 +2508,10 @@ export class AgentRuntime {
 			};
 			if (policy.enabled === false) {
 				skipReason = `Tool "${toolCall.toolName}" is disabled by policy`;
-			} else if (policy.autoApprove === false) {
+			} else if (
+				policy.autoApprove === false ||
+				policy.requireApproval === true
+			) {
 				const approval = await this.requestToolApproval(
 					toolCall,
 					input,
