@@ -40,6 +40,7 @@ import { fetch } from "@/shared/net"
 import { ShowMessageType } from "@/shared/proto/host/window"
 import { Logger } from "@/shared/services/Logger"
 import { expandEnvironmentVariables } from "@/utils/envExpansion"
+import { getCwd } from "@/utils/path"
 import type { TelemetryService } from "../telemetry/TelemetryService"
 import { McpOAuthManager } from "./McpOAuthManager"
 import { StreamableHttpReconnectHandler } from "./StreamableHttpReconnectHandler"
@@ -233,8 +234,8 @@ export class McpHub {
 			}
 
 			// Expand environment variables before validation
-			// This allows ${env:VAR_NAME} syntax in URLs, headers, env vars, etc.
-			config = expandEnvironmentVariables(config)
+			// This allows ${env:VAR_NAME} and ${workspaceFolder} in URLs, headers, env vars, etc.
+			config = expandEnvironmentVariables(config, (await getCwd()) || undefined)
 
 			// Validate against schema
 			const result = McpSettingsSchema.safeParse(config)
@@ -458,7 +459,7 @@ export class McpHub {
 			const configForStorage = JSON.stringify(config)
 
 			// Expand environment variables in config before using it
-			const expandedConfig = expandEnvironmentVariables(config)
+			const expandedConfig = expandEnvironmentVariables(config, (await getCwd()) || undefined)
 
 			// Each MCP server requires its own transport connection and has unique capabilities, configurations, and error handling. Having separate clients also allows proper scoping of resources/tools and independent server management like reconnection.
 			const client = new Client(

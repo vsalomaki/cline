@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import sinon from "sinon"
+import { stubWorkspacePaths } from "@/test/host-provider-test-utils"
 import { McpHub } from "../McpHub"
 
 describe("McpHub timeout reconciliation", () => {
@@ -49,6 +50,8 @@ describe("McpHub timeout reconciliation", () => {
 
 	it("reconciles the persisted timeout after an RPC update", async () => {
 		const tempDir = await mkdtemp(join(tmpdir(), "mcp-timeout-rpc-"))
+		const sandbox = sinon.createSandbox()
+		stubWorkspacePaths(sandbox, [])
 		try {
 			await writeFile(
 				join(tempDir, "cline_mcp_settings.json"),
@@ -86,6 +89,7 @@ describe("McpHub timeout reconciliation", () => {
 				"slow-server": { timeout: 120 },
 			})
 		} finally {
+			sandbox.restore()
 			await rm(tempDir, { recursive: true, force: true })
 		}
 	})

@@ -256,4 +256,25 @@ describe("expandEnvironmentVariables", () => {
 			;(result === undefined).should.be.true()
 		})
 	})
+
+	describe("workspace folder", () => {
+		it("should expand ${workspaceFolder} next to env references", () => {
+			process.env.TOOLS_HOME = "/home/u/.config/tools"
+			const result = expandEnvironmentVariables(
+				{
+					cwd: "${workspaceFolder}",
+					env: { PROJECT_DIR: "${workspaceFolder}", CONFIG_DIR: "${env:TOOLS_HOME}" },
+				},
+				"/work/app",
+			)
+			result.should.deepEqual({
+				cwd: "/work/app",
+				env: { PROJECT_DIR: "/work/app", CONFIG_DIR: "/home/u/.config/tools" },
+			})
+		})
+
+		it("should leave ${workspaceFolder} unexpanded without a workspace", () => {
+			expandEnvironmentVariables("${workspaceFolder}/x").should.equal("${workspaceFolder}/x")
+		})
+	})
 })

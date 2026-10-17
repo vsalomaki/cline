@@ -234,6 +234,60 @@ describe("mcp config loader", () => {
 		]);
 	});
 
+	it("expands variables in transports registered from the settings file", async () => {
+		const tempRoot = await mkdtemp(join(tmpdir(), "core-mcp-config-loader-"));
+		tempRoots.push(tempRoot);
+		const filePath = join(tempRoot, "cline_mcp_settings.json");
+		await writeFile(
+			filePath,
+			JSON.stringify({
+				mcpServers: {
+					docs: {
+						command: "node",
+						args: ["${workspaceFolder}/server.js"],
+						cwd: "${workspaceFolder}",
+						env: { PROJECT: "${workspaceFolder}", TOKEN: "${env:DOCS_TOKEN}" },
+					},
+					remote: {
+						type: "streamableHttp",
+						url: "https://example.com/mcp",
+						headers: { Authorization: "${env:DOCS_TOKEN}" },
+					},
+				},
+			}),
+			"utf8",
+		);
+
+		const registered: Array<{ name: string; transport: unknown }> = [];
+		await registerMcpServersFromSettingsFile(
+			{
+				registerServer: async (registration) => {
+					registered.push(registration);
+				},
+			},
+			{
+				filePath,
+				variables: { env: { DOCS_TOKEN: "t1" }, workspaceFolder: "/work/app" },
+			},
+		);
+
+		expect(registered[0]?.transport).toEqual({
+			type: "stdio",
+			command: "node",
+			args: ["/work/app/server.js"],
+			cwd: "/work/app",
+			env: { PROJECT: "/work/app", TOKEN: "t1" },
+		});
+		expect(registered[1]?.transport).toEqual(
+			expect.objectContaining({
+				headers: { Authorization: "${env:DOCS_TOKEN}" },
+			}),
+		);
+		expect(resolveMcpServerRegistrations({ filePath })[0]?.transport).toEqual(
+			expect.objectContaining({ cwd: "${workspaceFolder}" }),
+		);
+	});
+
 	it("throws a clear error for invalid config", async () => {
 		const tempRoot = await mkdtemp(join(tmpdir(), "core-mcp-config-loader-"));
 		tempRoots.push(tempRoot);

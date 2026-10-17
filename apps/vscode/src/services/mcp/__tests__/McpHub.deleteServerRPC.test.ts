@@ -43,6 +43,7 @@ const nodeFsMock = () => ({ ...nodeFsNamespace, default: nodeFsNamespace })
 mock.module("fs", nodeFsMock)
 mock.module("node:fs", nodeFsMock)
 
+import { stubWorkspacePaths } from "@/test/host-provider-test-utils"
 import { McpHub } from "../McpHub"
 
 // Regression tests for McpHub.deleteServerRPC(): deleting one server must not
@@ -80,6 +81,7 @@ describe("McpHub.deleteServerRPC", () => {
 
 	beforeEach(async () => {
 		sandbox = sinon.createSandbox()
+		stubWorkspacePaths(sandbox, [])
 		tempDir = path.join(os.tmpdir(), `mcp-delete-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 		await fs.mkdir(tempDir, { recursive: true })
 		settingsPath = path.join(tempDir, "cline_mcp_settings.json")

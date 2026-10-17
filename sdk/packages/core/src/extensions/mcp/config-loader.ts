@@ -12,8 +12,9 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { BasicLogger } from "@cline/shared";
+import type { BasicLogger, McpConfigVariables } from "@cline/shared";
 import {
+	expandMcpConfigVariables,
 	isMcpTimeoutConfigured,
 	resolveMcpTimeoutSeconds,
 } from "@cline/shared";
@@ -242,6 +243,8 @@ export interface UpdateMcpServerOAuthStateOptions
 
 export interface RegisterMcpServersFromSettingsOptions {
 	filePath?: string;
+	/** Expands `${env:VAR}` and `${workspaceFolder}` in stdio server transports. */
+	variables?: McpConfigVariables;
 }
 
 export interface SetMcpServerDisabledOptions {
@@ -968,7 +971,19 @@ export async function registerMcpServersFromSettingsFile(
 	manager: Pick<McpManager, "registerServer">,
 	options: RegisterMcpServersFromSettingsOptions = {},
 ): Promise<McpServerRegistration[]> {
-	const registrations = resolveMcpServerRegistrations(options);
+	const { variables } = options;
+	const registrations = resolveMcpServerRegistrations(options).map(
+		(registration) =>
+			variables && registration.transport.type === "stdio"
+				? {
+						...registration,
+						transport: expandMcpConfigVariables(
+							registration.transport,
+							variables,
+						),
+					}
+				: registration,
+	);
 	for (const registration of registrations) {
 		await manager.registerServer(registration);
 	}

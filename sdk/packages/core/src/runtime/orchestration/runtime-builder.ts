@@ -248,6 +248,7 @@ const SKILLS_PROBE_EXECUTOR = (async () => "") as SkillsExecutorWithMetadata;
 async function loadConfiguredMcpTools(options: {
 	logger?: BasicLogger;
 	includeSettings: boolean;
+	workspaceFolder: string;
 	agentPluginServers?: ReadonlyArray<AgentPluginPackageMcpServer>;
 }): Promise<{
 	tools: AgentTool[];
@@ -280,6 +281,15 @@ async function loadConfiguredMcpTools(options: {
 		try {
 			registrations = await registerMcpServersFromSettingsFile(manager, {
 				filePath: settingsPath,
+				variables: {
+					env: process.env,
+					workspaceFolder: options.workspaceFolder,
+					onMissing: (reference) =>
+						options.logger?.log(
+							`[mcp] MCP settings reference \${${reference}} has no value`,
+							{ severity: "warn" },
+						),
+				},
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -647,6 +657,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 				const mcpRuntime = await loadConfiguredMcpTools({
 					logger: config.logger,
 					includeSettings: !normalized.disableMcpSettingsTools,
+					workspaceFolder: config.workspaceRoot ?? config.cwd,
 					agentPluginServers: agentPluginMcpServers,
 				});
 				tools.push(...mcpRuntime.tools);

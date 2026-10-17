@@ -6,12 +6,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ClaudeHooks } from "./claude-hooks";
 import { claudeToolView } from "./claude-tool-adapters";
 
-const CONTEXT_MODE_HOOKS = {
+const PLUGIN_HOOKS = {
 	hooks: {
 		PreToolUse: [
 			{ matcher: "Bash", hooks: [{ type: "command", command: "pre" }] },
 			{
-				matcher: "mcp__plugin_context-mode_context-mode__ctx_execute",
+				matcher: "mcp__plugin_acme_docs__run",
 				hooks: [{ type: "command", command: "pre" }],
 			},
 		],
@@ -90,8 +90,8 @@ describe("ClaudeHooks", () => {
 		}
 	}
 
-	it("matches context-mode's own hooks.json by tool name, prefix and event", async () => {
-		await config(CONTEXT_MODE_HOOKS.hooks);
+	it("matches a plugin's hooks.json by tool name, prefix and event", async () => {
+		await config(PLUGIN_HOOKS.hooks);
 		const hooks = create() as unknown as {
 			commandsFor(event: string, targets: string[]): Array<{ command: string }>;
 		};
@@ -102,7 +102,7 @@ describe("ClaudeHooks", () => {
 			hooks.commandsFor("PreToolUse", ["Read", "read_files"]),
 		).toHaveLength(0);
 		expect(
-			hooks.commandsFor("PostToolUse", ["mcp__context-mode__ctx_search"]),
+			hooks.commandsFor("PostToolUse", ["mcp__docs__search"]),
 		).toHaveLength(1);
 		expect(hooks.commandsFor("SessionStart", ["compact"])).toHaveLength(1);
 	});
@@ -362,8 +362,8 @@ describe("claudeToolView", () => {
 	});
 
 	it("names MCP tools mcp__<server>__<tool> and keeps other tools as they are", () => {
-		expect(claudeToolView("context-mode__ctx_search", {}, "/ws").name).toBe(
-			"mcp__context-mode__ctx_search",
+		expect(claudeToolView("docs__search", {}, "/ws").name).toBe(
+			"mcp__docs__search",
 		);
 		expect(claudeToolView("skills", { skill: "x" }, "/ws")).toMatchObject({
 			name: "skills",

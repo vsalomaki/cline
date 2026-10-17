@@ -400,16 +400,16 @@ describe("repairMalformedToolCall", () => {
 	it("renames an MCP tool written the Claude Code way", async () => {
 		const call = {
 			toolCallId: "call_1",
-			toolName: "mcp__plugin_context-mode_context-mode__ctx_search",
+			toolName: "mcp__plugin_acme_docs__search",
 			input: '{"queries": ["x"]}',
 		};
 		expect(
 			await repairMalformedToolCall({
 				toolCall: call,
-				tools: { "context-mode__ctx_search": {}, run_commands: {} },
+				tools: { "docs__search": {}, run_commands: {} },
 				error: new NoSuchToolError({ toolName: call.toolName }),
 			}),
-		).toEqual({ ...call, toolName: "context-mode__ctx_search" });
+		).toEqual({ ...call, toolName: "docs__search" });
 	});
 
 	it("keeps a shell alias that sets its own working directory un-renamed", async () => {

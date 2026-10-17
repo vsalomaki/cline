@@ -134,7 +134,7 @@ describe("canonicalInputForAlias", () => {
 });
 
 describe("mcpToolForClaudeName", () => {
-	const tools = ["context-mode__ctx_search", "github__search", "run_commands"];
+	const tools = ["docs__search", "github__search", "run_commands"];
 
 	it("maps mcp__<server>__<tool> to the session's tool", () => {
 		expect(mcpToolForClaudeName("mcp__github__search", tools)).toBe(
@@ -145,14 +145,14 @@ describe("mcpToolForClaudeName", () => {
 	it("maps a plugin server's name to the server's own tool", () => {
 		expect(
 			mcpToolForClaudeName(
-				"mcp__plugin_context-mode_context-mode__ctx_search",
+				"mcp__plugin_acme_docs__search",
 				tools,
 			),
-		).toBe("context-mode__ctx_search");
+		).toBe("docs__search");
 	});
 
 	it("leaves other names and unknown tools alone", () => {
-		expect(mcpToolForClaudeName("ctx_search", tools)).toBeUndefined();
+		expect(mcpToolForClaudeName("docs_search", tools)).toBeUndefined();
 		expect(mcpToolForClaudeName("mcp__other__missing", tools)).toBeUndefined();
 	});
 });
