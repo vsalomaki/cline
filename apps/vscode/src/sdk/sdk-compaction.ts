@@ -11,6 +11,7 @@
 // context while saved messages remain intact.
 
 import {
+	type CompactionHookRunner,
 	type CoreSessionConfig,
 	createContextCompactionPrepareTurn,
 	createSessionCompactionState,
@@ -39,6 +40,8 @@ export interface CompactSessionMessagesInput {
 	 * with token + message counters) so the caller can drive progress UI.
 	 */
 	emitStatusNotice?: (message: string, metadata?: Record<string, unknown>) => void
+	/** File hooks that run before compaction and add context after it. */
+	hooks?: CompactionHookRunner
 }
 
 export interface CompactSessionMessagesResult {
@@ -87,7 +90,7 @@ export async function compactSessionMessages(input: CompactSessionMessagesInput)
 			telemetry: input.config.telemetry,
 			sessionId: input.sessionId,
 		},
-		{ mode: "manual" },
+		{ mode: "manual", hooks: input.hooks },
 	)
 	if (!compact) {
 		Logger.warn("[SdkCompaction] Compaction prepareTurn unavailable; skipping manual compaction")

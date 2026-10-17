@@ -29,6 +29,7 @@ import type { ClineCompactionInfo, ClineMessage } from "@shared/ExtensionMessage
 import type { Mode } from "@shared/storage/types"
 import type { StateManager } from "@/core/storage/StateManager"
 import { Logger } from "@/shared/services/Logger"
+import { createManualCompactionHooks } from "./hook-engine"
 import { buildCompactionMessage, parseCompactionNoticeMetadata } from "./message-translator"
 import { compactSessionMessages } from "./sdk-compaction"
 import type { SdkMessageCoordinator } from "./sdk-message-coordinator"
@@ -238,6 +239,7 @@ export class SdkCompactionCoordinator {
 				},
 				sessionId,
 				messages,
+				hooks: createManualCompactionHooks(this.options.stateManager, config, sessionId),
 				emitStatusNotice: (_message, metadata) => {
 					const parsed = parseCompactionNoticeMetadata(metadata)
 					if (parsed && parsed.status !== "started") {

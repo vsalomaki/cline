@@ -42,6 +42,7 @@ import { getDistinctId } from "@/services/logging/distinctId"
 import type { McpHub } from "@/services/mcp/McpHub"
 import { Logger } from "@/shared/services/Logger"
 import { type VscodeGitTelemetry, VscodeGitTelemetryManager } from "./git-telemetry"
+import { sdkFileHooksEnabled } from "./hook-engine"
 import type { SdkForegroundCommandCoordinator } from "./sdk-foreground-command-coordinator"
 import type { SdkSessionHost } from "./session-host"
 import { createVscodeExtraTools } from "./vscode-runtime-builder"
@@ -166,16 +167,14 @@ export class VscodeSessionHost implements SdkSessionHost {
 			return {
 				...inputWithRemoteConfig,
 				source: inputWithRemoteConfig.source ?? "vscode",
-				// The extension runs file hooks through its own hooks adapter
-				// (status chips, hooksEnabled setting, HookFactory discovery).
-				// Exclude the SDK core's file-hook extension or every hook
-				// would execute twice per event.
+				// File hooks come from the SDK only with the SDK hook engine and
+				// hooks on; the legacy engine runs them through config.hooks.
 				localRuntime: {
 					...(inputWithRemoteConfig.localRuntime ?? {}),
 					hooks: config.hooks,
 					configExtensions: (
 						inputWithRemoteConfig.localRuntime?.configExtensions ?? RUNTIME_CONFIG_EXTENSION_KINDS
-					).filter((kind) => kind !== "hooks"),
+					).filter((kind) => kind !== "hooks" || sdkFileHooksEnabled(stateManager)),
 				},
 				config,
 			}

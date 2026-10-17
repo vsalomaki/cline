@@ -1,6 +1,9 @@
 import { ToggleHookRequest, ToggleHookResponse } from "@shared/proto/cline/file"
 import fs from "fs/promises"
+import path from "path"
+import { HostProvider } from "@/hosts/host-provider"
 import { HookDiscoveryCache } from "../../hooks/HookDiscoveryCache"
+import { CLAUDE_HOOKS_FILE, resolveRequestedHookFile } from "../../hooks/sdk-hook-files"
 import { resolveExistingHookPath, resolveHooksDirectory } from "../../hooks/utils"
 import { Controller } from ".."
 import { refreshHooks } from "./refreshHooks"
@@ -10,15 +13,21 @@ export async function toggleHook(
 	request: ToggleHookRequest,
 	globalHooksDirOverride?: string,
 ): Promise<ToggleHookResponse> {
-	const { hookName, isGlobal, enabled, workspaceName } = request
+	const { hookName, isGlobal, enabled, workspaceName, absolutePath } = request
 
-	// Determine hook path
-	const hooksDir = await resolveHooksDirectory(isGlobal, workspaceName, globalHooksDirOverride)
-	const hookPath = await resolveExistingHookPath(hooksDir, hookName)
-
-	// Verify hook exists
-	if (!hookPath) {
-		throw new Error(`Hook ${hookName} does not exist in ${hooksDir}`)
+	let hookPath: string | undefined
+	if (absolutePath) {
+		const { paths } = await HostProvider.workspace.getWorkspacePaths({})
+		hookPath = await resolveRequestedHookFile(absolutePath, paths, globalHooksDirOverride)
+		if (path.basename(hookPath) === CLAUDE_HOOKS_FILE) {
+			throw new Error(`${CLAUDE_HOOKS_FILE} cannot be toggled; edit or delete it instead`)
+		}
+	} else {
+		const hooksDir = await resolveHooksDirectory(isGlobal, workspaceName, globalHooksDirOverride)
+		hookPath = await resolveExistingHookPath(hooksDir, hookName)
+		if (!hookPath) {
+			throw new Error(`Hook ${hookName} does not exist in ${hooksDir}`)
+		}
 	}
 
 	// On Windows, we can't use chmod, so we just return the current state

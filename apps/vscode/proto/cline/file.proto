@@ -265,6 +265,7 @@ message ToggleHookRequest {
   bool is_global = 3; // Whether this is a global or workspace hook
   bool enabled = 4; // Whether to enable (chmod +x) or disable (chmod -x)
   optional string workspace_name = 5; // For multi-root workspaces, specifies which workspace
+  optional string absolute_path = 1001; // The listed hook file; takes precedence over hook_name
 }
 
 // Response for toggleHook operation
@@ -291,6 +292,7 @@ message DeleteHookRequest {
   string hook_name = 2; // Name of the hook to delete
   bool is_global = 3; // Whether this is a global or workspace hook
   optional string workspace_name = 4; // For multi-root workspaces, specifies which workspace
+  optional string absolute_path = 1001; // The listed hook file; takes precedence over hook_name
 }
 
 // Response for deleteHook operation

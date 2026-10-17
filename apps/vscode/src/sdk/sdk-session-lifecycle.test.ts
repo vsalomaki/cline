@@ -340,6 +340,8 @@ describe("SdkSessionLifecycle", () => {
 			disposeReason: "modeChange",
 		})
 		lifecycle.setRunning(true)
+		// The conversation continues, so the rebuilt session fires no TaskStart/TaskResume.
+		expect(sdkHost.start.mock.calls.at(-1)?.[0].config.fileHooks).toEqual({ lifecycle: "none" })
 
 		// The old send settles only now; its bookkeeping must not touch the successor.
 		resolveSend()
@@ -463,7 +465,7 @@ describe("SdkSessionLifecycle", () => {
 
 		expect(result?.startResult.sessionId).toBe("task-session")
 		expect(start).toHaveBeenLastCalledWith({
-			config: { sessionId: "task-session" },
+			config: { sessionId: "task-session", fileHooks: { lifecycle: "none" } },
 			prompt: undefined,
 			interactive: true,
 			initialMessages,
@@ -551,7 +553,7 @@ describe("SdkSessionLifecycle", () => {
 		expect(mockCreateSessionHost).toHaveBeenCalledOnce()
 		expect(sdkHost.subscribe).toHaveBeenCalledOnce()
 		expect(sdkHost.start).toHaveBeenLastCalledWith({
-			config: {},
+			config: { fileHooks: { lifecycle: "none" } },
 			initialMessages: [{ role: "user", content: "hello" }],
 		})
 		expect(lifecycle.getActiveSession()?.sessionId).toBe("new-session")

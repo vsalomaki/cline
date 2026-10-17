@@ -1,6 +1,8 @@
 import { DeleteHookRequest, DeleteHookResponse } from "@shared/proto/cline/file"
 import fs from "fs/promises"
+import { HostProvider } from "@/hosts/host-provider"
 import { HookDiscoveryCache } from "../../hooks/HookDiscoveryCache"
+import { resolveRequestedHookFile } from "../../hooks/sdk-hook-files"
 import { resolveExistingHookPath, resolveHooksDirectory } from "../../hooks/utils"
 import { Controller } from ".."
 import { refreshHooks } from "./refreshHooks"
@@ -10,15 +12,18 @@ export async function deleteHook(
 	request: DeleteHookRequest,
 	globalHooksDirOverride?: string,
 ): Promise<DeleteHookResponse> {
-	const { hookName, isGlobal, workspaceName } = request
+	const { hookName, isGlobal, workspaceName, absolutePath } = request
 
-	// Determine hook path
-	const hooksDir = await resolveHooksDirectory(isGlobal, workspaceName, globalHooksDirOverride)
-	const hookPath = await resolveExistingHookPath(hooksDir, hookName)
-
-	// Verify hook exists before attempting deletion
-	if (!hookPath) {
-		throw new Error(`Hook ${hookName} does not exist in ${hooksDir}`)
+	let hookPath: string | undefined
+	if (absolutePath) {
+		const { paths } = await HostProvider.workspace.getWorkspacePaths({})
+		hookPath = await resolveRequestedHookFile(absolutePath, paths, globalHooksDirOverride)
+	} else {
+		const hooksDir = await resolveHooksDirectory(isGlobal, workspaceName, globalHooksDirOverride)
+		hookPath = await resolveExistingHookPath(hooksDir, hookName)
+		if (!hookPath) {
+			throw new Error(`Hook ${hookName} does not exist in ${hooksDir}`)
+		}
 	}
 
 	// Delete the hook file

@@ -16,6 +16,7 @@ export type AgentLimitGroup =
 	| "toolInput"
 	| "providerRequest"
 	| "timeouts"
+	| "hooks"
 	| "loop"
 	| "compaction"
 
@@ -396,8 +397,23 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		max: MAX_TIMEOUT_MS,
 	},
 	{
+		id: "session.hookEngine",
+		group: "hooks",
+		label: "Hook engine",
+		description:
+			"Which engine runs hook scripts. SDK is the one the Cline CLI uses: it also runs .sh, .py and .js hooks and Claude Code hooks from hooks.json. Legacy is the engine of earlier versions.",
+		unit: "choice",
+		options: [
+			{ value: 0, label: "SDK" },
+			{ value: 1, label: "Legacy" },
+		],
+		default: 0,
+		min: 0,
+		max: 1,
+	},
+	{
 		id: "timeout.hook",
-		group: "timeouts",
+		group: "hooks",
 		label: "Hook script",
 		description: "A hook script still running after this long is stopped.",
 		unit: "milliseconds",
@@ -500,6 +516,7 @@ export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: str
 	{ id: "toolInput", title: "Tool input", description: "How much the model may send in one tool call." },
 	{ id: "providerRequest", title: "Provider request", description: "Caps applied while assembling each request to the model." },
 	{ id: "timeouts", title: "Tool timeouts", description: "Command timeouts live under Terminal settings." },
+	{ id: "hooks", title: "Hooks", description: "Applies when hooks are on under Features." },
 	{ id: "loop", title: "Loops and mistakes", description: "When Cline stops a task that is going nowhere." },
 	{ id: "compaction", title: "Compaction", description: "Applies when auto-compaction is on under Features." },
 ]

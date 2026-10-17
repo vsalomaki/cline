@@ -12,7 +12,7 @@ interface HookRowProps {
 	isGlobal: boolean
 	isWindows: boolean
 	workspaceName?: string
-	onToggle: (hookName: string, newEnabled: boolean) => void
+	onToggle: (hookName: string, newEnabled: boolean, absolutePath: string) => void
 	onDelete: (hooksToggles: HooksToggles) => void
 }
 
@@ -26,6 +26,9 @@ const HookRow: React.FC<HookRowProps> = ({
 	onToggle,
 	onDelete,
 }) => {
+	// hooks.json holds several hooks, so it is edited rather than switched off.
+	const toggleable = hookName !== "hooks.json"
+
 	const handleEditClick = () => {
 		FileServiceClient.openFile(StringRequest.create({ value: absolutePath })).catch((err) =>
 			console.error("Failed to open file:", err),
@@ -38,6 +41,7 @@ const HookRow: React.FC<HookRowProps> = ({
 				hookName,
 				isGlobal,
 				workspaceName,
+				absolutePath,
 			}),
 		)
 			.then((response) => {
@@ -61,15 +65,17 @@ const HookRow: React.FC<HookRowProps> = ({
 						title={
 							isWindows
 								? "Hook toggling is not yet supported on Windows in this foundation PR. Hooks execute when the hook file exists."
-								: undefined
+								: toggleable
+									? undefined
+									: "hooks.json is always on; edit or delete it to change its hooks."
 						}>
 						<Switch
 							checked={enabled}
 							className="mx-1"
-							disabled={isWindows}
+							disabled={isWindows || !toggleable}
 							key={hookName}
-							onClick={() => onToggle(hookName, !enabled)}
-							style={isWindows ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+							onClick={() => onToggle(hookName, !enabled, absolutePath)}
+							style={isWindows || !toggleable ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
 						/>
 					</div>
 					<Button aria-label="Edit hook file" onClick={handleEditClick} size="xs" title="Edit hook file" variant="icon">

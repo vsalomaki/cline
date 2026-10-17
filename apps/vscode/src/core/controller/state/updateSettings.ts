@@ -180,6 +180,7 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			const wasEnabled = controller.stateManager.getGlobalSettingsKey("hooksEnabled") ?? true
 			const isEnabled = !!request.hooksEnabled
 			controller.stateManager.setGlobalState("hooksEnabled", isEnabled)
+			controller.handleHooksSettingChanged(wasEnabled, isEnabled)
 			if (controller.task && wasEnabled !== isEnabled) {
 				telemetryService.captureFeatureToggle(controller.task.ulid, "hooks", isEnabled, controller.task.api.getModel().id)
 			}

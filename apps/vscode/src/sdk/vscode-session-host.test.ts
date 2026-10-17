@@ -11,7 +11,7 @@ vi.mock("@cline/core", async () => {
 })
 vi.mock("@/services/logging/distinctId", () => ({ getDistinctId: () => "distinct-id" }))
 vi.mock("@/core/storage/StateManager", () => ({
-	StateManager: { get: () => ({ getGlobalStateKey: () => undefined }) },
+	StateManager: { get: () => ({ getGlobalStateKey: () => undefined, getGlobalSettingsKey: () => undefined }) },
 }))
 vi.mock("./vscode-runtime-builder", () => ({ createVscodeExtraTools: mockCreateVscodeExtraTools }))
 
@@ -292,7 +292,18 @@ describe("VscodeSessionHost telemetry wiring", () => {
 				: (restore.mock.calls[0][0] as { start: ClineCoreStartInput }).start
 		expect(prepared.source).toBe("vscode")
 		expect(prepared.config.extraTools).toEqual([{ name: "remote-tool" }, { name: "vscode-tool" }])
-		expect(prepared.localRuntime.configExtensions).not.toContain("hooks")
+		// The SDK hook engine (the default) with hooks on runs the SDK's file hooks.
+		expect(prepared.localRuntime.configExtensions).toContain("hooks")
+	})
+
+	it("hands the hook run observer to the session", async () => {
+		const onHookRun = vi.fn()
+		const host = await VscodeSessionHost.create({ mcpHub: {} as never, telemetry: makeTelemetry() })
+		await host.start({ ...gitStartInput, config: { ...gitStartInput.config, onHookRun } })
+		const prepared = mockInnerStart.mock.calls[0][0]
+		// ClineCore moves it into the local runtime options (splitCoreSessionConfig).
+		expect(toClineCoreStartInput(prepared).config.onHookRun).toBe(onHookRun)
+		await host.dispose()
 	})
 
 	it("normalizes local-runtime hooks before preparation without losing them", async () => {

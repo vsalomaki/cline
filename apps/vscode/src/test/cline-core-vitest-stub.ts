@@ -624,4 +624,12 @@ export async function loginOpenAICodex(): Promise<OAuthCredentials> {
 	return {}
 }
 
+export {
+	resolveHooksConfigSearchPaths,
+	toHookConfigFileName,
+} from "../../../../sdk/packages/core/src/hooks/hook-file-config"
+export {
+	createHookConfigFileRuntime,
+	resolveFileHookOptions,
+} from "../../../../sdk/packages/core/src/hooks/hook-file-hooks"
 export { resolveMessageDisplayRole } from "../../../../sdk/packages/core/src/session/user-run-messages"
