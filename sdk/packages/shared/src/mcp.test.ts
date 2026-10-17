@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	clampMcpTimeoutSeconds,
 	DEFAULT_MCP_TIMEOUT_SECONDS,
+	expandMcpConfigVariables,
 	formatMcpTimeoutErrorMessage,
 	isMcpTimeoutConfigured,
 	MAX_MCP_TIMEOUT_SECONDS,
@@ -71,5 +72,41 @@ describe("formatMcpTimeoutErrorMessage", () => {
 		).toBe(
 			'MCP request to "slow-server" (initialize) timed out after 1.5s. Increase the "timeout" field (in seconds) for this server in cline_mcp_settings.json.',
 		);
+	});
+});
+
+describe("expandMcpConfigVariables", () => {
+	it("expands env references and the workspace folder in nested values", () => {
+		expect(
+			expandMcpConfigVariables(
+				{
+					command: "node",
+					args: ["${workspaceFolder}/server.js", 3],
+					env: { TOKEN: "Bearer ${env: API_KEY }", ROOT: "${workspaceFolder}" },
+				},
+				{ env: { API_KEY: "secret" }, workspaceFolder: "/work/app" },
+			),
+		).toEqual({
+			command: "node",
+			args: ["/work/app/server.js", 3],
+			env: { TOKEN: "Bearer secret", ROOT: "/work/app" },
+		});
+	});
+
+	it("leaves references without a value as written and reports them", () => {
+		const missing: string[] = [];
+		expect(
+			expandMcpConfigVariables("${env:NOPE} ${workspaceFolder} ${other}", {
+				env: {},
+				onMissing: (reference) => missing.push(reference),
+			}),
+		).toBe("${env:NOPE} ${workspaceFolder} ${other}");
+		expect(missing).toEqual(["env:NOPE", "workspaceFolder"]);
+	});
+
+	it("keeps an empty env value", () => {
+		expect(
+			expandMcpConfigVariables("a${env:EMPTY}b", { env: { EMPTY: "" } }),
+		).toBe("ab");
 	});
 });

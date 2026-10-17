@@ -49,3 +49,45 @@ export function formatMcpTimeoutErrorMessage(
 		`Increase the "timeout" field (in seconds) for this server in cline_mcp_settings.json.`
 	);
 }
+
+export interface McpConfigVariables {
+	env?: Readonly<Record<string, string | undefined>>;
+	workspaceFolder?: string;
+	onMissing?: (reference: string) => void;
+}
+
+const MCP_CONFIG_VARIABLE = /\$\{(env:[^}]+|workspaceFolder)\}/g;
+
+/**
+ * Expands `${env:VAR}` and `${workspaceFolder}` in every string of an MCP
+ * server config. A reference with no value stays as written.
+ */
+export function expandMcpConfigVariables<T>(
+	value: T,
+	variables: McpConfigVariables,
+): T {
+	if (typeof value === "string") {
+		return value.replace(MCP_CONFIG_VARIABLE, (match, name: string) => {
+			const resolved = name.startsWith("env:")
+				? variables.env?.[name.slice(4).trim()]
+				: variables.workspaceFolder;
+			if (resolved === undefined) {
+				variables.onMissing?.(name);
+				return match;
+			}
+			return resolved;
+		}) as T;
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => expandMcpConfigVariables(item, variables)) as T;
+	}
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [
+				key,
+				expandMcpConfigVariables(item, variables),
+			]),
+		) as T;
+	}
+	return value;
+}

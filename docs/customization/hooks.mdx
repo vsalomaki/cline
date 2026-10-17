@@ -140,7 +140,7 @@ A matcher is a regular expression that only has to match part of the name; an em
 
 Other tools keep their Cline name and input. A call that runs several commands, reads several files or runs several searches runs the hook once for each, because the Claude Code tools take one at a time. If any of them is denied, the whole call is skipped; an `updatedInput` replaces only its own command, file or search.
 
-When a model calls an MCP tool by its Claude Code name, such as `mcp__plugin_context-mode_context-mode__ctx_search`, Cline runs the matching MCP tool, here `context-mode__ctx_search`.
+When a model calls an MCP tool by its Claude Code name, such as `mcp__plugin_acme_docs__search`, Cline runs the matching MCP tool, here `docs__search`.
 
 ## Settings
 
@@ -165,6 +165,34 @@ With the SDK engine, the extension:
 - shows each hook run as a status row in the chat.
 
 `hooks.json` cannot be switched off in the Hooks tab; edit or delete it instead.
+
+## Running a Claude Code plugin's hooks
+
+Many Claude Code plugins ship their hooks in a `hooks/hooks.json` file, often next to an MCP server. To run them in Cline:
+
+1. **Copy the hooks.** Put the plugin's `hooks.json` in one of the [hook directories](#where-hooks-live), such as `~/.cline/hooks/hooks.json`. If you already have one, merge the event lists.
+2. **Replace `${CLAUDE_PLUGIN_ROOT}`.** Claude Code sets it to the plugin's install directory; Cline does not. Write the directory out, or use the plugin's own command if it installs one.
+3. **Rename MCP matchers.** Claude Code names a plugin's MCP tools `mcp__plugin_<plugin>_<server>__<tool>`. Cline names them after the server in your MCP settings, `mcp__<server>__<tool>`, so change matchers such as `mcp__plugin_acme_docs__search` to `mcp__docs__search`.
+4. **Add the plugin's MCP server**, if it has one, to your [MCP settings](/mcp/mcp-overview). Cline does not start MCP servers in the project directory, so pass the project explicitly. Many plugins read `CLAUDE_PROJECT_DIR`:
+
+   ```json
+   {
+     "mcpServers": {
+       "docs": {
+         "command": "acme-docs-server",
+         "env": { "CLAUDE_PROJECT_DIR": "${workspaceFolder}" }
+       }
+     }
+   }
+   ```
+
+Things to check:
+
+- **Hooks that point at the server.** A plugin's hooks may tell the model to use the plugin's MCP tools instead of Cline's. Remove the hooks when you remove the server, or the model is sent to tools it does not have.
+- **Where the plugin keeps data.** Plugins that store state usually put it under `~/.claude` (or `CLAUDE_CONFIG_DIR`), shared with Claude Code. Set `CLAUDE_CONFIG_DIR` in both the hook commands and the server's `env` to keep it apart.
+- **Approvals.** MCP tool calls ask for approval unless MCP tools are auto-approved: the **Use MCP servers** auto-approve toggle in the IDE, or `--auto-approve` in the CLI.
+- **`command not found`.** An IDE started from the desktop may not have npm's global `bin` directory on its `PATH`. Use absolute paths in the hook commands and the server's `command`.
+- **Windows.** Hook commands run through `cmd.exe` there, so POSIX syntax such as `VAR=value command` does not work.
 
 ## Examples
 

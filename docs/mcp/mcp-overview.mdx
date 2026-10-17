@@ -114,6 +114,29 @@ Without `--yes`, `cline mcp add` opens the add wizard with those fields filled i
 
 The `type` field selects the transport. Omitting it defaults to the legacy `sse` transport for backward compatibility, so set `"type": "streamableHttp"` explicitly for the recommended transport. Use `"type": "sse"` only for legacy SSE servers.
 
+### Variables
+
+Strings in a server's `command`, `args`, `cwd`, `env`, `url` and `headers` can use two variables:
+
+| Variable | Value |
+|---|---|
+| `${env:NAME}` | The environment variable `NAME` of the Cline process |
+| `${workspaceFolder}` | The workspace: in the IDE, the window's first workspace folder; in the CLI, the session's workspace (`--cwd`) |
+
+The CLI expands variables in local (STDIO) servers only; in a remote server's `url` and `headers` they stay as written. A variable without a value, such as a missing environment variable or `${workspaceFolder}` with no folder open, also stays as written, and a warning is logged. A server keeps the workspace it started with: in the IDE, reload the window after changing its folders.
+
+```json
+{
+  "mcpServers": {
+    "project-tools": {
+      "command": "node",
+      "args": ["${workspaceFolder}/tools/mcp-server.js"],
+      "env": { "PROJECT_DIR": "${workspaceFolder}", "API_KEY": "${env:PROJECT_TOOLS_KEY}" }
+    }
+  }
+}
+```
+
 ## Transport types
 
 - **STDIO**: local process, lower latency, simpler local setup
