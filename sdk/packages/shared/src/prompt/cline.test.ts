@@ -48,6 +48,12 @@ describe("buildClineSystemPrompt task discipline", () => {
 		);
 	});
 
+	it("asks to inspect what a git restore would discard before running it", () => {
+		expect(prompt).toContain(
+			"look at exactly what it would throw away (git status, and git diff for the affected paths)",
+		);
+	});
+
 	it("ties success claims to verification", () => {
 		expect(prompt).toContain("Verify by execution, not assumption");
 		expect(prompt).toContain("if you could not verify it, say so");

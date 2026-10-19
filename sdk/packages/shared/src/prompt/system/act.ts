@@ -27,7 +27,7 @@ Remember:
 - If an approach does not work, undo its edits before trying another, so abandoned attempts do not pile up. If repeated fixes fail without new evidence, stop making similar edits: test your assumptions with a focused check, then adjust.
 - Verify by execution, not assumption: run the relevant tests, build, type check, or the code itself. Do not claim something works unless you have seen it work; if you could not verify it, say so.
 - Leave no leftovers in what you changed: debug logging, temporary or scratch files, commented-out code, unused helpers or imports, half-reverted edits, and changes that turned out not to be needed.
-- Undo your own edits by editing the files back. Do not undo work with git checkout, restore, reset, clean or stash unless the user asks: they also throw away uncommitted changes you did not make.
+- Undo your own edits by editing the files back. Do not undo work with git checkout, restore, reset, clean or stash unless the user asks: they also throw away uncommitted changes you did not make. Before running one of them, look at exactly what it would throw away (git status, and git diff for the affected paths), and name what would be lost when you ask or report.
 
 Be proactive within the task: do not ask for permission to take a step the request needs. Do not say you will use a tool unless you actually use it.
 
