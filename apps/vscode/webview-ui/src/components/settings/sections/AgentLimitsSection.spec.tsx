@@ -1,6 +1,14 @@
-import type { AgentLimitsState } from "@shared/AgentLimits"
+import { AGENT_LIMIT_GROUPS, type AgentLimitsState } from "@shared/AgentLimits"
 import { fireEvent, render, screen } from "@testing-library/react"
-import type { ChangeEventHandler, FocusEventHandler, KeyboardEventHandler, MouseEventHandler, ReactNode } from "react"
+import {
+	type ChangeEventHandler,
+	Children,
+	type FocusEventHandler,
+	isValidElement,
+	type KeyboardEventHandler,
+	type MouseEventHandler,
+	type ReactNode,
+} from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import AgentLimitsSection from "./AgentLimitsSection"
 
@@ -14,38 +22,6 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 		onBlur?: FocusEventHandler<HTMLInputElement>
 		onKeyDown?: KeyboardEventHandler<HTMLInputElement>
 	}) => <input {...props} />,
-	VSCodeCheckbox: ({
-		checked,
-		children,
-		onChange,
-	}: {
-		checked?: boolean
-		children?: ReactNode
-		onChange?: ChangeEventHandler<HTMLInputElement>
-	}) => (
-		<label>
-			<input checked={checked} onChange={onChange} type="checkbox" />
-			{children}
-		</label>
-	),
-	VSCodeDropdown: ({
-		children,
-		disabled,
-		id,
-		onChange,
-		value,
-	}: {
-		children?: ReactNode
-		disabled?: boolean
-		id?: string
-		onChange?: ChangeEventHandler<HTMLSelectElement>
-		value?: string
-	}) => (
-		<select disabled={disabled} id={id} onChange={onChange} value={value}>
-			{children}
-		</select>
-	),
-	VSCodeOption: ({ children, value }: { children?: ReactNode; value?: string }) => <option value={value}>{children}</option>,
 	VSCodeButton: ({
 		children,
 		disabled,
@@ -59,6 +35,34 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 			{children}
 		</button>
 	),
+}))
+
+// Radix Select needs pointer APIs jsdom lacks; render a native select that takes its id from the trigger.
+vi.mock("@/components/ui/select", () => ({
+	Select: ({
+		children,
+		disabled,
+		onValueChange,
+		value,
+	}: {
+		children?: ReactNode
+		disabled?: boolean
+		onValueChange?: (value: string) => void
+		value?: string
+	}) => {
+		const id = Children.toArray(children)
+			.map((child) => (isValidElement<{ id?: string }>(child) ? child.props.id : undefined))
+			.find(Boolean)
+		return (
+			<select disabled={disabled} id={id} onChange={(event) => onValueChange?.(event.target.value)} value={value}>
+				{children}
+			</select>
+		)
+	},
+	SelectTrigger: () => null,
+	SelectValue: () => null,
+	SelectContent: ({ children }: { children?: ReactNode }) => <>{children}</>,
+	SelectItem: ({ children, value }: { children?: ReactNode; value: string }) => <option value={value}>{children}</option>,
 }))
 
 const mockUpdateSetting = vi.fn()
@@ -101,6 +105,71 @@ describe("AgentLimitsSection", () => {
 		]) {
 			expect(screen.getByText(title)).toBeTruthy()
 		}
+	})
+
+	it("puts the groups under category cards", () => {
+		renderSection()
+		const inCategory = (category: string, group: string) =>
+			document
+				.getElementById(`agent-limits-category-${category}`)
+				?.contains(document.getElementById(`agent-limits-${group}`))
+
+		for (const title of ["Model", "Tools", "Agent"]) {
+			expect(screen.getByText(title)).toBeTruthy()
+		}
+		expect(inCategory("model", "compaction")).toBe(true)
+		expect(inCategory("tools", "timeouts")).toBe(true)
+		expect(inCategory("agent", "loop")).toBe(true)
+		expect(document.getElementById("agent-limits-category-other")).toBeNull()
+	})
+
+	it("renders a group missing from the category map under Other", () => {
+		const groups = AGENT_LIMIT_GROUPS as unknown as Array<{ id: string; title: string; description: string }>
+		groups.push({ id: "futureGroup", title: "Future group", description: "Added later." })
+		try {
+			renderSection()
+
+			expect(
+				document
+					.getElementById("agent-limits-category-other")
+					?.contains(document.getElementById("agent-limits-futureGroup")),
+			).toBe(true)
+			expect(screen.getByText("Other")).toBeTruthy()
+		} finally {
+			groups.pop()
+		}
+	})
+
+	it("saves a toggle as its number and resets it at the default", () => {
+		renderSection()
+		const toggle = document.getElementById("agent-limit-session-loopDetection") as HTMLElement
+
+		expect(toggle.getAttribute("aria-checked")).toBe("true")
+		fireEvent.click(toggle)
+		expect(mockUpdateSetting).toHaveBeenCalledWith("agentLimitUpdates", { "session.loopDetection": 0 })
+	})
+
+	it("resets a toggle that returns to its default", () => {
+		setLimits({ values: { "session.loopDetection": 0 } })
+		renderSection()
+		const toggle = document.getElementById("agent-limit-session-loopDetection") as HTMLElement
+
+		expect(toggle.getAttribute("aria-checked")).toBe("false")
+		fireEvent.click(toggle)
+		expect(mockUpdateSetting).toHaveBeenCalledWith("agentLimitUpdates", { "session.loopDetection": -1 })
+	})
+
+	it("locks a toggle an env var overrides and shows its value", () => {
+		setLimits({
+			effective: { "session.readBeforeWrite": 0 },
+			envOverrides: { "session.readBeforeWrite": "CLINE_READ_BEFORE_WRITE" },
+		})
+		renderSection()
+		const toggle = document.getElementById("agent-limit-session-readBeforeWrite") as HTMLButtonElement
+
+		expect(toggle.disabled).toBe(true)
+		expect(toggle.getAttribute("aria-checked")).toBe("false")
+		expect(screen.getByText("CLINE_READ_BEFORE_WRITE")).toBeTruthy()
 	})
 
 	it("saves timeouts entered in seconds as milliseconds", () => {
