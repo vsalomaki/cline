@@ -24,6 +24,24 @@ export type HookCommandControl = Omit<HookControl, "appendMessages"> & {
 
 export type HookRunStatus = "running" | "completed" | "failed" | "cancelled";
 
+/** Whether a hook's output changes the run: context, a block, a question, new input or messages. */
+export function hookControlHasEffect(
+	control: HookCommandControl | undefined,
+): boolean {
+	if (!control) return false;
+	return Boolean(
+		control.cancel ||
+			control.deny ||
+			control.ask ||
+			control.review ||
+			control.context?.trim() ||
+			control.overrideInput !== undefined ||
+			control.systemPrompt !== undefined ||
+			control.appendMessages?.length ||
+			control.replaceMessages?.length,
+	);
+}
+
 export interface HookRunEvent {
 	/** Same for the running and final report of one hook execution. */
 	executionId: string;
@@ -37,6 +55,8 @@ export interface HookRunEvent {
 	status: HookRunStatus;
 	durationMs?: number;
 	error?: string;
+	/** A completed hook whose output changes nothing, so a host may leave it out. */
+	noEffect?: boolean;
 }
 
 /** Reports each hook execution, for host status UI. */
@@ -191,7 +211,11 @@ export function reportHookRun(
 	observer: HookRunObserver | undefined,
 	logger: BasicLogger | undefined,
 	start: Omit<HookRunEvent, "executionId" | "status" | "durationMs" | "error">,
-): (status: Exclude<HookRunStatus, "running">, error?: string) => void {
+): (
+	status: Exclude<HookRunStatus, "running">,
+	error?: string,
+	noEffect?: boolean,
+) => void {
 	if (!observer) {
 		return () => {};
 	}
@@ -206,7 +230,7 @@ export function reportHookRun(
 	};
 	emit({ ...start, executionId, status: "running" });
 	let finished = false;
-	return (status, error) => {
+	return (status, error, noEffect) => {
 		if (finished) return;
 		finished = true;
 		emit({
@@ -215,6 +239,7 @@ export function reportHookRun(
 			status,
 			durationMs: Date.now() - startedAt,
 			...(error ? { error } : {}),
+			...(noEffect && status === "completed" ? { noEffect } : {}),
 		});
 	};
 }

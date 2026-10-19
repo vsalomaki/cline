@@ -1287,7 +1287,21 @@ describe("file hook lifecycle and controls", () => {
 			hookName: "PreToolUse",
 			toolName: "read_file",
 			toolCallId: "call_1",
+			noEffect: true,
 		});
+	});
+
+	it("does not mark a hook that adds context as having no effect", async () => {
+		await addHook(
+			"PreToolUse.js",
+			JSON.stringify({ contextModification: "Use the cache." }),
+		);
+		const events: Array<Record<string, unknown>> = [];
+		await createHooks({
+			onHookRun: (event: Record<string, unknown>) => events.push(event),
+		}).hooks.beforeTool?.(beforeToolContext());
+		expect(events[1]).toMatchObject({ status: "completed" });
+		expect(events[1].noEffect).toBeUndefined();
 	});
 
 	it.skipIf(process.platform === "win32")(

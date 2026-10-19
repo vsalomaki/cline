@@ -22,6 +22,7 @@ import {
 	type HookCommandControl,
 	type HookRunMeta,
 	type HookRunObserver,
+	hookControlHasEffect,
 	logHookError,
 	mergeHookControls,
 	parseHookControl,
@@ -420,7 +421,11 @@ async function runBlockingHookCommands(options: {
 			}
 			const control = parseHookControl(result?.parsedJson);
 			merged = mergeHookControls(merged, control);
-			finish(control?.cancel === true ? "cancelled" : "completed");
+			finish(
+				control?.cancel === true ? "cancelled" : "completed",
+				undefined,
+				!hookControlHasEffect(control),
+			);
 		} catch (error) {
 			logHookError(
 				options.logger,
@@ -461,7 +466,11 @@ async function runAsyncHookCommands(options: {
 				onDetachedSettled: (event) => {
 					// A hook still running when observation ends stays "running".
 					if (event.exited) {
-						finish(event.exitCode === 0 ? "completed" : "failed");
+						finish(
+							event.exitCode === 0 ? "completed" : "failed",
+							undefined,
+							true,
+						);
 					}
 					observer?.({
 						hookName,
@@ -495,7 +504,8 @@ async function runAsyncHookCommands(options: {
 					env: process.env,
 					detached: options.detached,
 				});
-				finish(result?.exitCode ? "failed" : "completed");
+				// Async hooks only observe; their output is not read.
+				finish(result?.exitCode ? "failed" : "completed", undefined, true);
 			} catch (error) {
 				logHookError(
 					options.logger,

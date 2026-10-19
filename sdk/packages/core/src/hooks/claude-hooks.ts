@@ -5,6 +5,7 @@ import {
 	type HookCommandControl,
 	type HookRunMeta,
 	type HookRunObserver,
+	hookControlHasEffect,
 	logHookError,
 	mergeHookControls,
 	parseHookControl,
@@ -255,14 +256,15 @@ export class ClaudeHooks {
 				finish("failed", `exit code ${result.exitCode}`);
 				return undefined;
 			}
-			finish("completed");
-			if (result.parsedJson !== undefined) {
-				return parseHookControl(result.parsedJson);
-			}
 			const stdout = result.stdout.trim();
-			return textIsContext && stdout
-				? { context: truncateHookContext(stdout) }
-				: undefined;
+			const control =
+				result.parsedJson !== undefined
+					? parseHookControl(result.parsedJson)
+					: textIsContext && stdout
+						? { context: truncateHookContext(stdout) }
+						: undefined;
+			finish("completed", undefined, !hookControlHasEffect(control));
+			return control;
 		} catch (error) {
 			logHookError(logger, `${event} hook failed: ${hook.command}`, error);
 			finish("failed", error instanceof Error ? error.message : String(error));

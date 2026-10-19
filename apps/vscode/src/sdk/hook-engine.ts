@@ -9,8 +9,8 @@ import {
 import { getAgentLimitValue } from "@shared/AgentLimits"
 import type { ClineMessage } from "@shared/ExtensionMessage"
 import { getHooksEnabledSafe } from "@/core/hooks/hooks-utils"
-import { getWindowWorkspaceRoots } from "@/core/storage/disk"
 import { documentsHooksDirectory } from "@/core/hooks/sdk-hook-files"
+import { getWindowWorkspaceRoots } from "@/core/storage/disk"
 import type { StateManager } from "@/core/storage/StateManager"
 import type { HookMessageEmitter } from "./hooks-adapter"
 
@@ -98,6 +98,7 @@ export function createHookRunChipEmitter(emit: HookMessageEmitter): (event: Hook
 				hookName: event.hookName,
 				...(event.toolName ? { toolName: event.toolName } : {}),
 				status: event.status,
+				...(event.noEffect ? { noEffect: true } : {}),
 				...(event.error
 					? {
 							error: {
