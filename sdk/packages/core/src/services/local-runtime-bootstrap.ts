@@ -36,6 +36,7 @@ import type {
 import type {
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 	TeamEvent,
 } from "../extensions/tools/team";
 import { createCheckpointHooks } from "../hooks/checkpoint-hooks";
@@ -304,6 +305,7 @@ export interface PrepareLocalRuntimeBootstrapOptions {
 		onSubAgentEvent?: (event: AgentEvent) => void;
 		onSubAgentStart?: (context: SubAgentStartContext) => void | Promise<void>;
 		onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
+		onSubAgentTurn?: (context: SubAgentTurnContext) => void;
 	};
 	createSpawnTool: () => AgentTool;
 	readSessionMetadata: () => Promise<Record<string, unknown> | undefined>;
@@ -686,6 +688,7 @@ export async function prepareLocalRuntimeBootstrap(
 			onSubAgentEvent: subAgentLifecycleCallbacks?.onSubAgentEvent,
 			onSubAgentStart: subAgentLifecycleCallbacks?.onSubAgentStart,
 			onSubAgentEnd: subAgentLifecycleCallbacks?.onSubAgentEnd,
+			onSubAgentTurn: subAgentLifecycleCallbacks?.onSubAgentTurn,
 			userInstructionService: userInstructionService,
 			pluginSkillDirectories,
 			agentPluginSkills: loadedAgentPluginPackages?.skills,

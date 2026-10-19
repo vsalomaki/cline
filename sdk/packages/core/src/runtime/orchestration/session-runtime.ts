@@ -25,6 +25,7 @@ import type {
 	DelegatedAgentConfigProvider,
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 	TeamEvent,
 } from "../../extensions/tools/team";
 import type { WorkspaceManager } from "../../services/workspace/workspace-manager";
@@ -71,6 +72,7 @@ export interface RuntimeBuilderInput {
 	onSubAgentEvent?: (event: AgentEvent) => void;
 	onSubAgentStart?: (context: SubAgentStartContext) => void | Promise<void>;
 	onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
+	onSubAgentTurn?: (context: SubAgentTurnContext) => void;
 	createSpawnTool?: () => AgentTool;
 	onTeamRestored?: () => void;
 	userInstructionService?: UserInstructionConfigService;

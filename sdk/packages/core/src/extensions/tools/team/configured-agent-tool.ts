@@ -21,6 +21,7 @@ import type {
 	SpawnAgentOutput,
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 } from "./spawn-agent-tool";
 
 const CONFIGURED_AGENT_TOOL_NAME_PREFIX = "subagent_";
@@ -55,6 +56,7 @@ export interface ConfiguredAgentToolConfig {
 	) => BuildDelegatedAgentConfigOptions["prepareTurn"];
 	onSubAgentStart?: (context: SubAgentStartContext) => void | Promise<void>;
 	onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
+	onSubAgentTurn?: (context: SubAgentTurnContext) => void;
 }
 
 function sanitizeAgentName(name: string): string {
@@ -181,7 +183,15 @@ export function createConfiguredAgentTools(
 						maxIterations: config.maxIterations,
 						parentAgentId: context.agentId,
 						abortSignal: context.signal,
-						onEvent: options.onSubAgentEvent,
+						onEvent: (event) => {
+							options.onSubAgentEvent?.(event);
+							if (event.type === "iteration_end") {
+								options.onSubAgentTurn?.({
+									subAgentId: subAgent.getAgentId(),
+									messages: subAgent.getMessages(),
+								});
+							}
+						},
 						hookErrorMode: options.hookErrorMode,
 						prepareTurn: options.createPrepareTurn?.(agentRuntimeConfig),
 					});
@@ -242,6 +252,7 @@ export function createConfiguredAgentTools(
 									input: spawnInput,
 									error:
 										error instanceof Error ? error : new Error(String(error)),
+									messages: subAgent.getMessages(),
 								});
 							} catch {
 								// Best-effort observer callback.

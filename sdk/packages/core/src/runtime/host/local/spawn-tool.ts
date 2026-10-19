@@ -13,6 +13,7 @@ import {
 import type {
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 } from "../../../extensions/tools/team";
 import { createSpawnAgentTool } from "../../../extensions/tools/team";
 import { buildTelemetryAgentIdentity } from "../../../services/agent-events";
@@ -45,6 +46,7 @@ export interface SessionSubAgentLifecycleCallbacks {
 	onSubAgentEvent: (event: AgentEvent) => void;
 	onSubAgentStart: (context: SubAgentStartContext) => void;
 	onSubAgentEnd: (context: SubAgentEndContext) => void;
+	onSubAgentTurn: (context: SubAgentTurnContext) => void;
 }
 
 export function createSessionSubAgentLifecycleCallbacks(
@@ -120,6 +122,16 @@ export function createSessionSubAgentLifecycleCallbacks(
 				rootSessionId,
 				context,
 			);
+		},
+		onSubAgentTurn: (context) => {
+			deps
+				.invokeBackendOptional("handleSubAgentTurn", rootSessionId, context)
+				.catch((error) =>
+					config.logger?.debug("Failed to save subagent messages", {
+						subAgentId: context.subAgentId,
+						error,
+					}),
+				);
 		},
 	};
 }

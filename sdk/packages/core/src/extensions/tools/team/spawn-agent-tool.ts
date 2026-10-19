@@ -13,6 +13,7 @@ import {
 	createTool,
 	type HookErrorMode,
 	type ITelemetryService,
+	type MessageWithMetadata,
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
 	type ToolPolicy,
@@ -55,6 +56,12 @@ export interface SubAgentStartContext {
 	input: SpawnAgentInput;
 }
 
+export interface SubAgentTurnContext {
+	subAgentId: string;
+	/** The sub-agent's conversation so far. */
+	messages: MessageWithMetadata[];
+}
+
 export interface SubAgentEndContext {
 	subAgentId: string;
 	conversationId: string;
@@ -63,6 +70,8 @@ export interface SubAgentEndContext {
 	result?: SpawnAgentOutput;
 	agentResult?: AgentResult;
 	error?: Error;
+	/** The conversation up to the error, when the run failed. */
+	messages?: MessageWithMetadata[];
 }
 
 export interface SpawnAgentToolConfig {
@@ -96,6 +105,8 @@ export interface SpawnAgentToolConfig {
 	 * Errors are ignored so lifecycle observers cannot break task execution.
 	 */
 	onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
+	/** Called after each of a sub-agent's turns, so its conversation can be saved while it runs. */
+	onSubAgentTurn?: (context: SubAgentTurnContext) => void;
 	/**
 	 * Optional per-tool policy for spawned sub-agents.
 	 */
@@ -146,6 +157,12 @@ export function createSpawnAgentTool(
 				abortSignal: context.signal,
 				onEvent: (event) => {
 					config.onSubAgentEvent?.(event);
+					if (event.type === "iteration_end") {
+						config.onSubAgentTurn?.({
+							subAgentId: subAgent.getAgentId(),
+							messages: subAgent.getMessages(),
+						});
+					}
 					const update = progress.apply(event);
 					if (update) {
 						context.emitUpdate?.(update);
@@ -206,6 +223,7 @@ export function createSpawnAgentTool(
 							parentAgentId,
 							input,
 							error: error instanceof Error ? error : new Error(String(error)),
+							messages: subAgent.getMessages(),
 						});
 					} catch {
 						// Best-effort observer callback.

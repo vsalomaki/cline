@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import type {
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 } from "../../extensions/tools/team";
 import type { HookEventPayload } from "../../hooks";
 import { deleteCheckpointRefs } from "../../hooks/checkpoint-hooks";
@@ -425,6 +426,13 @@ export class UnifiedSessionPersistenceService {
 		context: SubAgentEndContext,
 	): Promise<void> {
 		return this.teamChildren.handleSubAgentEnd(rootSessionId, context);
+	}
+
+	handleSubAgentTurn(
+		rootSessionId: string,
+		context: SubAgentTurnContext,
+	): Promise<void> {
+		return this.teamChildren.handleSubAgentTurn(rootSessionId, context);
 	}
 
 	private isPidAlive(pid: number): boolean {

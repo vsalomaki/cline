@@ -30,4 +30,5 @@ export * from "./runtime";
 export type {
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 } from "./spawn-agent-tool";

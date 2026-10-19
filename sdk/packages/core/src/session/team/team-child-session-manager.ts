@@ -8,6 +8,7 @@ import { z } from "zod";
 import type {
 	SubAgentEndContext,
 	SubAgentStartContext,
+	SubAgentTurnContext,
 } from "../../extensions/tools/team";
 import type { HookEventPayload } from "../../hooks";
 import { nowIso } from "../../services/session-artifacts";
@@ -393,6 +394,13 @@ export class TeamChildSessionManager {
 		});
 		if (!subSessionId) return;
 		if (context.error) {
+			const partialMessages = this.toPersistedMessages(context.messages);
+			if (partialMessages) {
+				await this.manifestStore.persistSessionMessages(
+					subSessionId,
+					partialMessages,
+				);
+			}
 			await this.applySubagentStatusBySessionId(subSessionId, "failed");
 			return;
 		}
@@ -410,6 +418,19 @@ export class TeamChildSessionManager {
 		await this.applySubagentStatusBySessionId(
 			subSessionId,
 			reason === "aborted" ? "cancelled" : "completed",
+		);
+	}
+
+	/** Saves a running subagent's conversation after each of its turns. */
+	async handleSubAgentTurn(
+		rootSessionId: string,
+		context: SubAgentTurnContext,
+	): Promise<void> {
+		const persistedMessages = this.toPersistedMessages(context.messages);
+		if (!persistedMessages) return;
+		await this.manifestStore.persistSessionMessages(
+			makeSubSessionId(rootSessionId, context.subAgentId),
+			persistedMessages,
 		);
 	}
 
