@@ -12,6 +12,7 @@ export {
 	type ConfiguredAgentToolConfig,
 	type ConfiguredAgentToolDescriptor,
 	createConfiguredAgentTools,
+	withConfiguredAgentToolPolicies,
 } from "./configured-agent-tool";
 export {
 	isDurableTeamEvent,

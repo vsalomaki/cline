@@ -81,6 +81,19 @@ export class SdkSessionConfigChangeCoordinator {
 		})
 	}
 
+	/** The spawn_agent tool is added to a session when it is built. */
+	handleSubagentsSettingChanged(previous: boolean, next: boolean): void {
+		if (previous === next) {
+			return
+		}
+		this.requestRebuild({
+			reason: "subagents",
+			description: `subagents ${previous ? "enabled" : "disabled"} -> ${next ? "enabled" : "disabled"}`,
+			disposeReason: "subagentsSettingChange",
+			failureMessage: "Failed to reload subagent settings. The change may not apply until the next task.",
+		})
+	}
+
 	handleCheckpointsSettingChanged(previous: boolean, next: boolean): void {
 		if (previous === next) {
 			return

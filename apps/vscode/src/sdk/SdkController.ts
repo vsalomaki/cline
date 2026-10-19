@@ -843,6 +843,10 @@ export class Controller {
 		this.sessionConfigChanges.handleCheckpointsSettingChanged(previous, next)
 	}
 
+	handleSubagentsSettingChanged(previous: boolean, next: boolean): void {
+		this.sessionConfigChanges.handleSubagentsSettingChanged(previous, next)
+	}
+
 	handleCommandTimeoutsChanged(): void {
 		this.sessionConfigChanges.handleCommandTimeoutsChanged()
 	}

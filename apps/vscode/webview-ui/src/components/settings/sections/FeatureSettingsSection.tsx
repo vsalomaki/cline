@@ -33,6 +33,14 @@ interface FeatureToggle {
 
 const agentFeatures: FeatureToggle[] = [
 	{
+		id: "subagents",
+		label: "Subagents",
+		description:
+			"Let Cline hand focused tasks to subagents that run in parallel. You approve each handoff; the subagent then reads and edits files without asking.",
+		stateKey: "subagentsEnabled",
+		settingKey: "subagentsEnabled",
+	},
+	{
 		id: "auto-compact",
 		label: "Auto Compact",
 		description: "Automatically compress conversation history.",

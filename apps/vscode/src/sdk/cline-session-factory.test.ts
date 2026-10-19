@@ -1589,6 +1589,22 @@ describe("buildSessionConfig", () => {
 		})
 	})
 
+	it("enables subagents from the global setting, with the task setting taking precedence", async () => {
+		mocks.stateManager.getGlobalSettingsKey.mockImplementation((key: string) =>
+			key === "subagentsEnabled" ? true : undefined,
+		)
+
+		const enabledConfig = await buildSessionConfig({ cwd: "/tmp/workspace" })
+		const disabledConfig = await buildSessionConfig({
+			cwd: "/tmp/workspace",
+			taskSettings: { subagentsEnabled: false },
+		})
+
+		expect(enabledConfig.enableSpawnAgent).toBe(true)
+		expect(disabledConfig.enableSpawnAgent).toBe(false)
+		expect(enabledConfig.enableAgentTeams).toBe(false)
+	})
+
 	it("emits the shared mode-tag instructions in both act and plan system prompts", async () => {
 		mocks.stateManager.getApiConfiguration.mockReturnValue({} as any)
 

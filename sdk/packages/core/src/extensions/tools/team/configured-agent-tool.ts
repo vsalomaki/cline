@@ -5,6 +5,7 @@ import {
 	type AgentToolContext,
 	createTool,
 	type HookErrorMode,
+	type ToolPolicy,
 	zodToJsonSchema,
 } from "@cline/shared";
 import { z } from "zod";
@@ -22,6 +23,8 @@ import type {
 } from "./spawn-agent-tool";
 
 const CONFIGURED_AGENT_TOOL_NAME_PREFIX = "subagent_";
+
+const configuredAgentTools = new WeakSet<AgentTool>();
 const CONFIGURED_AGENT_TOOL_NAME_MAX_LENGTH = 64;
 
 const ConfiguredAgentInputSchema = z.object({
@@ -241,7 +244,29 @@ export function createConfiguredAgentTools(
 				timeoutMs: 300000,
 				retryable: false,
 			});
-			return tool as unknown as AgentTool;
+			const agentTool = tool as unknown as AgentTool;
+			configuredAgentTools.add(agentTool);
+			return agentTool;
 		},
 	);
+}
+
+/**
+ * Configured agents delegate like spawn_agent, so a configured agent tool
+ * without its own policy gets spawn_agent's.
+ */
+export function withConfiguredAgentToolPolicies(
+	policies: Record<string, ToolPolicy> | undefined,
+	tools: readonly AgentTool[],
+): Record<string, ToolPolicy> | undefined {
+	const spawnPolicy = policies?.spawn_agent;
+	if (!spawnPolicy) {
+		return policies;
+	}
+	const inherited = tools
+		.filter((tool) => configuredAgentTools.has(tool) && !policies[tool.name])
+		.map((tool) => [tool.name, spawnPolicy] as const);
+	return inherited.length > 0
+		? { ...policies, ...Object.fromEntries(inherited) }
+		: policies;
 }

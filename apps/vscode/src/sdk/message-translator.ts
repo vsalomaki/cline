@@ -54,6 +54,7 @@ import {
 } from "../services/error/ClineError"
 import { MessageIdMinter } from "./message-id-minter"
 import { describeCredentialRejectedError, describeMissingCredentialError } from "./provider-credential-error"
+import { isSubagentTool } from "./sdk-tool-policies"
 import { extractPersistedHookContextChips, isSyntheticSdkUserMessage, isSyntheticUserPrompt } from "./sdk-user-message-mapping"
 import { isDeniedToolApprovalMistake, isKnownToolApprovalDenial } from "./tool-approval-denial"
 
@@ -1256,9 +1257,9 @@ export function buildToolApprovalAskMessage(toolName: string, input: unknown, ts
 		}
 	}
 
-	if (toolName === "spawn_agent") {
+	if (isSubagentTool(toolName)) {
 		const parsedInput = parseToolInput(input)
-		const taskPrompt = getStringField(parsedInput, "task") ?? ""
+		const taskPrompt = getStringField(parsedInput, "task") ?? getStringField(parsedInput, "prompt") ?? ""
 		return {
 			ts,
 			type: "ask",
