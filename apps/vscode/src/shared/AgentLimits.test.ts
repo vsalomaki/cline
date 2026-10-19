@@ -12,6 +12,8 @@ describe("normalizeAgentLimitValue", () => {
 		expect(normalizeAgentLimitValue("tool.readLines", 500.6)).toBe(501)
 		expect(normalizeAgentLimitValue("tool.commandOutputChars", 10)).toBe(1_000)
 		expect(normalizeAgentLimitValue("timeout.hook", 10 ** 12)).toBe(24 * 60 * 60 * 1000)
+		expect(normalizeAgentLimitValue("compaction.summaryMaxTokens", 100)).toBe(1_024)
+		expect(normalizeAgentLimitValue("compaction.summaryBlockChars", 10)).toBe(500)
 	})
 
 	it("keeps 0 where the limit allows it and maps toggles to 0/1", () => {
@@ -43,5 +45,8 @@ describe("getAgentLimitValue", () => {
 	it("falls back to the default", () => {
 		expect(getAgentLimitValue(undefined, "session.maxConsecutiveMistakes")).toBe(6)
 		expect(getAgentLimitValue({ "session.maxConsecutiveMistakes": 10 }, "session.maxConsecutiveMistakes")).toBe(10)
+		expect(getAgentLimitValue(undefined, "compaction.preserveRecentTokens")).toBe(60_000)
+		expect(getAgentLimitValue(undefined, "compaction.summaryBlockChars")).toBe(8_000)
+		expect(getAgentLimitValue(undefined, "compaction.summaryMaxTokens")).toBe(8_192)
 	})
 })

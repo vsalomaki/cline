@@ -14,6 +14,7 @@ import {
 import {
 	buildSummaryMessage,
 	buildSummaryRequest,
+	DEFAULT_SUMMARY_BLOCK_CHARS,
 	type EstimateMessageTokens,
 	ensureFilesSection,
 	estimateTokens,
@@ -118,6 +119,8 @@ export async function runAgenticCompaction(options: {
 	providerConfig: ProviderConfig;
 	summarizer?: CoreCompactionSummarizerConfig;
 	preserveRecentTokens: number;
+	summaryBlockChars?: number;
+	summaryMaxOutputTokens?: number;
 	estimateMessageTokens: EstimateMessageTokens;
 	logger?: BasicLogger;
 }): Promise<CoreCompactionResult | undefined> {
@@ -154,6 +157,7 @@ export async function runAgenticCompaction(options: {
 	const summarizerProviderConfig = resolveSummarizerConfig({
 		activeProviderConfig: options.providerConfig,
 		summarizer: options.summarizer,
+		summaryMaxOutputTokens: options.summaryMaxOutputTokens,
 	});
 	const resolvedSummarizerInputLimit = resolveProviderMaxInputTokens(
 		summarizerProviderConfig,
@@ -223,7 +227,16 @@ export async function runAgenticCompaction(options: {
 		return undefined;
 	}
 	const fileOps = extractFileOps(summaryInputBudget.messages);
-	const conversationText = serializeConversation(summaryInputBudget.messages);
+	const summaryBlockChars =
+		typeof options.summaryBlockChars === "number" &&
+		Number.isFinite(options.summaryBlockChars) &&
+		options.summaryBlockChars > 0
+			? Math.floor(options.summaryBlockChars)
+			: DEFAULT_SUMMARY_BLOCK_CHARS;
+	const conversationText = serializeConversation(
+		summaryInputBudget.messages,
+		summaryBlockChars,
+	);
 	const summaryRequest = buildSummaryRequest({
 		previousSummary,
 		conversationText,

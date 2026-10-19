@@ -167,6 +167,10 @@ export type CoreCompactionStrategy = "basic" | "agentic";
 export interface CoreCompactionConfig {
 	enabled?: boolean;
 	strategy?: CoreCompactionStrategy;
+	/**
+	 * Recent conversation kept verbatim; capped at the compaction target.
+	 * @default 60000
+	 */
 	preserveRecentTokens?: number;
 	/**
 	 * Share of the usable input budget at which automatic compaction runs.
@@ -174,6 +178,18 @@ export interface CoreCompactionConfig {
 	 * @default 0.9
 	 */
 	triggerRatio?: number;
+	/**
+	 * Character cap on each tool result, file content and thinking block in
+	 * the agentic summarizer's input.
+	 * @default 8000
+	 */
+	summaryBlockChars?: number;
+	/**
+	 * Output token cap for the agentic summary. Wins over the provider's
+	 * `maxOutputTokens`; a summarizer's own `maxOutputTokens` wins over it.
+	 * @default 8192, lowered to the model's reported maxTokens
+	 */
+	summaryMaxOutputTokens?: number;
 	summarizer?: CoreCompactionSummarizerConfig;
 	compact?: (
 		context: CoreCompactionContext,

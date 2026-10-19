@@ -488,11 +488,33 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		id: "compaction.preserveRecentTokens",
 		group: "compaction",
 		label: "Keep recent context",
-		description: "Recent conversation kept verbatim when compacting.",
+		description: "Recent conversation kept verbatim when compacting, at most the size compaction shrinks the context to.",
 		unit: "tokens",
-		default: 20_000,
+		default: 60_000,
 		min: 0,
 		max: 10_000_000,
+	},
+	{
+		id: "compaction.summaryBlockChars",
+		group: "compaction",
+		label: "Summary input per block",
+		description:
+			"How much of each tool result, file and thinking block the summarizer reads. Larger values keep more detail from earlier steps.",
+		unit: "chars",
+		default: 8_000,
+		min: 500,
+		max: 1_000_000,
+	},
+	{
+		id: "compaction.summaryMaxTokens",
+		group: "compaction",
+		label: "Summary length",
+		description:
+			"Output cap for the compaction summary. Until you change it, a Max Output Tokens set in the provider settings applies instead.",
+		unit: "tokens",
+		default: 8_192,
+		min: 1_024,
+		max: 128_000,
 	},
 ] as const satisfies readonly AgentLimitDefinition[]
 

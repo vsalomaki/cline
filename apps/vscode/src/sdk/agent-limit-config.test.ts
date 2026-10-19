@@ -78,6 +78,20 @@ describe("AGENT_LIMIT_DEFINITIONS", () => {
 			envVar: CODE_INTELLIGENCE_ENV.problemsTimeoutMs,
 		})
 	})
+
+	it("matches the SDK's compaction defaults", async () => {
+		const realModulePath = path.resolve(
+			import.meta.dirname,
+			"../../../../sdk/packages/core/src/extensions/context/compaction-shared.ts",
+		)
+		const { DEFAULT_PRESERVE_RECENT_TOKENS, DEFAULT_SUMMARY_BLOCK_CHARS, DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS } = (await import(
+			/* @vite-ignore */ realModulePath
+		)) as Record<string, number>
+		const byId = new Map<string, AgentLimitDefinition>(AGENT_LIMIT_DEFINITIONS.map((d) => [d.id, d]))
+		expect(byId.get("compaction.preserveRecentTokens")?.default).toBe(DEFAULT_PRESERVE_RECENT_TOKENS)
+		expect(byId.get("compaction.summaryBlockChars")?.default).toBe(DEFAULT_SUMMARY_BLOCK_CHARS)
+		expect(byId.get("compaction.summaryMaxTokens")?.default).toBe(DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS)
+	})
 })
 
 describe("buildAgentLimitSessionConfig", () => {
@@ -95,13 +109,20 @@ describe("buildAgentLimitSessionConfig", () => {
 			"session.loopSoftThreshold": 4,
 			"compaction.triggerPercent": 75,
 			"compaction.preserveRecentTokens": 40_000,
+			"compaction.summaryBlockChars": 12_000,
+			"compaction.summaryMaxTokens": 16_000,
 		})
 
 		expect(config).toEqual({
 			contextLimits: { tool: { readLines: 500 }, message: { toolResultChars: 80_000 } },
 			toolTimeouts: { ripgrepTimeoutMs: 20_000, editorTimeoutMs: 60_000 },
 			execution: { maxConsecutiveMistakes: 10, loopDetection: { softThreshold: 4, hardThreshold: 5 } },
-			compaction: { triggerRatio: 0.75, preserveRecentTokens: 40_000 },
+			compaction: {
+				triggerRatio: 0.75,
+				preserveRecentTokens: 40_000,
+				summaryBlockChars: 12_000,
+				summaryMaxOutputTokens: 16_000,
+			},
 		})
 	})
 

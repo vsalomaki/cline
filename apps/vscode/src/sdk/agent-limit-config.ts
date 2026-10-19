@@ -46,7 +46,10 @@ export type AgentLimitSessionConfig = Pick<
 	| "problemsAfterEdit"
 	| "problemsTimeoutMs"
 > & {
-	compaction?: Pick<NonNullable<CoreSessionConfig["compaction"]>, "triggerRatio" | "preserveRecentTokens">
+	compaction?: Pick<
+		NonNullable<CoreSessionConfig["compaction"]>,
+		"triggerRatio" | "preserveRecentTokens" | "summaryBlockChars" | "summaryMaxOutputTokens"
+	>
 	providerConfig?: { timeoutMs?: number; maxRetries?: number }
 }
 
@@ -147,6 +150,12 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	}
 	if (values?.["compaction.preserveRecentTokens"] !== undefined) {
 		compaction.preserveRecentTokens = values["compaction.preserveRecentTokens"]
+	}
+	if (values?.["compaction.summaryBlockChars"] !== undefined) {
+		compaction.summaryBlockChars = values["compaction.summaryBlockChars"]
+	}
+	if (values?.["compaction.summaryMaxTokens"] !== undefined) {
+		compaction.summaryMaxOutputTokens = values["compaction.summaryMaxTokens"]
 	}
 	if (Object.keys(compaction).length > 0) {
 		config.compaction = compaction

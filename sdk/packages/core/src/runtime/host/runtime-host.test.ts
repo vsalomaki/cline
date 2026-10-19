@@ -126,4 +126,25 @@ describe("splitCoreSessionConfig", () => {
 			problemsTimeoutMs: 500,
 		});
 	});
+
+	it("keeps the compaction limits in the serializable config", () => {
+		const compaction = {
+			enabled: true,
+			strategy: "agentic" as const,
+			preserveRecentTokens: 30_000,
+			triggerRatio: 0.8,
+			summaryBlockChars: 4_000,
+			summaryMaxOutputTokens: 12_000,
+		};
+		const split = splitCoreSessionConfig({
+			providerId: "anthropic",
+			modelId: "m",
+			systemPrompt: "",
+			enableTools: true,
+			enableSpawnAgent: false,
+			enableAgentTeams: false,
+			compaction,
+		});
+		expect(split.config.compaction).toEqual(compaction);
+	});
 });
