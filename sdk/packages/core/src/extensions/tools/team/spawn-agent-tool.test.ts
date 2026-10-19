@@ -378,3 +378,47 @@ describe("createSpawnAgentTool", () => {
 		);
 	});
 });
+
+describe("SubAgentProgress", () => {
+	it("counts tool calls and keeps the sub-agent's usage totals", async () => {
+		const { SubAgentProgress } = await import("./spawn-agent-tool");
+		const progress = new SubAgentProgress();
+
+		expect(
+			progress.apply({
+				type: "content_start",
+				contentType: "tool",
+				toolName: "read_files",
+				toolCallId: "t1",
+			}),
+		).toEqual({
+			toolCalls: 1,
+			latestToolCall: "read_files",
+			inputTokens: 0,
+			outputTokens: 0,
+		});
+		expect(
+			progress.apply({
+				type: "usage",
+				inputTokens: 10,
+				outputTokens: 5,
+				totalInputTokens: 30,
+				totalOutputTokens: 12,
+				totalCost: 0.01,
+			}),
+		).toEqual({
+			toolCalls: 1,
+			latestToolCall: "read_files",
+			inputTokens: 30,
+			outputTokens: 12,
+			totalCost: 0.01,
+		});
+		expect(
+			progress.apply({
+				type: "content_start",
+				contentType: "text",
+				text: "hi",
+			}),
+		).toBeUndefined();
+	});
+});

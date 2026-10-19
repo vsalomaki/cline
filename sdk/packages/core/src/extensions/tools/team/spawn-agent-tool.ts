@@ -127,6 +127,7 @@ export function createSpawnAgentTool(
 				? await config.createSubAgentTools(input, context)
 				: (config.subAgentTools ?? []);
 
+			const progress = new SubAgentProgress();
 			const subAgent = createDelegatedAgent({
 				kind: "subagent",
 				prompt: input.systemPrompt,
@@ -135,7 +136,13 @@ export function createSpawnAgentTool(
 				maxIterations: config.defaultMaxIterations,
 				parentAgentId: context.agentId,
 				abortSignal: context.signal,
-				onEvent: config.onSubAgentEvent,
+				onEvent: (event) => {
+					config.onSubAgentEvent?.(event);
+					const update = progress.apply(event);
+					if (update) {
+						context.emitUpdate?.(update);
+					}
+				},
 				hookErrorMode: config.hookErrorMode,
 				toolPolicies: config.toolPolicies,
 				requestToolApproval: config.requestToolApproval,
@@ -201,4 +208,44 @@ export function createSpawnAgentTool(
 		timeoutMs: 300000,
 		retryable: false,
 	});
+}
+
+export interface SubAgentProgressUpdate {
+	toolCalls: number;
+	latestToolCall?: string;
+	inputTokens: number;
+	outputTokens: number;
+	totalCost?: number;
+}
+
+/** Running totals a spawn_agent call reports as tool updates while its sub-agent works. */
+export class SubAgentProgress {
+	private current: SubAgentProgressUpdate = {
+		toolCalls: 0,
+		inputTokens: 0,
+		outputTokens: 0,
+	};
+
+	apply(event: AgentEvent): SubAgentProgressUpdate | undefined {
+		if (event.type === "content_start" && event.contentType === "tool") {
+			this.current = {
+				...this.current,
+				toolCalls: this.current.toolCalls + 1,
+				latestToolCall: event.toolName,
+			};
+			return this.current;
+		}
+		if (event.type === "usage") {
+			this.current = {
+				...this.current,
+				inputTokens: event.totalInputTokens,
+				outputTokens: event.totalOutputTokens,
+				...(event.totalCost !== undefined
+					? { totalCost: event.totalCost }
+					: {}),
+			};
+			return this.current;
+		}
+		return undefined;
+	}
 }
