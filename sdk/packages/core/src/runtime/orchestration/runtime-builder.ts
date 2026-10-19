@@ -18,6 +18,7 @@ import {
 	createUserInstructionConfigService,
 	type UserInstructionConfigService,
 } from "../../extensions/config";
+import { createDelegatedAgentPrepareTurn } from "../../extensions/context/compaction";
 import {
 	createDefaultMcpServerClientFactory,
 	createMcpTools,
@@ -703,6 +704,10 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			distinctId: input.distinctId,
 			sessionId: config.sessionId,
 			cwd: config.cwd,
+			mode: normalized.mode,
+			clineIdeName: config.extensionContext?.workspace?.ide,
+			clinePlatform:
+				config.extensionContext?.workspace?.platform ?? process.platform,
 			apiKey: config.apiKey ?? "",
 			baseUrl: config.baseUrl,
 			headers: config.headers,
@@ -762,6 +767,12 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 										)
 									: [],
 							hookErrorMode: config.hookErrorMode,
+							createPrepareTurn: (connection) =>
+								createDelegatedAgentPrepareTurn({
+									...config,
+									providerId: connection.providerId,
+									modelId: connection.modelId,
+								}),
 							onSubAgentEvent: input.onSubAgentEvent,
 							onSubAgentStart: input.onSubAgentStart,
 							onSubAgentEnd: input.onSubAgentEnd,

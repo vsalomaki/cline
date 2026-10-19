@@ -316,8 +316,12 @@ export {
 } from "./parse/string";
 export { formatHumanReadableDate, formatUptime } from "./parse/time";
 export { validateWithZod, zodToJsonSchema } from "./parse/zod";
-export type { ClineSystemPromptOptions } from "./prompt/cline";
+export type {
+	ClineSubAgentSystemPromptOptions,
+	ClineSystemPromptOptions,
+} from "./prompt/cline";
 export {
+	buildClineSubAgentSystemPrompt,
 	buildClineSystemPrompt,
 	MODE_TAG_INSTRUCTIONS,
 	PLAN_MODE_INSTRUCTIONS,

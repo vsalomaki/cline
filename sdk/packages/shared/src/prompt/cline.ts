@@ -2,6 +2,10 @@ import type { WorkspaceContext } from "../extensions/context";
 import { isClineProvider } from "../providers/utils";
 import type { WorkspaceInfo } from "../session/workspace";
 import { DEFAULT_CLINE_SYSTEM_PROMPTS } from "./system";
+import {
+	CLINE_SYSTEM_PROMPT_SUBAGENT,
+	SUBAGENT_PLAN_MODE_INSTRUCTIONS,
+} from "./system/subagent";
 
 const WORKSPACE_CONFIGURATION_MARKER = "# Workspace Configuration";
 
@@ -209,5 +213,56 @@ export function buildClineSystemPrompt(
 				: "",
 		)
 		.replace("{{CLINE_RULES}}", effectiveRules)
+		.trim();
+}
+
+export interface ClineSubAgentSystemPromptOptions {
+	/** The role the main agent wrote when it delegated the task. */
+	role: string;
+	ide?: string;
+	platform?: string;
+	workspaceRoot?: string;
+	workspaceName?: string;
+	metadata?: string;
+	/** The session's mode; only "plan" changes the prompt. */
+	mode?: string;
+	providerId?: string;
+}
+
+/**
+ * System prompt for a subagent: Cline's working rules and environment around
+ * the role the main agent wrote. Rules files reach subagents through the
+ * runtime's rule extensions, not through this prompt.
+ */
+export function buildClineSubAgentSystemPrompt(
+	options: ClineSubAgentSystemPromptOptions,
+): string {
+	const workspaceRoot = options.workspaceRoot?.trim() || "/";
+	const role = options.role.trim();
+	const isCline = isClineProvider(options.providerId || "");
+	// A function replacement keeps "$&" and similar sequences in the role literal.
+	return CLINE_SYSTEM_PROMPT_SUBAGENT.replace(
+		"{{ROLE}}",
+		() => role || "Complete the task you were given.",
+	)
+		.replace("{{PLATFORM_NAME}}", options.platform || "unknown")
+		.replace("{{CURRENT_DATE}}", new Date().toLocaleDateString())
+		.replace("{{IDE_NAME}}", options.ide || "Terminal Shell")
+		.replace("{{CWD}}", workspaceRoot)
+		.replace(
+			"{{MODE_INSTRUCTIONS}}",
+			options.mode === "plan" ? SUBAGENT_PLAN_MODE_INSTRUCTIONS : "",
+		)
+		.replace("{{CLINE_RULES}}", "")
+		.replace(
+			"{{CLINE_METADATA}}",
+			isCline && !role.includes(WORKSPACE_CONFIGURATION_MARKER)
+				? buildWorkspaceMetadata(
+						workspaceRoot,
+						options.workspaceName,
+						options.metadata,
+					)
+				: "",
+		)
 		.trim();
 }

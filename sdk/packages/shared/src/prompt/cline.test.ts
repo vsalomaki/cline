@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildClineSubAgentSystemPrompt,
 	buildClineSystemPrompt,
 	MODE_TAG_INSTRUCTIONS,
 	PLAN_MODE_INSTRUCTIONS,
@@ -181,5 +182,57 @@ describe("buildClineSystemPrompt mode instructions", () => {
 			overridePrompt: "You are a custom agent.",
 		});
 		expect(prompt).toBe("You are a custom agent.");
+	});
+});
+
+describe("buildClineSubAgentSystemPrompt", () => {
+	const options = {
+		role: "You review TypeScript changes.",
+		ide: "VS Code",
+		platform: "linux",
+		workspaceRoot: "/workspace/project",
+	};
+
+	it("wraps the main agent's role in Cline's rules and environment", () => {
+		const prompt = buildClineSubAgentSystemPrompt(options);
+
+		expect(prompt).toContain("<role>\nYou review TypeScript changes.\n</role>");
+		expect(prompt).toContain("Working Directory: /workspace/project");
+		expect(prompt).toContain("Platform: linux");
+		expect(prompt).toContain("IDE: VS Code");
+		expect(prompt).toContain("Your final answer goes to the main agent");
+		expect(prompt).not.toContain("{{");
+		expect(prompt).not.toContain("plan mode");
+	});
+
+	it("keeps replacement sequences in the role literal", () => {
+		const role = "Explain what $& and $' do in String.replace.";
+		expect(buildClineSubAgentSystemPrompt({ ...options, role })).toContain(
+			`<role>\n${role}\n</role>`,
+		);
+	});
+
+	it("keeps a plan-mode subagent to investigation", () => {
+		expect(
+			buildClineSubAgentSystemPrompt({ ...options, mode: "plan" }),
+		).toContain("The session is in plan mode: investigate only.");
+	});
+
+	it("adds workspace metadata only for the Cline provider", () => {
+		const metadata = "# Workspace Configuration\n{}";
+		expect(
+			buildClineSubAgentSystemPrompt({
+				...options,
+				metadata,
+				providerId: "cline",
+			}),
+		).toContain("# Workspace Configuration");
+		expect(
+			buildClineSubAgentSystemPrompt({
+				...options,
+				metadata,
+				providerId: "anthropic",
+			}),
+		).not.toContain("# Workspace Configuration");
 	});
 });

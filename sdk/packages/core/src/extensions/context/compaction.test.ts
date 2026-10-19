@@ -14,6 +14,7 @@ import { runBasicCompaction } from "./basic-compaction";
 import {
 	createCompactionStateAwarePrepareTurn,
 	createContextCompactionPrepareTurn,
+	createDelegatedAgentPrepareTurn,
 	createImportedHistoryCompactionPrepareTurn,
 	resolveCompactionTriggerRatio,
 } from "./compaction";
@@ -1160,6 +1161,59 @@ describe("createContextCompactionPrepareTurn", () => {
 		expect(budgets).toHaveLength(1);
 		expect(budgets[0]?.request.thresholdRatio).toBe(0.5);
 		expect(budgets[0]?.request.triggerTokens).toBe(500);
+	});
+
+	it("keeps a delegated agent's compaction state between its turns", async () => {
+		expect(
+			createDelegatedAgentPrepareTurn({
+				providerId: "anthropic",
+				modelId: "mock-model",
+				compaction: { enabled: false },
+			}),
+		).toBeUndefined();
+
+		const seen: LlmsProviders.Message[][] = [];
+		const summary: LlmsProviders.Message = { role: "user", content: "summary" };
+		const prepareTurn = createDelegatedAgentPrepareTurn({
+			providerId: "anthropic",
+			modelId: "mock-model",
+			compaction: {
+				enabled: true,
+				triggerRatio: 0.1,
+				compact: (context) => {
+					seen.push(context.messages);
+					return { messages: [summary, ...context.messages.slice(-1)] };
+				},
+			},
+		});
+		const turn = (messages: LlmsProviders.Message[]) =>
+			prepareTurn?.({
+				agentId: "sub-1",
+				conversationId: "conv-sub",
+				parentAgentId: "lead",
+				iteration: 1,
+				abortSignal: new AbortController().signal,
+				systemPrompt: "You are a subagent.",
+				tools: [],
+				messages,
+				apiMessages: messages,
+				model: {
+					id: "mock-model",
+					provider: "anthropic",
+					info: { id: "mock-model", maxInputTokens: 1_000 },
+				},
+			});
+		const history: LlmsProviders.Message[] = [
+			{ role: "user", content: "task" },
+			{ role: "assistant", content: "x".repeat(2_400) },
+			{ role: "user", content: "next" },
+		];
+
+		await turn(history);
+		await turn([...history, { role: "assistant", content: "y".repeat(2_400) }]);
+
+		expect(seen).toHaveLength(2);
+		expect(seen[1]?.[0]).toEqual(summary);
 	});
 
 	it("falls back to the default trigger ratio for out-of-range values", () => {

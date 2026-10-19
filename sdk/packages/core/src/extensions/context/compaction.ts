@@ -819,6 +819,28 @@ export function createImportedHistoryCompactionPrepareTurn(input: {
 	};
 }
 
+/**
+ * Compaction for a delegated agent's own context. Nothing persists a
+ * subagent's history, so its compaction state lives only as long as this
+ * function's result; create one per agent run.
+ */
+export function createDelegatedAgentPrepareTurn(
+	config: Parameters<typeof createContextCompactionPrepareTurn>[0],
+): ContextPipelinePrepareTurn | undefined {
+	const compact = createContextCompactionPrepareTurn(config);
+	if (!compact) {
+		return undefined;
+	}
+	let state: SessionCompactionState | undefined;
+	return createCompactionStateAwarePrepareTurn({
+		compact,
+		getState: () => state,
+		saveState: (next) => {
+			state = next;
+		},
+	});
+}
+
 export function createCompactionStateAwarePrepareTurn(input: {
 	compact?: ContextPipelinePrepareTurn;
 	getState?: () => SessionCompactionState | undefined;

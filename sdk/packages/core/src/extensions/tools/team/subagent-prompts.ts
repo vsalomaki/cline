@@ -1,4 +1,7 @@
-import { buildClineSystemPrompt } from "@cline/shared";
+import {
+	buildClineSubAgentSystemPrompt,
+	buildClineSystemPrompt,
+} from "@cline/shared";
 import type { DelegatedAgentRuntimeConfig } from "./delegated-agent";
 
 export function buildTeammateSystemPrompt(
@@ -25,17 +28,13 @@ export function buildSubAgentSystemPrompt(
 	prompt: string,
 	config: DelegatedAgentRuntimeConfig,
 ): string {
-	const trimmedPrompt = prompt.trim();
-	if (config.providerId.toLowerCase() !== "cline") {
-		return trimmedPrompt;
-	}
-
-	return buildClineSystemPrompt({
-		ide: config.clineIdeName || "Terminal",
-		workspaceRoot: config.cwd?.trim() || "/",
-		providerId: config.providerId,
-		overridePrompt: trimmedPrompt,
-		metadata: config.workspaceMetadata,
+	return buildClineSubAgentSystemPrompt({
+		role: prompt,
+		ide: config.clineIdeName?.trim() || undefined,
 		platform: config.clinePlatform,
+		workspaceRoot: config.cwd?.trim() || "/",
+		metadata: config.workspaceMetadata,
+		mode: config.mode,
+		providerId: config.providerId,
 	});
 }

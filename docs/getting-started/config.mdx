@@ -209,7 +209,9 @@ With read-before-write on, any successful `read_files` of a file counts, includi
 The review before finishing lists the files whose git status changed since the request started, plus the files `editor` and `apply_patch` wrote (which also covers files outside a git repository). It is asked once per request and costs one more model turn when files changed.
 
 Subagents never ask the user a question, and without nested subagents only the main agent
-starts them.
+starts them. Each subagent gets Cline's working rules and environment around the role the
+main agent wrote for it, and compacts its own context under the session's compaction
+settings.
 
 In the VS Code extension, these settings are under **Settings → Agent Limits → Tool calls**,
 and nested subagents under **Agent Limits → Subagents**.
