@@ -38,7 +38,8 @@ const TOOL_NAME_ALIASES = {
 		"terminal",
 	],
 	fetch_web_content: ["web_fetch", "webfetch", "fetch", "fetch_url"],
-	editor: ["edit"],
+	// Write-style tools create a file; on an existing file the editor asks for old_text.
+	editor: ["edit", "write", "write_file", "write_to_file", "create_file"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -48,7 +49,12 @@ const TOOL_NAME_ALIASES = {
 const ALIAS_INPUT_KEYS: Readonly<
 	Record<string, Readonly<Record<string, string>>>
 > = {
-	editor: { file_path: "path", old_string: "old_text", new_string: "new_text" },
+	editor: {
+		file_path: "path",
+		old_string: "old_text",
+		new_string: "new_text",
+		content: "new_text",
+	},
 };
 
 const CANONICAL_BY_ALIAS: ReadonlyMap<string, string> = new Map(
