@@ -350,6 +350,8 @@ export interface ClineSaySubagentStatus {
 	maxContextTokens: number
 	maxContextUsagePercentage: number
 	items: SubagentStatusItem[]
+	/** Set when the row is an agent-team teammate's run rather than a spawn_agent batch. */
+	teammate?: string
 }
 
 export type BrowserActionResult = {
@@ -411,7 +413,7 @@ export interface ClineCompactionInfo {
 }
 
 export interface ClineSubagentUsageInfo {
-	source: "subagents"
+	source: "subagents" | "teammates"
 	tokensIn: number
 	tokensOut: number
 	cacheWrites: number

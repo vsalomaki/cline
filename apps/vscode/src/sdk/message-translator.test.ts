@@ -3137,8 +3137,69 @@ describe("translateSessionEvent — agent team events", () => {
 			},
 			state,
 		)
-		expect(result.messages).toEqual([])
 		expect(result.turnComplete).toBeFalsy()
+		const row = JSON.parse(result.messages[0].text!)
+		expect(row).toMatchObject({ status: "completed", teammate: "reviewer" })
+		expect(result.messages[1].say).toBe("subagent_usage")
+	})
+
+	it("tracks a teammate's tool calls and usage on its own row and counts the usage", () => {
+		const state = new MessageTranslatorState()
+		const send = (event: object, teamRole?: "teammate") =>
+			translateSessionEvent(
+				{
+					type: "agent_event",
+					payload: {
+						sessionId: "s1",
+						...(teamRole ? { teamRole, teamAgentId: "reviewer" } : {}),
+						event: event as AgentEvent,
+					},
+				},
+				state,
+			)
+		send({
+			type: "content_start",
+			contentType: "tool",
+			toolName: "team_run_task",
+			toolCallId: "t1",
+			input: { agentId: "reviewer", task: "Review the diff" },
+		})
+		const tool = send(
+			{ type: "content_start", contentType: "tool", toolName: "read_files", toolCallId: "r1", input: {} },
+			"teammate",
+		)
+		const usage = send(
+			{
+				type: "usage",
+				inputTokens: 1200,
+				outputTokens: 300,
+				cacheReadTokens: 1000,
+				cost: 0.01,
+				totalInputTokens: 1200,
+				totalOutputTokens: 300,
+			},
+			"teammate",
+		)
+		const done = send({ type: "done", reason: "completed", text: "Looks good", iterations: 2 }, "teammate")
+
+		expect(tool.messages[0].ts).toBe(done.messages[0].ts)
+		const running = JSON.parse(usage.messages[0].text!)
+		expect(running).toMatchObject({
+			status: "running",
+			toolCalls: 1,
+			inputTokens: 1200,
+			outputTokens: 300,
+			teammate: "reviewer",
+		})
+		expect(running.items[0]).toMatchObject({ prompt: "Review the diff", latestToolCall: "read_files" })
+		expect(usage.usage).toMatchObject({ tokensIn: 200, cacheReads: 1000, tokensOut: 300, totalCost: 0.01 })
+		expect(JSON.parse(done.messages[1].text!)).toMatchObject({
+			source: "teammates",
+			tokensIn: 200,
+			cacheReads: 1000,
+			tokensOut: 300,
+			cost: 0.01,
+		})
 	})
 })
 
