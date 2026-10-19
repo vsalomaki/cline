@@ -83,6 +83,21 @@ export function resolveEffectiveMaxInputTokens(
 		: contextWindow * CONTEXT_WINDOW_INPUT_RATIO;
 }
 
+/**
+ * The window the auto-compaction trigger is a share of: the reported input
+ * limit, else the whole context window, since the trigger ratio is the margin.
+ */
+export function resolveCompactionWindowTokens(
+	input: Pick<ModelInfo, "maxInputTokens" | "contextWindow">,
+): number | undefined {
+	if (isPositiveFiniteNumber(input.maxInputTokens)) {
+		return resolveEffectiveMaxInputTokens(input);
+	}
+	return isPositiveFiniteNumber(input.contextWindow)
+		? input.contextWindow
+		: undefined;
+}
+
 export function truncateText(text: string, limit: number): string {
 	if (text.length <= limit) {
 		return text;

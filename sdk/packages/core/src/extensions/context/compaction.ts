@@ -34,7 +34,7 @@ import {
 	DEFAULT_TARGET_RATIO,
 	findLatestSummaryIndex,
 	MAX_INPUT_UNDERESTIMATE_FACTOR,
-	resolveEffectiveMaxInputTokens,
+	resolveCompactionWindowTokens,
 } from "./compaction-shared";
 
 export interface ContextPipelinePrepareTurnInput {
@@ -137,6 +137,62 @@ function insertHookContextAfterSummary(
 }
 
 const LONG_CONVERSATION_TARGET_RATIO = 0.5;
+/** Lowest provider-to-estimate ratio trusted; the estimator rarely overcounts by more. */
+const MIN_ESTIMATE_RATIO = 0.5;
+
+function clampRatio(value: number, min: number): number {
+	return Math.min(MAX_INPUT_UNDERESTIMATE_FACTOR, Math.max(min, value));
+}
+
+/**
+ * Per agent, compares the provider's input count with the estimate of the
+ * request that produced it. The ratio carries over to later runs, so a run's
+ * first request is measured in provider tokens too.
+ */
+function createEstimateCalibration() {
+	const byAgent = new Map<
+		string,
+		{ sentEstimate: number; pairedActual?: number; ratio?: number }
+	>();
+	return {
+		ratio(
+			agentId: string,
+			actualPrevious: number,
+			currentEstimate: number,
+		): number {
+			const entry = byAgent.get(agentId);
+			// An overflow retry reports the same count again; it belongs to the
+			// request before the one just recorded.
+			if (
+				entry &&
+				actualPrevious > 0 &&
+				actualPrevious !== entry.pairedActual
+			) {
+				entry.ratio = clampRatio(
+					actualPrevious / entry.sentEstimate,
+					MIN_ESTIMATE_RATIO,
+				);
+				entry.pairedActual = actualPrevious;
+			}
+			if (entry?.ratio !== undefined) {
+				return entry.ratio;
+			}
+			// Unpaired, a count larger than the current (larger) request's
+			// estimate still proves the estimator undercounts.
+			return actualPrevious > 0 && currentEstimate > 0
+				? clampRatio(actualPrevious / currentEstimate, 1)
+				: 1;
+		},
+		recordSent(agentId: string, estimate: number): void {
+			const entry = byAgent.get(agentId);
+			if (entry) {
+				entry.sentEstimate = estimate;
+			} else {
+				byAgent.set(agentId, { sentEstimate: estimate });
+			}
+		},
+	};
+}
 
 export function resolveCompactionTriggerRatio(
 	ratio: number | undefined,
@@ -340,6 +396,7 @@ export function createContextCompactionPrepareTurn(
 	}
 
 	const estimateMessageTokens = createTokenEstimator();
+	const calibration = createEstimateCalibration();
 	const strategy = userCompaction?.strategy ?? "agentic";
 	const triggerRatio = resolveCompactionTriggerRatio(
 		userCompaction.triggerRatio,
@@ -371,37 +428,27 @@ export function createContextCompactionPrepareTurn(
 			0,
 			requestInputTokens - apiMessageTokens,
 		);
-		const rawMaxInputTokens =
-			resolveEffectiveMaxInputTokens({
+		const windowTokens =
+			resolveCompactionWindowTokens({
 				maxInputTokens: context.model.info?.maxInputTokens,
 				contextWindow: context.model.info?.contextWindow,
 			}) ?? DEFAULT_MAX_INPUT_TOKENS;
-		// The char-based estimate under-counts dense content (disassembly, image
-		// dumps, minified sources). When the provider's actual count for the
-		// PREVIOUS request already exceeds our estimate for the (larger) current
-		// transcript, the estimator is demonstrably under-counting, so scale the
-		// whole budget down by that ratio. Scaling the budget rather than just the
-		// trigger keeps every downstream number — trigger, target and the
-		// projection's message costs — in the same estimate units while still
-		// corresponding to the provider's real limit; raising only the trigger
-		// would start a compaction that then retains too much and still overflows.
-		//
-		// Deliberately conservative: it never loosens the budget, engages only on
-		// direct evidence of under-counting, and is capped so a tiny estimate
-		// cannot collapse the budget.
 		const actualPreviousInputTokens =
 			typeof context.previousRequestInputTokens === "number" &&
 			context.previousRequestInputTokens > 0
 				? context.previousRequestInputTokens
 				: 0;
-		const underestimateFactor =
-			actualPreviousInputTokens > 0 && requestInputTokens > 0
-				? Math.min(
-						MAX_INPUT_UNDERESTIMATE_FACTOR,
-						Math.max(1, actualPreviousInputTokens / requestInputTokens),
-					)
-				: 1;
-		const maxInputTokens = rawMaxInputTokens / underestimateFactor;
+		// Provider tokens per estimated token. Dividing the window by it keeps
+		// trigger, target and message costs in estimate units while the trigger
+		// still fires at the configured share of the provider's real count.
+		const estimateRatio = calibration.ratio(
+			context.agentId,
+			actualPreviousInputTokens,
+			requestInputTokens,
+		);
+		const toProviderTokens = (estimate: number) =>
+			Math.round(estimate * estimateRatio);
+		const maxInputTokens = windowTokens / estimateRatio;
 		const requestTriggerTokens = maxInputTokens * triggerRatio;
 		const messageTriggerTokens = translateRequestBudgetToMessages(
 			requestTriggerTokens,
@@ -421,9 +468,9 @@ export function createContextCompactionPrepareTurn(
 			messageInputTokens,
 			requestOverheadTokens,
 			maxInputTokens,
-			rawMaxInputTokens,
+			windowTokens,
 			actualPreviousInputTokens,
-			underestimateFactor,
+			estimateRatio,
 			requestTriggerTokens,
 			messageTriggerTokens,
 			thresholdRatio: triggerRatio,
@@ -434,6 +481,7 @@ export function createContextCompactionPrepareTurn(
 			...summarizeToolResults(context.apiMessages),
 		});
 		if (effectiveMode === "auto" && !shouldCompact) {
+			calibration.recordSent(context.agentId, requestInputTokens);
 			return undefined;
 		}
 		let requestTargetTokens: number;
@@ -503,7 +551,7 @@ export function createContextCompactionPrepareTurn(
 			agentId: context.agentId,
 			conversationId: context.conversationId,
 			parentAgentId: context.parentAgentId,
-			tokensBefore: requestInputTokens,
+			tokensBefore: toProviderTokens(requestInputTokens),
 			strategy: telemetryStrategy,
 		};
 		await runCompactionHook(config.logger, "PreCompact", () =>
@@ -514,10 +562,10 @@ export function createContextCompactionPrepareTurn(
 			reason: statusReason,
 			phase: "started",
 			iteration: context.iteration,
-			triggerTokens: requestTriggerTokens,
-			targetTokens: requestTargetTokens,
-			maxInputTokens,
-			messageTargetTokens,
+			triggerTokens: toProviderTokens(requestTriggerTokens),
+			targetTokens: toProviderTokens(requestTargetTokens),
+			maxInputTokens: windowTokens,
+			messageTargetTokens: toProviderTokens(messageTargetTokens),
 		});
 
 		const beforeMessageCount = context.messages.length;
@@ -654,16 +702,20 @@ export function createContextCompactionPrepareTurn(
 			}
 		}
 
+		let sentRequestTokens = requestInputTokens;
 		if (result?.messages) {
 			const afterMessageTokens = result.messages.reduce(
 				(total: number, message) => total + estimateMessageTokens(message),
 				0,
 			);
 			const afterRequestTokens = requestOverheadTokens + afterMessageTokens;
+			sentRequestTokens = afterRequestTokens;
 			config.logger?.log("Context compaction completed", {
 				severity: "info",
 				strategy: executedStrategy,
 				maxInputTokens,
+				windowTokens,
+				estimateRatio,
 				messageInputTokens,
 				apiInputTokens: apiMessageTokens,
 				requestInputTokens,
@@ -683,11 +735,11 @@ export function createContextCompactionPrepareTurn(
 				reason: statusReason,
 				phase: "completed",
 				iteration: context.iteration,
-				tokensBefore: requestInputTokens,
-				tokensAfter: afterRequestTokens,
+				tokensBefore: toProviderTokens(requestInputTokens),
+				tokensAfter: toProviderTokens(afterRequestTokens),
 				messagesBefore: beforeMessageCount,
 				messagesAfter: result.messages.length,
-				maxInputTokens,
+				maxInputTokens: windowTokens,
 			});
 			captureCompactionExecuted(config.telemetry, {
 				ulid: telemetryUlid,
@@ -740,7 +792,7 @@ export function createContextCompactionPrepareTurn(
 				reason: statusReason,
 				phase: "skipped",
 				iteration: context.iteration,
-				maxInputTokens,
+				maxInputTokens: windowTokens,
 			});
 			captureCompactionSkipped(config.telemetry, {
 				ulid: telemetryUlid,
@@ -758,6 +810,7 @@ export function createContextCompactionPrepareTurn(
 			});
 		}
 
+		calibration.recordSent(context.agentId, sentRequestTokens);
 		return result;
 	};
 }

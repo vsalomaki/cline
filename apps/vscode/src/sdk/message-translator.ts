@@ -1315,6 +1315,7 @@ export function parseCompactionNoticeMetadata(metadata: Record<string, unknown> 
 		tokensAfter: asFiniteNumber(metadata.tokensAfter),
 		messagesBefore: asFiniteNumber(metadata.messagesBefore),
 		messagesAfter: asFiniteNumber(metadata.messagesAfter),
+		maxInputTokens: asFiniteNumber(metadata.maxInputTokens),
 	}
 }
 

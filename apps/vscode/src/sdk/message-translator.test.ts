@@ -2105,6 +2105,7 @@ describe("translateSessionEvent — agent_event notice", () => {
 				tokensAfter: 40_000,
 				messagesBefore: 80,
 				messagesAfter: 12,
+				maxInputTokens: 256_000,
 			}),
 			state,
 		).messages
@@ -2119,6 +2120,7 @@ describe("translateSessionEvent — agent_event notice", () => {
 			tokensAfter: 40_000,
 			messagesBefore: 80,
 			messagesAfter: 12,
+			maxInputTokens: 256_000,
 		})
 	})
 
