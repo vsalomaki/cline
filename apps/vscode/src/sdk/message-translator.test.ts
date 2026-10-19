@@ -3122,6 +3122,111 @@ describe("translateSessionEvent — run_commands bare array/string input (ENG-18
 // S6-40: skills tool renders skill name (SDK input: { skill: "name" })
 // ---------------------------------------------------------------------------
 
+describe("translateSessionEvent — agent team events", () => {
+	it("keeps a teammate's events out of the lead's chat and turn", () => {
+		const state = new MessageTranslatorState()
+		const result = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "s1",
+					teamRole: "teammate",
+					teamAgentId: "reviewer",
+					event: { type: "done", reason: "completed", text: "Reviewed", iterations: 1 } as AgentEvent,
+				},
+			},
+			state,
+		)
+		expect(result.turnComplete).toBeFalsy()
+		const row = JSON.parse(result.messages[0].text!)
+		expect(row).toMatchObject({ status: "completed", teammate: "reviewer" })
+		expect(result.messages[1].say).toBe("subagent_usage")
+	})
+
+	it("tracks a teammate's tool calls and usage on its own row and counts the usage", () => {
+		const state = new MessageTranslatorState()
+		const send = (event: object, teamRole?: "teammate") =>
+			translateSessionEvent(
+				{
+					type: "agent_event",
+					payload: {
+						sessionId: "s1",
+						...(teamRole ? { teamRole, teamAgentId: "reviewer" } : {}),
+						event: event as AgentEvent,
+					},
+				},
+				state,
+			)
+		send({
+			type: "content_start",
+			contentType: "tool",
+			toolName: "team_run_task",
+			toolCallId: "t1",
+			input: { agentId: "reviewer", task: "Review the diff" },
+		})
+		const tool = send(
+			{ type: "content_start", contentType: "tool", toolName: "read_files", toolCallId: "r1", input: {} },
+			"teammate",
+		)
+		const usage = send(
+			{
+				type: "usage",
+				inputTokens: 1200,
+				outputTokens: 300,
+				cacheReadTokens: 1000,
+				cost: 0.01,
+				totalInputTokens: 1200,
+				totalOutputTokens: 300,
+			},
+			"teammate",
+		)
+		const done = send({ type: "done", reason: "completed", text: "Looks good", iterations: 2 }, "teammate")
+
+		expect(tool.messages[0].ts).toBe(done.messages[0].ts)
+		const running = JSON.parse(usage.messages[0].text!)
+		expect(running).toMatchObject({
+			status: "running",
+			toolCalls: 1,
+			inputTokens: 1200,
+			outputTokens: 300,
+			teammate: "reviewer",
+		})
+		expect(running.items[0]).toMatchObject({ prompt: "Review the diff", latestToolCall: "read_files" })
+		expect(usage.usage).toMatchObject({ tokensIn: 200, cacheReads: 1000, tokensOut: 300, totalCost: 0.01 })
+		expect(JSON.parse(done.messages[1].text!)).toMatchObject({
+			source: "teammates",
+			tokensIn: 200,
+			cacheReads: 1000,
+			tokensOut: 300,
+			cost: 0.01,
+		})
+	})
+})
+
+describe("sdkToolToClineSayTool — team tools", () => {
+	it("shows the action, the teammate and the task", () => {
+		const state = new MessageTranslatorState()
+		const result = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "s1",
+					event: {
+						type: "content_start",
+						contentType: "tool",
+						toolName: "team_run_task",
+						toolCallId: "c1",
+						input: { agentId: "reviewer", task: "Review the diff", runMode: "async" },
+					} as AgentEvent,
+				},
+			},
+			state,
+		)
+		const tool = JSON.parse(result.messages[0].text!)
+		expect(tool).toEqual({ tool: "teamAction", path: "Run task", content: "reviewer (async)\nReview the diff" })
+	})
+})
+
 describe("sdkToolToClineSayTool — fetch_web_content and skills (S6-39, S6-40)", () => {
 	it("S6-39: fetch_web_content extracts URL from SDK requests array", () => {
 		const state = new MessageTranslatorState()

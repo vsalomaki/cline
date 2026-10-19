@@ -1,4 +1,5 @@
 import { setCompactionStrategyGlobally, setModelToolEnabledGlobally } from "@cline/core"
+import { resolveDelegationMode } from "@shared/Delegation"
 import { Empty } from "@shared/proto/cline/common"
 import { PlanActMode, McpDisplayMode as ProtoMcpDisplayMode, UpdateSettingsRequest } from "@shared/proto/cline/state"
 import { convertProtoToApiProvider } from "@shared/proto-conversions/models/api-configuration-conversion"
@@ -196,16 +197,24 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			controller.invalidateTaskHistoryCache()
 		}
 
-		// Update subagents setting
-		if (request.subagentsEnabled !== undefined) {
-			const wasEnabled = controller.stateManager.getGlobalSettingsKey("subagentsEnabled") ?? false
-			const isEnabled = !!request.subagentsEnabled
-			controller.stateManager.setGlobalState("subagentsEnabled", isEnabled)
-			controller.handleSubagentsSettingChanged(wasEnabled, isEnabled)
+		if (request.subagentsEnabled !== undefined || request.agentTeamsEnabled !== undefined) {
+			const readDelegation = () =>
+				resolveDelegationMode({
+					subagentsEnabled: controller.stateManager.getGlobalSettingsKey("subagentsEnabled"),
+					agentTeamsEnabled: controller.stateManager.getGlobalSettingsKey("agentTeamsEnabled"),
+				})
+			const wasSubagentsEnabled = controller.stateManager.getGlobalSettingsKey("subagentsEnabled") ?? false
+			const previous = readDelegation()
+			if (request.subagentsEnabled !== undefined) {
+				controller.stateManager.setGlobalState("subagentsEnabled", !!request.subagentsEnabled)
+			}
+			if (request.agentTeamsEnabled !== undefined) {
+				controller.stateManager.setGlobalState("agentTeamsEnabled", !!request.agentTeamsEnabled)
+			}
+			controller.handleDelegationSettingChanged(previous, readDelegation())
 
-			// Capture telemetry when setting changes
-			if (wasEnabled !== isEnabled) {
-				telemetryService.captureSubagentToggle(isEnabled)
+			if (request.subagentsEnabled !== undefined && wasSubagentsEnabled !== !!request.subagentsEnabled) {
+				telemetryService.captureSubagentToggle(!!request.subagentsEnabled)
 			}
 		}
 

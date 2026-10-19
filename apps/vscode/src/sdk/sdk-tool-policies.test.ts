@@ -67,4 +67,19 @@ describe("isToolAutoApproved", () => {
 			expect(isToolAutoApproved("subagent_code_reviewer", offSettings)).toBe(false)
 		}
 	})
+
+	it("asks before a team tool starts a teammate or a task, and lets the others run", () => {
+		const settings = {
+			...DEFAULT_AUTO_APPROVAL_SETTINGS,
+			actions: { ...DEFAULT_AUTO_APPROVAL_SETTINGS.actions, readFiles: false },
+		}
+		const policies = buildToolPolicies(settings)
+
+		for (const tool of ["team_spawn_teammate", "team_run_task"]) {
+			expect(policies[tool]).toEqual({ autoApprove: false })
+			expect(isToolAutoApproved(tool, settings)).toBe(false)
+		}
+		expect(policies.team_status).toBeUndefined()
+		expect(policies.team_send_message).toBeUndefined()
+	})
 })

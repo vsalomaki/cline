@@ -30,6 +30,7 @@ type SubagentRowStatus = "pending" | "running" | "completed" | "failed"
 interface SubagentRowData {
 	status: SubagentRowStatus
 	items: SubagentStatusItem[]
+	teammate?: string
 }
 
 interface SubagentPromptTextProps {
@@ -113,6 +114,7 @@ function parseSubagentRowData(message: ClineMessage): SubagentRowData | null {
 		return {
 			status: parsed.status,
 			items: parsed.items,
+			teammate: parsed.teammate,
 		}
 	} catch {
 		return null
@@ -189,15 +191,18 @@ export default function SubagentStatusRow({ message, isLast, lastModifiedMessage
 	const resumedBeforeNextVisibleMessage =
 		isLast && lastModifiedMessage?.say === "api_req_started" && (lastModifiedMessage.ts ?? 0) > message.ts
 
+	const resumePrompted = lastModifiedMessage?.ask === "resume_task" || lastModifiedMessage?.ask === "resume_completed_task"
+	// A teammate keeps running while the lead's later rows arrive, so only a resume prompt means it was cut off.
 	const wasCancelled =
 		data.status === "running" &&
-		(!isLast ||
-			lastModifiedMessage?.ask === "resume_task" ||
-			lastModifiedMessage?.ask === "resume_completed_task" ||
-			resumedBeforeNextVisibleMessage)
+		(data.teammate ? resumePrompted : !isLast || resumePrompted || resumedBeforeNextVisibleMessage)
 
 	const singular = data.items.length === 1
-	const title = singular ? "Cline wants to use a subagent:" : "Cline wants to use subagents:"
+	const title = data.teammate
+		? `Teammate ${data.teammate}:`
+		: singular
+			? "Cline wants to use a subagent:"
+			: "Cline wants to use subagents:"
 	const isPromptConstructionRow = message.ask === "use_subagents" || message.say === "use_subagents"
 	const toggleItem = (index: number) => {
 		setExpandedItems((prev) => ({

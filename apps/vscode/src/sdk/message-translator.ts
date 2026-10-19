@@ -214,6 +214,118 @@ export class MessageTranslatorState {
 		return this.minter.nextId()
 	}
 
+	/** The task the lead last gave each teammate, to label that teammate's status row. */
+	private teammateTasks = new Map<string, string>()
+	/** Each teammate's current run, shown as one status row updated in place. */
+	private teammateRuns = new Map<string, { ts: number; item: SubagentStatusItem; usage: NormalizedUsage }>()
+
+	recordTeammateTask(agentId: string, task: string): void {
+		this.teammateTasks.set(agentId, task)
+	}
+
+	/** A teammate event becomes an update of that teammate's status row; its usage counts toward the task. */
+	applyTeammateEvent(agentId: string, event: AgentEvent): { messages: ClineMessage[]; usage?: NormalizedUsage } {
+		let run = this.teammateRuns.get(agentId)
+		if (!run) {
+			run = {
+				ts: this.nextTs(),
+				item: {
+					index: 0,
+					prompt: this.teammateTasks.get(agentId) ?? "",
+					status: "running",
+					toolCalls: 0,
+					inputTokens: 0,
+					outputTokens: 0,
+					totalCost: 0,
+					contextTokens: 0,
+					contextWindow: 0,
+					contextUsagePercentage: 0,
+				},
+				usage: { tokensIn: 0, tokensOut: 0, cacheWrites: 0, cacheReads: 0, totalCost: 0 },
+			}
+			this.teammateRuns.set(agentId, run)
+		}
+		const { item } = run
+		let usage: NormalizedUsage | undefined
+		switch (event.type) {
+			case "content_start":
+				if (event.contentType !== "tool") {
+					return { messages: [] }
+				}
+				item.toolCalls += 1
+				item.latestToolCall = event.toolName
+				break
+			case "usage":
+				item.inputTokens += event.inputTokens
+				item.outputTokens += event.outputTokens
+				item.totalCost += event.cost ?? 0
+				item.contextTokens = event.inputTokens + event.outputTokens
+				usage = normalizeUsageEvent(event)
+				run.usage = {
+					tokensIn: run.usage.tokensIn + usage.tokensIn,
+					tokensOut: run.usage.tokensOut + usage.tokensOut,
+					cacheWrites: (run.usage.cacheWrites ?? 0) + (usage.cacheWrites ?? 0),
+					cacheReads: (run.usage.cacheReads ?? 0) + (usage.cacheReads ?? 0),
+					totalCost: (run.usage.totalCost ?? 0) + (usage.totalCost ?? 0),
+				}
+				break
+			case "done":
+				item.status = event.reason === "completed" ? "completed" : "failed"
+				item.result = event.text
+				if (event.reason !== "completed") {
+					item.error = event.reason
+				}
+				break
+			case "error":
+				if (event.recoverable) {
+					return { messages: [] }
+				}
+				item.status = "failed"
+				item.error = event.error.message
+				break
+			default:
+				return { messages: [] }
+		}
+
+		const finished = item.status !== "running"
+		const status: ClineSaySubagentStatus = {
+			status: item.status === "completed" ? "completed" : item.status === "failed" ? "failed" : "running",
+			total: 1,
+			completed: finished ? 1 : 0,
+			successes: item.status === "completed" ? 1 : 0,
+			failures: item.status === "failed" ? 1 : 0,
+			toolCalls: item.toolCalls,
+			inputTokens: item.inputTokens,
+			outputTokens: item.outputTokens,
+			contextWindow: 0,
+			maxContextTokens: item.contextTokens,
+			maxContextUsagePercentage: 0,
+			items: [{ ...item }],
+			teammate: agentId,
+		}
+		const messages: ClineMessage[] = [
+			{ ts: run.ts, type: "say", say: "subagent" as ClineSay, text: JSON.stringify(status), partial: !finished },
+		]
+		if (finished) {
+			this.teammateRuns.delete(agentId)
+			messages.push({
+				ts: this.nextTs(),
+				type: "say",
+				say: "subagent_usage" as ClineSay,
+				text: JSON.stringify({
+					source: "teammates",
+					tokensIn: run.usage.tokensIn,
+					tokensOut: run.usage.tokensOut,
+					cacheWrites: run.usage.cacheWrites ?? 0,
+					cacheReads: run.usage.cacheReads ?? 0,
+					cost: run.usage.totalCost ?? 0,
+				} satisfies ClineSubagentUsageInfo),
+				partial: false,
+			})
+		}
+		return { messages, usage }
+	}
+
 	/** Mint and remember the ts of an in-flight compaction divider. */
 	beginCompaction(): number {
 		this.openCompactionTs = this.nextTs()
@@ -903,6 +1015,9 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 		}
 
 		default: {
+			if (toolName.startsWith("team_")) {
+				return describeTeamTool(toolName, parsedInput)
+			}
 			// MCP tools and unknown tools — pass through with the raw tool name.
 			const filePath =
 				getStringField(parsedInput, "path") ??
@@ -914,6 +1029,24 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 				path: filePath,
 			}
 		}
+	}
+}
+
+/** A team tool row: the action as the title, then who it targets and what it says. */
+function describeTeamTool(toolName: string, input: Record<string, unknown> | undefined): ClineSayTool {
+	const action = toolName.slice("team_".length).replaceAll("_", " ")
+	const target = getStringField(input, "agentId") ?? getStringField(input, "toAgentId")
+	const runMode = getStringField(input, "runMode")
+	const text =
+		getStringField(input, "task") ??
+		getStringField(input, "rolePrompt") ??
+		getStringField(input, "subject") ??
+		getStringField(input, "title")
+	const details = [target ? `${target}${runMode ? ` (${runMode})` : ""}` : undefined, text].filter(Boolean)
+	return {
+		tool: "teamAction",
+		path: action.charAt(0).toUpperCase() + action.slice(1),
+		...(details.length > 0 ? { content: details.join("\n") } : {}),
 	}
 }
 
@@ -2145,8 +2278,29 @@ export function translateSessionEvent(event: CoreSessionEvent, state: MessageTra
 			// RuntimeEventAdapter output does not, so while spawn_agent calls are in
 			// flight we also suppress every non-spawn_agent event. This preserves the
 			// parent spawn_agent status updates while hiding sub-agent internals.
+			// Teammates run in the background beside the lead. Their events update
+			// their own status row; in the lead's stream they would corrupt its rows,
+			// and their "done" would end the lead's turn.
+			if (event.payload.teamRole === "teammate") {
+				const teammate = state.applyTeammateEvent(event.payload.teamAgentId ?? "teammate", agentEvent)
+				result.messages.push(...teammate.messages)
+				result.usage = teammate.usage
+				break
+			}
 			if (agentEvent.parentAgentId || (state.hasRunningSpawnAgents() && !isSpawnAgentToolEvent)) {
 				break
+			}
+			if (
+				agentEvent.type === "content_start" &&
+				agentEvent.contentType === "tool" &&
+				agentEvent.toolName === "team_run_task"
+			) {
+				const input = parseToolInput(agentEvent.input)
+				const agentId = getStringField(input, "agentId")
+				const task = getStringField(input, "task")
+				if (agentId && task) {
+					state.recordTeammateTask(agentId, task)
+				}
 			}
 
 			// Agent events contain structured content (text, reasoning, tools)

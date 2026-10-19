@@ -28,6 +28,7 @@ import type { ChatContent } from "@shared/ChatContent"
 import { CLINE_ACCOUNT_AUTH_ERROR_MESSAGE } from "@shared/ClineAccount"
 import { CLOUD_CREATION_UNCONFIRMED_ERROR_CODE, CLOUD_SESSION_MODE, isCloudSessionId } from "@shared/cloud/cloud-sessions"
 import { mentionRegexGlobal } from "@shared/context-mentions"
+import type { DelegationMode } from "@shared/Delegation"
 import type { ClineApiReqInfo, ClineMessage, ExtensionState } from "@shared/ExtensionMessage"
 import type { HistoryItem } from "@shared/HistoryItem"
 import { DeleteAllTaskHistoryCount, type GetTaskHistoryRequest, TaskHistoryArray, TaskResponse } from "@shared/proto/cline/task"
@@ -843,8 +844,8 @@ export class Controller {
 		this.sessionConfigChanges.handleCheckpointsSettingChanged(previous, next)
 	}
 
-	handleSubagentsSettingChanged(previous: boolean, next: boolean): void {
-		this.sessionConfigChanges.handleSubagentsSettingChanged(previous, next)
+	handleDelegationSettingChanged(previous: DelegationMode, next: DelegationMode): void {
+		this.sessionConfigChanges.handleDelegationSettingChanged(previous, next)
 	}
 
 	handleCommandTimeoutsChanged(): void {

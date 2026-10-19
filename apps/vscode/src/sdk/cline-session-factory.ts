@@ -30,6 +30,7 @@ import {
 import { buildClineSystemPrompt, isClineProvider } from "@cline/shared"
 import type { ApiConfiguration } from "@shared/api"
 import { ClineClient } from "@shared/cline"
+import { resolveDelegationMode } from "@shared/Delegation"
 import type { HistoryItem } from "@shared/HistoryItem"
 import { DEFAULT_LANGUAGE_SETTINGS, getLanguageKey, type LanguageDisplay } from "@shared/Languages"
 import { toLegacyApiProvider } from "@shared/model-catalog/provider-helpers"
@@ -1110,7 +1111,10 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	const globalUseAutoCondense = stateManager.getGlobalSettingsKey("useAutoCondense") ?? true
 	const compactionStrategy = readCompactionStrategyGlobally()
 	const enableCheckpoints = stateManager.getGlobalSettingsKey("enableCheckpointsSetting") ?? true
-	const globalSubagentsEnabled = stateManager.getGlobalSettingsKey("subagentsEnabled") ?? false
+	const delegation = resolveDelegationMode({
+		subagentsEnabled: input.taskSettings?.subagentsEnabled ?? stateManager.getGlobalSettingsKey("subagentsEnabled"),
+		agentTeamsEnabled: input.taskSettings?.agentTeamsEnabled ?? stateManager.getGlobalSettingsKey("agentTeamsEnabled"),
+	})
 	const useAutoCondense = input.taskSettings?.useAutoCondense ?? globalUseAutoCondense
 	const hookEngine = readHookEngine(stateManager)
 	const {
@@ -1196,8 +1200,8 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 		checkpoint: {
 			enabled: enableCheckpoints,
 		},
-		enableSpawnAgent: input.taskSettings?.subagentsEnabled ?? globalSubagentsEnabled,
-		enableAgentTeams: false,
+		enableSpawnAgent: delegation !== "off",
+		enableAgentTeams: delegation === "teams",
 		...(useAutoCondense
 			? {
 					compaction: {
