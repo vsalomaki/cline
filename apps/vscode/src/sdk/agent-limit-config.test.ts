@@ -49,6 +49,7 @@ describe("AGENT_LIMIT_DEFINITIONS", () => {
 		expect(byId.get("api.parallelToolCalls")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.parallelToolCalls })
 		expect(byId.get("session.readBeforeWrite")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.readBeforeWrite })
 		expect(byId.get("session.reviewBeforeFinish")).toMatchObject({ default: 1, envVar: TOOL_CALL_ENV.reviewBeforeFinish })
+		expect(byId.get("session.nestedSubagents")).toMatchObject({ default: 0, envVar: TOOL_CALL_ENV.nestedSubagents })
 	})
 
 	it("matches the SDK's code-intelligence defaults and env var names", async () => {
@@ -124,6 +125,7 @@ describe("buildAgentLimitSessionConfig", () => {
 		expect(buildAgentLimitSessionConfig({ "api.parallelToolCalls": 1 })).toEqual({ parallelToolCalls: true })
 		expect(buildAgentLimitSessionConfig({ "session.readBeforeWrite": 0 })).toEqual({ readBeforeWrite: false })
 		expect(buildAgentLimitSessionConfig({ "session.reviewBeforeFinish": 0 })).toEqual({ reviewBeforeFinish: false })
+		expect(buildAgentLimitSessionConfig({ "session.nestedSubagents": 1 })).toEqual({ nestedSubagents: true })
 	})
 
 	it("maps the code-intelligence tool switch", () => {

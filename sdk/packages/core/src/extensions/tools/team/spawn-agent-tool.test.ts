@@ -396,12 +396,14 @@ describe("SubAgentProgress", () => {
 			latestToolCall: "read_files",
 			inputTokens: 0,
 			outputTokens: 0,
+			contextTokens: 0,
 		});
 		expect(
 			progress.apply({
 				type: "usage",
 				inputTokens: 10,
 				outputTokens: 5,
+				cacheReadTokens: 100,
 				totalInputTokens: 30,
 				totalOutputTokens: 12,
 				totalCost: 0.01,
@@ -411,6 +413,7 @@ describe("SubAgentProgress", () => {
 			latestToolCall: "read_files",
 			inputTokens: 30,
 			outputTokens: 12,
+			contextTokens: 15,
 			totalCost: 0.01,
 		});
 		expect(

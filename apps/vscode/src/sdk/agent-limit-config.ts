@@ -41,6 +41,7 @@ export type AgentLimitSessionConfig = Pick<
 	| "parallelToolCalls"
 	| "readBeforeWrite"
 	| "reviewBeforeFinish"
+	| "nestedSubagents"
 	| "codeIntelligenceTool"
 	| "problemsAfterEdit"
 	| "problemsTimeoutMs"
@@ -110,6 +111,9 @@ export function buildAgentLimitSessionConfig(values: AgentLimitValues | undefine
 	}
 	if (values?.["session.reviewBeforeFinish"] !== undefined) {
 		config.reviewBeforeFinish = values["session.reviewBeforeFinish"] !== 0
+	}
+	if (values?.["session.nestedSubagents"] !== undefined) {
+		config.nestedSubagents = values["session.nestedSubagents"] !== 0
 	}
 	if (values?.["session.codeIntelligenceTool"] !== undefined) {
 		config.codeIntelligenceTool = values["session.codeIntelligenceTool"] !== 0
@@ -203,6 +207,7 @@ export function getAgentLimitsState(
 	effective["api.parallelToolCalls"] = toolCalls.parallelToolCalls ? 1 : 0
 	effective["session.readBeforeWrite"] = toolCalls.readBeforeWrite ? 1 : 0
 	effective["session.reviewBeforeFinish"] = toolCalls.reviewBeforeFinish ? 1 : 0
+	effective["session.nestedSubagents"] = toolCalls.nestedSubagents ? 1 : 0
 	if (toolCallEnvSources.maxParallelToolCalls) {
 		envOverrides["session.maxParallelToolCalls"] = toolCallEnvSources.maxParallelToolCalls
 	}
@@ -214,6 +219,9 @@ export function getAgentLimitsState(
 	}
 	if (toolCallEnvSources.reviewBeforeFinish) {
 		envOverrides["session.reviewBeforeFinish"] = toolCallEnvSources.reviewBeforeFinish
+	}
+	if (toolCallEnvSources.nestedSubagents) {
+		envOverrides["session.nestedSubagents"] = toolCallEnvSources.nestedSubagents
 	}
 	effective["session.codeIntelligenceTool"] = codeIntelligence.codeIntelligenceTool ? 1 : 0
 	if (codeIntelligenceEnvSources.codeIntelligenceTool) {

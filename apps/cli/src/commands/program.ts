@@ -93,6 +93,14 @@ export function addRootOptions(cmd: Command): Command {
 				"Let the agent report without the review",
 			)
 			.option(
+				"--nested-subagents",
+				"Let subagents start subagents of their own, one level deeper",
+			)
+			.option(
+				"--no-nested-subagents",
+				"Only the main agent starts subagents (default)",
+			)
+			.option(
 				"--language-servers",
 				"Start language servers for the code_intelligence tool and problems after edits (default)",
 			)
@@ -280,6 +288,9 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.reviewBeforeFinish === "boolean") {
 		result.reviewBeforeFinish = opts.reviewBeforeFinish;
+	}
+	if (typeof opts.nestedSubagents === "boolean") {
+		result.nestedSubagents = opts.nestedSubagents;
 	}
 	if (typeof opts.languageServers === "boolean") {
 		result.languageServers = opts.languageServers;

@@ -20,6 +20,7 @@ import {
 	captureAgentCreated,
 	captureSubagentExecution,
 } from "../../../services/telemetry/core-events";
+import { resolveToolCallSettings } from "../../../settings/tool-calls";
 import type { CoreSessionConfig } from "../../../types/config";
 import type { ActiveSession } from "../../../types/session";
 
@@ -127,6 +128,7 @@ export function createSessionSpawnTool(
 	config: CoreSessionConfig,
 	rootSessionId: string,
 	toolExecutors?: Partial<ToolExecutors>,
+	depth = 0,
 ): AgentTool {
 	const lifecycle = createSessionSubAgentLifecycleCallbacks(
 		deps,
@@ -141,7 +143,7 @@ export function createSessionSpawnTool(
 							cwd: config.cwd,
 							telemetry: config.telemetry,
 							...ToolPresets[resolveToolPresetName({ mode: config.mode })],
-							// Subagents run in parallel and report back; only the lead asks the user.
+							// Subagents run in parallel and report back; only the lead asks the user or delegates.
 							enableAskQuestion: false,
 							executors: toolExecutors,
 						},
@@ -149,9 +151,9 @@ export function createSessionSpawnTool(
 					),
 				)
 			: [];
-		if (config.enableSpawnAgent) {
+		if (depth === 0 && resolveToolCallSettings(config).nestedSubagents) {
 			tools.push(
-				createSessionSpawnTool(deps, config, rootSessionId, toolExecutors),
+				createSessionSpawnTool(deps, config, rootSessionId, toolExecutors, 1),
 			);
 		}
 		return filterDisabledTools(tools);

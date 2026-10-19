@@ -101,6 +101,7 @@ export const GlobalSettingsSchema = z
 		parallelToolCalls: z.boolean().optional().catch(undefined),
 		readBeforeWrite: z.boolean().optional().catch(undefined),
 		reviewBeforeFinish: z.boolean().optional().catch(undefined),
+		nestedSubagents: z.boolean().optional().catch(undefined),
 		languageServers: LanguageServerSettingsSchema.optional().catch(undefined),
 		codeIntelligenceTool: z.boolean().optional().catch(undefined),
 		problemsAfterEdit: z
@@ -132,6 +133,7 @@ export const GlobalSettingsSchema = z
 			parallelToolCalls?: boolean;
 			readBeforeWrite?: boolean;
 			reviewBeforeFinish?: boolean;
+			nestedSubagents?: boolean;
 			languageServers?: LanguageServerSettings;
 			codeIntelligenceTool?: boolean;
 			problemsAfterEdit?: ProblemsAfterEditLevel;
@@ -168,6 +170,9 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.reviewBeforeFinish !== undefined) {
 			normalized.reviewBeforeFinish = settings.reviewBeforeFinish;
+		}
+		if (settings.nestedSubagents !== undefined) {
+			normalized.nestedSubagents = settings.nestedSubagents;
 		}
 		if (settings.languageServers !== undefined) {
 			normalized.languageServers = settings.languageServers;

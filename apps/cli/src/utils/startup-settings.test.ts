@@ -6,6 +6,7 @@ import {
 	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
+	resolveStartupNestedSubagents,
 	resolveStartupParallelToolCalls,
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
@@ -282,5 +283,23 @@ describe("language-server startup settings", () => {
 				makeSettings({ problemsTimeoutMs: 5000 }),
 			),
 		).toBe(5000);
+	});
+});
+
+describe("resolveStartupNestedSubagents", () => {
+	it("prefers the flag over the persisted value and leaves unset to Core", () => {
+		expect(resolveStartupNestedSubagents({}, makeSettings())).toBeUndefined();
+		expect(
+			resolveStartupNestedSubagents(
+				{ nestedSubagents: false },
+				makeSettings({ nestedSubagents: true }),
+			),
+		).toBe(false);
+		expect(
+			resolveStartupNestedSubagents(
+				{},
+				makeSettings({ nestedSubagents: true }),
+			),
+		).toBe(true);
 	});
 });

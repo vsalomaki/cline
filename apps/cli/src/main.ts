@@ -57,6 +57,7 @@ import {
 	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
 	resolveStartupMode,
+	resolveStartupNestedSubagents,
 	resolveStartupParallelToolCalls,
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
@@ -938,6 +939,10 @@ export async function runCli(): Promise<void> {
 		args,
 		persistedGlobalSettings,
 	);
+	const effectiveNestedSubagents = resolveStartupNestedSubagents(
+		args,
+		persistedGlobalSettings,
+	);
 	const effectiveLanguageServers = resolveStartupLanguageServers(
 		args,
 		persistedGlobalSettings,
@@ -1133,6 +1138,7 @@ export async function runCli(): Promise<void> {
 			parallelToolCalls: effectiveParallelToolCalls,
 			readBeforeWrite: effectiveReadBeforeWrite,
 			reviewBeforeFinish: effectiveReviewBeforeFinish,
+			nestedSubagents: effectiveNestedSubagents,
 			languageServers: effectiveLanguageServers,
 			codeIntelligenceTool: effectiveCodeIntelligenceTool,
 			problemsAfterEdit: effectiveProblemsAfterEdit,

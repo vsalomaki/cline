@@ -64,6 +64,7 @@ export function resolveToolCallSettings(
 		parallelToolCalls?: boolean
 		readBeforeWrite?: boolean
 		reviewBeforeFinish?: boolean
+		nestedSubagents?: boolean
 	} = {},
 ) {
 	return {
@@ -71,6 +72,7 @@ export function resolveToolCallSettings(
 		parallelToolCalls: config.parallelToolCalls ?? true,
 		readBeforeWrite: config.readBeforeWrite ?? true,
 		reviewBeforeFinish: config.reviewBeforeFinish ?? true,
+		nestedSubagents: config.nestedSubagents ?? false,
 	}
 }
 
@@ -79,6 +81,7 @@ export function getToolCallEnvSources(): {
 	parallelToolCalls?: string
 	readBeforeWrite?: string
 	reviewBeforeFinish?: string
+	nestedSubagents?: string
 } {
 	return {}
 }

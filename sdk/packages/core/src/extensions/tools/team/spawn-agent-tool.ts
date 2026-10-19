@@ -215,6 +215,8 @@ export interface SubAgentProgressUpdate {
 	latestToolCall?: string;
 	inputTokens: number;
 	outputTokens: number;
+	/** Size of the sub-agent's context at its latest model request. */
+	contextTokens: number;
 	totalCost?: number;
 }
 
@@ -224,6 +226,7 @@ export class SubAgentProgress {
 		toolCalls: 0,
 		inputTokens: 0,
 		outputTokens: 0,
+		contextTokens: 0,
 	};
 
 	apply(event: AgentEvent): SubAgentProgressUpdate | undefined {
@@ -240,6 +243,8 @@ export class SubAgentProgress {
 				...this.current,
 				inputTokens: event.totalInputTokens,
 				outputTokens: event.totalOutputTokens,
+				// inputTokens is the whole request, cached tokens included.
+				contextTokens: event.inputTokens + event.outputTokens,
 				...(event.totalCost !== undefined
 					? { totalCost: event.totalCost }
 					: {}),

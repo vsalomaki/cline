@@ -10,6 +10,7 @@ export const TOOL_CALL_ENV = {
 	parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
 	readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
 	reviewBeforeFinish: "CLINE_REVIEW_BEFORE_FINISH",
+	nestedSubagents: "CLINE_NESTED_SUBAGENTS",
 } as const;
 
 export interface ToolCallSettings {
@@ -19,6 +20,8 @@ export interface ToolCallSettings {
 	readBeforeWrite: boolean;
 	/** Ask the agent to review a run that changed files before its final report. */
 	reviewBeforeFinish: boolean;
+	/** Let a subagent start subagents of its own, one level deeper. */
+	nestedSubagents: boolean;
 }
 
 function parsePositiveIntEnv(raw: string | undefined): number | undefined {
@@ -70,6 +73,10 @@ export function resolveToolCallSettings(
 			parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) ??
 			config.reviewBeforeFinish ??
 			true,
+		nestedSubagents:
+			parseBooleanEnv(env[TOOL_CALL_ENV.nestedSubagents]) ??
+			config.nestedSubagents ??
+			false,
 	};
 }
 
@@ -91,6 +98,9 @@ export function getToolCallEnvSources(
 	}
 	if (parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) !== undefined) {
 		sources.reviewBeforeFinish = TOOL_CALL_ENV.reviewBeforeFinish;
+	}
+	if (parseBooleanEnv(env[TOOL_CALL_ENV.nestedSubagents]) !== undefined) {
+		sources.nestedSubagents = TOOL_CALL_ENV.nestedSubagents;
 	}
 	return sources;
 }
