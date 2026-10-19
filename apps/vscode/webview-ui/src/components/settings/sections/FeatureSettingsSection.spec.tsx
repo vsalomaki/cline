@@ -24,6 +24,7 @@ vi.mock("@/context/ExtensionStateContext", () => ({
 
 vi.mock("@/components/settings/utils/settingsHandlers", () => ({
 	updateSetting: (...args: unknown[]) => mockUpdateSetting(...args),
+	updateSettings: vi.fn(),
 }))
 
 describe("FeatureSettingsSection", () => {
@@ -72,7 +73,8 @@ describe("FeatureSettingsSection", () => {
 	it("disables Auto Compact Strategy when Auto Compact is off", () => {
 		const { container } = render(<FeatureSettingsSection renderSectionHeader={() => null} />)
 
-		const strategySelect = container.querySelector("#agent-features button[role='combobox']")
+		// The first select in the Agent section is Delegation.
+		const strategySelect = container.querySelectorAll("#agent-features button[role='combobox']")[1]
 		expect(strategySelect).toHaveAttribute("disabled")
 	})
 
@@ -84,12 +86,12 @@ describe("FeatureSettingsSection", () => {
 		expect(mockUpdateSetting).toHaveBeenCalledWith("hooksEnabled", true)
 	})
 
-	it("calls updateSetting with subagentsEnabled when toggled", () => {
+	it("shows the delegation mode from the subagents and agent teams settings", () => {
+		mockExtensionState.value = { ...mockExtensionState.value, subagentsEnabled: true, agentTeamsEnabled: true }
 		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
 
-		fireEvent.click(screen.getByRole("switch", { name: "Subagents" }))
-
-		expect(mockUpdateSetting).toHaveBeenCalledWith("subagentsEnabled", true)
+		expect(screen.getByText("Agent teams")).toBeTruthy()
+		expect(screen.getByText(/start teammates that work in the background/)).toBeTruthy()
 	})
 
 	it("calls updateSetting with showFeatureTips when toggled", () => {

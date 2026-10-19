@@ -40,3 +40,10 @@ export const updateSetting = (field: keyof UpdateSettingsRequest, value: any) =>
 		console.error(`Failed to update setting ${field}:`, error)
 	})
 }
+
+/** Updates several fields in one request, so the extension applies them together. */
+export const updateSettings = (fields: Partial<UpdateSettingsRequest>) => {
+	StateServiceClient.updateSettings(UpdateSettingsRequest.create(fields)).catch((error) => {
+		console.error("Failed to update settings:", error)
+	})
+}

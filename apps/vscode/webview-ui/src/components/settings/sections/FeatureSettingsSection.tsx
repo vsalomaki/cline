@@ -1,3 +1,4 @@
+import { type DelegationMode, resolveDelegationMode } from "@shared/Delegation"
 import { UpdateSettingsRequest } from "@shared/proto/cline/state"
 import { memo, type ReactNode } from "react"
 import { Label } from "@/components/ui/label"
@@ -7,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import Section from "../Section"
 import { featureSettingControlId, featureSettingElementId } from "../settingsTargets"
-import { updateSetting } from "../utils/settingsHandlers"
+import { updateSetting, updateSettings } from "../utils/settingsHandlers"
 
 // Reusable checkbox component for feature settings
 interface FeatureCheckboxProps {
@@ -31,15 +32,14 @@ interface FeatureToggle {
 	stateKey: string
 }
 
+const DELEGATION_DESCRIPTIONS: Record<DelegationMode, string> = {
+	off: "Cline does all the work itself.",
+	subagents:
+		"Cline can hand focused tasks to subagents that run in parallel while it waits for them. You approve each handoff; the subagent then reads and edits files without asking.",
+	teams: "Cline can also start teammates that work in the background while it continues, and message, wait for or cancel them. You approve each teammate and each task; teammates then read and edit files without asking.",
+}
+
 const agentFeatures: FeatureToggle[] = [
-	{
-		id: "subagents",
-		label: "Subagents",
-		description:
-			"Let Cline hand focused tasks to subagents that run in parallel. You approve each handoff; the subagent then reads and edits files without asking.",
-		stateKey: "subagentsEnabled",
-		settingKey: "subagentsEnabled",
-	},
 	{
 		id: "auto-compact",
 		label: "Auto Compact",
@@ -146,6 +146,10 @@ const FeatureRow = memo(
 	},
 )
 
+function updateDelegation(mode: DelegationMode) {
+	updateSettings({ subagentsEnabled: mode !== "off", agentTeamsEnabled: mode === "teams" })
+}
+
 interface FeatureSettingsSectionProps {
 	renderSectionHeader: (tabId: string) => JSX.Element | null
 }
@@ -159,6 +163,7 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		compactionStrategy,
 		webSearchEnabled,
 		subagentsEnabled,
+		agentTeamsEnabled,
 		worktreesEnabled,
 		backgroundEditEnabled,
 		showFeatureTips,
@@ -172,10 +177,11 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		enableCheckpointsSetting,
 		hooksEnabled,
 		useAutoCondense,
-		subagentsEnabled,
 		worktreesEnabled: worktreesEnabled?.user,
 		backgroundEditEnabled,
 	}
+
+	const delegation = resolveDelegationMode({ subagentsEnabled, agentTeamsEnabled })
 
 	// Visibility lookup for features with feature flags
 	const featureVisibility: Record<string, boolean | undefined> = {
@@ -193,6 +199,24 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 						<div
 							className="relative p-3 pt-0 my-3 rounded-md border border-editor-widget-border/50"
 							id="agent-features">
+							<div className="space-y-2 py-3" id={featureSettingElementId("delegation")}>
+								<Label
+									className="text-sm font-medium text-foreground"
+									htmlFor={featureSettingControlId("delegation")}>
+									Delegation
+								</Label>
+								<p className="text-xs text-muted-foreground">{DELEGATION_DESCRIPTIONS[delegation]}</p>
+								<Select onValueChange={(value) => updateDelegation(value as DelegationMode)} value={delegation}>
+									<SelectTrigger className="w-full" id={featureSettingControlId("delegation")}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="off">Off</SelectItem>
+										<SelectItem value="subagents">Subagents</SelectItem>
+										<SelectItem value="teams">Agent teams</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
 							{agentFeatures.map((feature) => (
 								<FeatureRow
 									checked={featureState[feature.stateKey]}

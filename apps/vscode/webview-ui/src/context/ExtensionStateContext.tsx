@@ -308,6 +308,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		compactionStrategy: "basic",
 		webSearchEnabled: false,
 		subagentsEnabled: false,
+		agentTeamsEnabled: false,
 		worktreesEnabled: { user: true, featureFlag: false },
 		cloudSessionsAvailable: false,
 		cloudSessionsEnabled: false,

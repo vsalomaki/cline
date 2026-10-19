@@ -127,6 +127,7 @@ export interface ExtensionState {
 	compactionStrategy?: string
 	webSearchEnabled?: boolean
 	subagentsEnabled?: boolean
+	agentTeamsEnabled?: boolean
 	worktreesEnabled?: ClineFeatureSetting
 	favoritedModelIds: string[]
 	// NEW: Add workspace information
@@ -294,6 +295,7 @@ export interface ClineSayTool {
 		| "webSearch"
 		| "summarizeTask"
 		| "useSkill"
+		| "teamAction"
 	path?: string
 	diff?: string
 	content?: string

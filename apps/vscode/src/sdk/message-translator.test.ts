@@ -3122,6 +3122,50 @@ describe("translateSessionEvent — run_commands bare array/string input (ENG-18
 // S6-40: skills tool renders skill name (SDK input: { skill: "name" })
 // ---------------------------------------------------------------------------
 
+describe("translateSessionEvent — agent team events", () => {
+	it("keeps a teammate's events out of the lead's chat and turn", () => {
+		const state = new MessageTranslatorState()
+		const result = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "s1",
+					teamRole: "teammate",
+					teamAgentId: "reviewer",
+					event: { type: "done", reason: "completed", text: "Reviewed", iterations: 1 } as AgentEvent,
+				},
+			},
+			state,
+		)
+		expect(result.messages).toEqual([])
+		expect(result.turnComplete).toBeFalsy()
+	})
+})
+
+describe("sdkToolToClineSayTool — team tools", () => {
+	it("shows the action, the teammate and the task", () => {
+		const state = new MessageTranslatorState()
+		const result = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "s1",
+					event: {
+						type: "content_start",
+						contentType: "tool",
+						toolName: "team_run_task",
+						toolCallId: "c1",
+						input: { agentId: "reviewer", task: "Review the diff", runMode: "async" },
+					} as AgentEvent,
+				},
+			},
+			state,
+		)
+		const tool = JSON.parse(result.messages[0].text!)
+		expect(tool).toEqual({ tool: "teamAction", path: "Run task", content: "reviewer (async)\nReview the diff" })
+	})
+})
+
 describe("sdkToolToClineSayTool — fetch_web_content and skills (S6-39, S6-40)", () => {
 	it("S6-39: fetch_web_content extracts URL from SDK requests array", () => {
 		const state = new MessageTranslatorState()

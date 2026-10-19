@@ -903,6 +903,9 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 		}
 
 		default: {
+			if (toolName.startsWith("team_")) {
+				return describeTeamTool(toolName, parsedInput)
+			}
 			// MCP tools and unknown tools — pass through with the raw tool name.
 			const filePath =
 				getStringField(parsedInput, "path") ??
@@ -914,6 +917,24 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 				path: filePath,
 			}
 		}
+	}
+}
+
+/** A team tool row: the action as the title, then who it targets and what it says. */
+function describeTeamTool(toolName: string, input: Record<string, unknown> | undefined): ClineSayTool {
+	const action = toolName.slice("team_".length).replaceAll("_", " ")
+	const target = getStringField(input, "agentId") ?? getStringField(input, "toAgentId")
+	const runMode = getStringField(input, "runMode")
+	const text =
+		getStringField(input, "task") ??
+		getStringField(input, "rolePrompt") ??
+		getStringField(input, "subject") ??
+		getStringField(input, "title")
+	const details = [target ? `${target}${runMode ? ` (${runMode})` : ""}` : undefined, text].filter(Boolean)
+	return {
+		tool: "teamAction",
+		path: action.charAt(0).toUpperCase() + action.slice(1),
+		...(details.length > 0 ? { content: details.join("\n") } : {}),
 	}
 }
 
@@ -2145,7 +2166,13 @@ export function translateSessionEvent(event: CoreSessionEvent, state: MessageTra
 			// RuntimeEventAdapter output does not, so while spawn_agent calls are in
 			// flight we also suppress every non-spawn_agent event. This preserves the
 			// parent spawn_agent status updates while hiding sub-agent internals.
-			if (agentEvent.parentAgentId || (state.hasRunningSpawnAgents() && !isSpawnAgentToolEvent)) {
+			// Teammates run in the background beside the lead; their events would
+			// corrupt the lead's rows and their "done" would end the lead's turn.
+			if (
+				event.payload.teamRole === "teammate" ||
+				agentEvent.parentAgentId ||
+				(state.hasRunningSpawnAgents() && !isSpawnAgentToolEvent)
+			) {
 				break
 			}
 

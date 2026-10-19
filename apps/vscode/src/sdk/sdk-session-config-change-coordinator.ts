@@ -1,3 +1,4 @@
+import type { DelegationMode } from "@shared/Delegation"
 import type { ClineMessage } from "@shared/ExtensionMessage"
 import type { Mode } from "@shared/storage/types"
 import type { StateManager } from "@/core/storage/StateManager"
@@ -82,13 +83,13 @@ export class SdkSessionConfigChangeCoordinator {
 	}
 
 	/** The spawn_agent tool is added to a session when it is built. */
-	handleSubagentsSettingChanged(previous: boolean, next: boolean): void {
+	handleDelegationSettingChanged(previous: DelegationMode, next: DelegationMode): void {
 		if (previous === next) {
 			return
 		}
 		this.requestRebuild({
 			reason: "subagents",
-			description: `subagents ${previous ? "enabled" : "disabled"} -> ${next ? "enabled" : "disabled"}`,
+			description: `delegation ${previous} -> ${next}`,
 			disposeReason: "subagentsSettingChange",
 			failureMessage: "Failed to reload subagent settings. The change may not apply until the next task.",
 		})
