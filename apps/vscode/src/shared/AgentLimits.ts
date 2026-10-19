@@ -478,7 +478,7 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		id: "compaction.triggerPercent",
 		group: "compaction",
 		label: "Compact at",
-		description: "Share of the model's input budget at which auto-compaction runs.",
+		description: "Share of the model's context window, as the provider counts tokens, at which auto-compaction runs.",
 		unit: "percent",
 		default: 90,
 		min: 10,

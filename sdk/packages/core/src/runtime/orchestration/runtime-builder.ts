@@ -776,6 +776,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 							onSubAgentEvent: input.onSubAgentEvent,
 							onSubAgentStart: input.onSubAgentStart,
 							onSubAgentEnd: input.onSubAgentEnd,
+							onSubAgentTurn: input.onSubAgentTurn,
 						}),
 						effectiveToolPolicies,
 					),

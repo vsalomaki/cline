@@ -8,6 +8,8 @@ const runMock = vi.fn();
 const getAgentIdMock = vi.fn(() => "sub-agent-1");
 const getConversationIdMock = vi.fn(() => "conv-sub-1");
 const agentConstructorSpy = vi.fn();
+const subscribeEventsMock = vi.fn();
+const getMessagesMock = vi.fn((): unknown[] => []);
 
 vi.mock("../../../runtime/orchestration/session-runtime-orchestrator", () => {
 	return {
@@ -24,8 +26,13 @@ vi.mock("../../../runtime/orchestration/session-runtime-orchestrator", () => {
 				return getConversationIdMock();
 			}
 
-			subscribeEvents(): () => void {
+			subscribeEvents(listener: (event: unknown) => void): () => void {
+				subscribeEventsMock(listener);
 				return () => {};
+			}
+
+			getMessages(): unknown[] {
+				return getMessagesMock();
 			}
 
 			async run(input: string): Promise<unknown> {
@@ -193,6 +200,48 @@ describe("createSpawnAgentTool", () => {
 				error: expect.any(Error),
 			}),
 		);
+	});
+
+	it("reports each sub-agent turn with its messages", async () => {
+		const { createSpawnAgentTool } = await import("./spawn-agent-tool.js");
+		const messages = [{ role: "user", content: "Do delegated work" }];
+		getMessagesMock.mockReturnValue(messages);
+		runMock.mockImplementation(async () => {
+			const listener = subscribeEventsMock.mock.calls[0]?.[0];
+			listener?.({ type: "iteration_start", iteration: 1 });
+			listener?.({
+				type: "iteration_end",
+				iteration: 1,
+				hadToolCalls: false,
+				toolCallCount: 0,
+			});
+			return {
+				text: "done",
+				iterations: 1,
+				finishReason: "completed",
+				usage: { inputTokens: 1, outputTokens: 1 },
+			};
+		});
+		const onSubAgentTurn = vi.fn();
+
+		const tool = createSpawnAgentTool({
+			configProvider: createDelegatedAgentConfigProvider({
+				providerId: "anthropic",
+				modelId: "mock-model",
+			}),
+			subAgentTools: [],
+			onSubAgentTurn,
+		});
+		await tool.execute(
+			{ systemPrompt: "System", task: "Do delegated work" },
+			{ agentId: "parent-1", conversationId: "conv-parent", iteration: 1 },
+		);
+
+		expect(onSubAgentTurn).toHaveBeenCalledTimes(1);
+		expect(onSubAgentTurn).toHaveBeenCalledWith({
+			subAgentId: "sub-agent-1",
+			messages,
+		});
 	});
 
 	it("leaves maxIterations unset when neither input nor default is provided", async () => {

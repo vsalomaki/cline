@@ -404,6 +404,8 @@ export interface ClineCompactionInfo {
 	tokensAfter?: number
 	messagesBefore?: number
 	messagesAfter?: number
+	/** The model window the compaction trigger is a share of. */
+	maxInputTokens?: number
 }
 
 export interface ClineSubagentUsageInfo {

@@ -624,6 +624,71 @@ describe("UnifiedSessionPersistenceService", () => {
 		});
 	});
 
+	it("saves a running subagent's messages after each turn and keeps them when it fails", async () => {
+		const sessionsDir = mkdtempSync(join(tmpdir(), "spawn-agent-live-"));
+		tempDirs.push(sessionsDir);
+
+		const service = new FileSessionService(sessionsDir);
+		const rootSessionId = "root-live-session";
+		await service.createRootSessionWithArtifacts({
+			sessionId: rootSessionId,
+			source: SessionSource.CLI,
+			pid: process.pid,
+			interactive: false,
+			provider: "anthropic",
+			model: "claude-sonnet-4-6",
+			cwd: "/tmp/project",
+			workspaceRoot: "/tmp/project",
+			enableTools: true,
+			enableSpawn: true,
+			enableTeams: true,
+			prompt: "lead task",
+			startedAt: "2026-04-10T19:00:00.000Z",
+		});
+		const context = {
+			subAgentId: "live-worker",
+			conversationId: "conv-live-worker",
+			parentAgentId: "lead",
+			input: { systemPrompt: "You are a worker.", task: "Read the repo." },
+		};
+		await service.handleSubAgentStart(rootSessionId, context);
+		const readMessages = async () => {
+			const row = (await service.listSessions(10)).find(
+				(item) => item.agentId === "live-worker",
+			);
+			return {
+				status: row?.status,
+				messages: (
+					JSON.parse(readFileSync(row?.messagesPath as string, "utf8")) as {
+						messages: Array<{ role: string }>;
+					}
+				).messages,
+			};
+		};
+
+		const firstTurn = [
+			{ role: "user" as const, content: "Read the repo." },
+			{ role: "assistant" as const, content: "Reading." },
+		];
+		await service.handleSubAgentTurn(rootSessionId, {
+			subAgentId: "live-worker",
+			messages: firstTurn,
+		});
+		expect((await readMessages()).messages).toHaveLength(2);
+
+		await service.handleSubAgentEnd(rootSessionId, {
+			...context,
+			error: new Error("provider failed"),
+			messages: [
+				...firstTurn,
+				{ role: "user" as const, content: "tool result" },
+			],
+		});
+		const failed = await readMessages();
+		expect(failed.status).toBe("failed");
+		expect(failed.messages).toHaveLength(3);
+	});
+
 	it("preserves an existing title when the stored prompt changes", async () => {
 		const sessionsDir = mkdtempSync(join(tmpdir(), "prompt-title-sessions-"));
 		tempDirs.push(sessionsDir);

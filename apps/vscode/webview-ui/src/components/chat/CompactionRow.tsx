@@ -44,7 +44,8 @@ function formatCompactionLabel(info: ClineCompactionInfo): string {
 	}
 	const parts: string[] = [info.mode === "manual" ? "Context compacted (manual)" : "Context compacted"]
 	if (typeof info.tokensBefore === "number" && typeof info.tokensAfter === "number") {
-		parts.push(`${formatTokenCount(info.tokensBefore)} → ${formatTokenCount(info.tokensAfter)} tokens`)
+		const ofWindow = typeof info.maxInputTokens === "number" ? ` of ${formatTokenCount(info.maxInputTokens)}` : ""
+		parts.push(`${formatTokenCount(info.tokensBefore)} → ${formatTokenCount(info.tokensAfter)}${ofWindow} tokens`)
 	}
 	if (typeof info.messagesBefore === "number" && typeof info.messagesAfter === "number") {
 		parts.push(`${info.messagesBefore} → ${info.messagesAfter} messages`)

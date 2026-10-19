@@ -411,6 +411,7 @@ export {
 	type SpawnTeammateOptions,
 	type SubAgentEndContext,
 	type SubAgentStartContext,
+	type SubAgentTurnContext,
 	type TaskResult,
 	type TeamEvent,
 	type TeamMemberConfig,

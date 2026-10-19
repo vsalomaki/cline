@@ -1386,6 +1386,97 @@ describe("createContextCompactionPrepareTurn", () => {
 				}),
 			).resolves.toBeUndefined();
 		});
+
+		describe("calibrated against the request that produced the count", () => {
+			const createPrepareTurn = () =>
+				createContextCompactionPrepareTurn({
+					providerId: "openrouter",
+					modelId: "test/model",
+					providerConfig: {
+						providerId: "openrouter",
+						modelId: "test/model",
+					} as LlmsProviders.ProviderConfig,
+					compaction: { enabled: true, strategy: "basic" },
+					logger: undefined,
+				});
+			const turn = (
+				prepareTurn: ReturnType<typeof createPrepareTurn>,
+				opts: {
+					maxInputTokens: number;
+					previousRequestInputTokens?: number;
+					emitStatusNotice?: (
+						message: string,
+						metadata?: Record<string, unknown>,
+					) => void;
+				},
+			) => {
+				const messages = transcript();
+				return prepareTurn?.({
+					agentId: "agent-1",
+					conversationId: "conv-1",
+					parentAgentId: null,
+					iteration: 1,
+					abortSignal: new AbortController().signal,
+					systemPrompt,
+					tools: [],
+					messages,
+					apiMessages: messages,
+					previousRequestInputTokens: opts.previousRequestInputTokens,
+					emitStatusNotice: opts.emitStatusNotice,
+					model: {
+						id: "test/model",
+						provider: "openrouter",
+						info: { id: "test/model", maxInputTokens: opts.maxInputTokens },
+					},
+				});
+			};
+
+			it("lets a provider count below the estimate loosen the trigger", async () => {
+				const prepareTurn = createPrepareTurn();
+				// The estimate sits at 95% of the window, past the 90% trigger.
+				const maxInputTokens = Math.ceil(estimate() / 0.95);
+				await expect(
+					turn(prepareTurn, { maxInputTokens: maxInputTokens * 10 }),
+				).resolves.toBeUndefined();
+				// The provider counted 70% of that estimate: about 67% of the window.
+				await expect(
+					turn(prepareTurn, {
+						maxInputTokens,
+						previousRequestInputTokens: Math.floor(estimate() * 0.7),
+					}),
+				).resolves.toBeUndefined();
+				// A later run starts without a count and keeps the ratio.
+				await expect(
+					turn(prepareTurn, { maxInputTokens }),
+				).resolves.toBeUndefined();
+				// Without a paired count the estimate decides, and it compacts.
+				await expect(
+					turn(createPrepareTurn(), {
+						maxInputTokens,
+						previousRequestInputTokens: Math.floor(estimate() * 0.7),
+					}),
+				).resolves.toBeDefined();
+			});
+
+			it("reports compaction in provider tokens against the model window", async () => {
+				const prepareTurn = createPrepareTurn();
+				await turn(prepareTurn, { maxInputTokens: estimate() * 10 });
+				const maxInputTokens = Math.ceil(estimate() / 0.95);
+				const notices: Record<string, unknown>[] = [];
+				const result = await turn(prepareTurn, {
+					maxInputTokens,
+					// Twice the estimate: compacts and reports doubled counts.
+					previousRequestInputTokens: estimate() * 2,
+					emitStatusNotice: (_message, metadata) => {
+						if (metadata) notices.push(metadata);
+					},
+				});
+				expect(result).toBeDefined();
+				const completed = notices.find((n) => n.phase === "completed");
+				expect(completed?.maxInputTokens).toBe(maxInputTokens);
+				expect(completed?.tokensBefore).toBe(estimate() * 2);
+			});
+		});
 	});
 
 	it("can truncate an oversized first task prompt when it exceeds the trigger", () => {
@@ -3226,9 +3317,9 @@ describe("createContextCompactionPrepareTurn", () => {
 		]);
 	});
 
-	it("triggers at 81 percent when only contextWindow is available", async () => {
+	it("triggers at 90 percent of contextWindow when only it is available", async () => {
 		const compact = vi.fn((_context: CoreCompactionContext) => ({
-			messages: [{ role: "user" as const, content: "Compacted at 81%" }],
+			messages: [{ role: "user" as const, content: "Compacted at 90%" }],
 		}));
 		const prepareTurn = createContextCompactionPrepareTurn({
 			providerId: "anthropic",
@@ -3248,7 +3339,7 @@ describe("createContextCompactionPrepareTurn", () => {
 			messages,
 			tools: [],
 		});
-		const contextWindow = inputTokens / 0.81;
+		const contextWindow = inputTokens / 0.9;
 
 		const result = await prepareTurn?.({
 			agentId: "agent-1",
@@ -3272,12 +3363,10 @@ describe("createContextCompactionPrepareTurn", () => {
 
 		expect(compact).toHaveBeenCalledTimes(1);
 		const context = compact.mock.calls[0]?.[0];
-		expect(context?.budget.request.maxInputTokens).toBeCloseTo(
-			contextWindow * 0.9,
-		);
+		expect(context?.budget.request.maxInputTokens).toBeCloseTo(contextWindow);
 		expect(context?.budget.request.triggerTokens).toBeCloseTo(inputTokens);
 		expect(result?.messages).toEqual([
-			{ role: "user", content: "Compacted at 81%" },
+			{ role: "user", content: "Compacted at 90%" },
 		]);
 	});
 
@@ -3604,7 +3693,7 @@ describe("createContextCompactionPrepareTurn", () => {
 		);
 	});
 
-	it("uses a conservative input budget when only contextWindow is reported", async () => {
+	it("measures the trigger against the whole contextWindow when only it is reported", async () => {
 		const compact = vi.fn((_context: CoreCompactionContext) => ({
 			messages: [
 				{ role: "user" as const, content: "Compacted by derived input budget" },
@@ -3623,7 +3712,7 @@ describe("createContextCompactionPrepareTurn", () => {
 		const messages: MessageWithMetadata[] = [
 			{
 				role: "user",
-				content: "large prompt ".repeat(80_000),
+				content: "large prompt ".repeat(85_000),
 			},
 		];
 
@@ -3650,8 +3739,8 @@ describe("createContextCompactionPrepareTurn", () => {
 
 		expect(compact).toHaveBeenCalledTimes(1);
 		const context = compact.mock.calls[0]?.[0];
-		expect(context?.budget.request.maxInputTokens).toBe(360_000);
-		expect(context?.budget.request.triggerTokens).toBe(324_000);
+		expect(context?.budget.request.maxInputTokens).toBe(400_000);
+		expect(context?.budget.request.triggerTokens).toBe(360_000);
 		expect(context?.budget.request.thresholdRatio).toBe(0.9);
 		expect(result?.messages).toEqual([
 			{ role: "user", content: "Compacted by derived input budget" },
