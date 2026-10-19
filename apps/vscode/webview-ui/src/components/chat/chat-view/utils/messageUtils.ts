@@ -165,6 +165,16 @@ export function filterVisibleMessages(messages: ClineMessage[]): ClineMessage[] 
 				break
 			case "mcp_server_request_started":
 				return false
+			case "hook_status":
+				// A hook that ran and changed nothing is noise; failures and hooks that acted stay.
+				try {
+					if (JSON.parse(message.text || "{}").noEffect === true) {
+						return false
+					}
+				} catch {
+					// Keep rows whose metadata cannot be read.
+				}
+				break
 			case "use_subagents":
 				if (arr.slice(index + 1).some((candidate) => candidate.type === "say" && candidate.say === "subagent")) {
 					return false

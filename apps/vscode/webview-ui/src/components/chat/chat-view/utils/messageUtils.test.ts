@@ -56,6 +56,20 @@ const createAskMessage = (
 })
 
 describe("filterVisibleMessages", () => {
+	it("hides hooks that completed without changing anything", () => {
+		const hook = (ts: number, metadata: object): ClineMessage => ({
+			ts,
+			type: "say",
+			say: "hook_status",
+			text: JSON.stringify({ hookName: "PreToolUse", ...metadata }),
+		})
+		const quiet = hook(1, { status: "completed", noEffect: true })
+		const acted = hook(2, { status: "completed" })
+		const failed = hook(3, { status: "failed", error: { type: "execution", message: "exit code 1" } })
+
+		expect(filterVisibleMessages([quiet, acted, failed])).toEqual([acted, failed])
+	})
+
 	it("keeps a saved legacy conversation visible without showing Focus Chain checklists", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "cline-legacy-chat-"))
 		try {
