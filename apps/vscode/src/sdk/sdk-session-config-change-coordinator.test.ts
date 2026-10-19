@@ -19,6 +19,7 @@ describe("SdkSessionConfigChangeCoordinator", () => {
 
 		coordinator.handleTerminalExecutionModeChanged("vscodeTerminal", "vscodeTerminal")
 		coordinator.handleCheckpointsSettingChanged(true, true)
+		coordinator.handleSubagentsSettingChanged(false, false)
 
 		expect(options.rebuilds.request).not.toHaveBeenCalled()
 	})
@@ -38,6 +39,14 @@ describe("SdkSessionConfigChangeCoordinator", () => {
 
 		expect(options.sessions.replaceActiveSession).not.toHaveBeenCalled()
 		expect(options.rebuilds.request).toHaveBeenCalledWith("checkpoints", expect.any(Function))
+	})
+
+	it("rebuilds the session when the subagents setting changes", () => {
+		const { coordinator, options } = makeCoordinator({ activeSession: makeActiveSession() })
+
+		coordinator.handleSubagentsSettingChanged(false, true)
+
+		expect(options.rebuilds.request).toHaveBeenCalledWith("subagents", expect.any(Function))
 	})
 
 	it("does not replace a newer session that reused the same session ID", async () => {

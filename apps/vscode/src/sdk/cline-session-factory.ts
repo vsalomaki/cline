@@ -1110,6 +1110,7 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 	const globalUseAutoCondense = stateManager.getGlobalSettingsKey("useAutoCondense") ?? true
 	const compactionStrategy = readCompactionStrategyGlobally()
 	const enableCheckpoints = stateManager.getGlobalSettingsKey("enableCheckpointsSetting") ?? true
+	const globalSubagentsEnabled = stateManager.getGlobalSettingsKey("subagentsEnabled") ?? false
 	const useAutoCondense = input.taskSettings?.useAutoCondense ?? globalUseAutoCondense
 	const hookEngine = readHookEngine(stateManager)
 	const {
@@ -1195,7 +1196,7 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 		checkpoint: {
 			enabled: enableCheckpoints,
 		},
-		enableSpawnAgent: false,
+		enableSpawnAgent: input.taskSettings?.subagentsEnabled ?? globalSubagentsEnabled,
 		enableAgentTeams: false,
 		...(useAutoCondense
 			? {

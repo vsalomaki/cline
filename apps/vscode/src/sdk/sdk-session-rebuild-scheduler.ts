@@ -9,6 +9,7 @@ export type SessionRebuildReason =
 	| "commandTimeouts"
 	| "agentLimits"
 	| "hooks"
+	| "subagents"
 
 export interface SdkSessionRebuildSchedulerOptions {
 	sessions: Pick<SdkSessionLifecycle, "getActiveSession">

@@ -201,6 +201,7 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			const wasEnabled = controller.stateManager.getGlobalSettingsKey("subagentsEnabled") ?? false
 			const isEnabled = !!request.subagentsEnabled
 			controller.stateManager.setGlobalState("subagentsEnabled", isEnabled)
+			controller.handleSubagentsSettingChanged(wasEnabled, isEnabled)
 
 			// Capture telemetry when setting changes
 			if (wasEnabled !== isEnabled) {

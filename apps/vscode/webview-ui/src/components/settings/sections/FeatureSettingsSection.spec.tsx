@@ -84,6 +84,14 @@ describe("FeatureSettingsSection", () => {
 		expect(mockUpdateSetting).toHaveBeenCalledWith("hooksEnabled", true)
 	})
 
+	it("calls updateSetting with subagentsEnabled when toggled", () => {
+		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
+
+		fireEvent.click(screen.getByRole("switch", { name: "Subagents" }))
+
+		expect(mockUpdateSetting).toHaveBeenCalledWith("subagentsEnabled", true)
+	})
+
 	it("calls updateSetting with showFeatureTips when toggled", () => {
 		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
 

@@ -4371,6 +4371,16 @@ describe("tool display paths are relativized to the cwd", () => {
 		expect(parseTool(message.text).path).toBe("src/index.ts")
 	})
 
+	it("asks with the subagent prompt for spawn_agent and configured agent tools", () => {
+		const spawn = buildToolApprovalAskMessage("spawn_agent", { systemPrompt: "s", task: "Fix the parser" }, 1, CWD)
+		const configured = buildToolApprovalAskMessage("subagent_code_reviewer", { prompt: "Review the diff" }, 2, CWD)
+
+		expect(spawn.ask).toBe("use_subagents")
+		expect(JSON.parse(spawn.text ?? "")).toEqual({ prompts: ["Fix the parser"] })
+		expect(configured.ask).toBe("use_subagents")
+		expect(JSON.parse(configured.text ?? "")).toEqual({ prompts: ["Review the diff"] })
+	})
+
 	it("reconstructs hook status chips from injected hook context and keeps the completion retag", () => {
 		const messages: SdkMessage[] = [
 			{ role: "user", content: '<user_input mode="act">read the readme</user_input>' } as SdkMessage,

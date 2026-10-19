@@ -141,6 +141,8 @@ export function createSessionSpawnTool(
 							cwd: config.cwd,
 							telemetry: config.telemetry,
 							...ToolPresets[resolveToolPresetName({ mode: config.mode })],
+							// Subagents run in parallel and report back; only the lead asks the user.
+							enableAskQuestion: false,
 							executors: toolExecutors,
 						},
 						resolveSessionToolOptions(config),

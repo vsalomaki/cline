@@ -34,6 +34,7 @@ export function buildToolPolicies(
 	set(["editor", "replace_in_file", "write_to_file", "apply_patch", "delete_file"])
 	set(["run_commands", "execute_command"])
 	set(["fetch_web_content", "web_fetch", "web_search"])
+	set(["spawn_agent"])
 
 	if (mcpHub) {
 		for (const server of mcpHub.getServers()) {
@@ -72,6 +73,12 @@ export function isToolAutoApproved(toolName: string, settings: AutoApprovalSetti
 		return !!settings.actions.useMcp
 	}
 
+	if (isSubagentTool(toolName)) {
+		// A subagent runs its own tools without asking, so approving it approves everything it can do:
+		// read, edit and fetch. It has no run_commands, because the host's terminal tool replaces the SDK shell.
+		return !!settings.actions.readFiles && !!settings.actions.editFiles && !!settings.actions.useBrowser
+	}
+
 	return false
 }
 
@@ -97,6 +104,11 @@ function isCommandTool(toolName: string): boolean {
 
 function isBrowserTool(toolName: string): boolean {
 	return toolName === "fetch_web_content" || toolName === "web_fetch" || toolName === "web_search"
+}
+
+/** `spawn_agent`, or a configured agent's `subagent_<name>` tool, which takes spawn_agent's policy. */
+export function isSubagentTool(toolName: string): boolean {
+	return toolName === "spawn_agent" || toolName.startsWith("subagent_")
 }
 
 /** MCP tools are registered by `createMcpTools` under `serverName__toolName`. */

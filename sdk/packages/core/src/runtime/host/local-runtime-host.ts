@@ -28,7 +28,10 @@ import {
 	RunCommandExecutionController,
 } from "../../extensions/tools";
 import { cleanupStaleDetachedCommandLogs } from "../../extensions/tools/executors/bash";
-import type { TeamEvent } from "../../extensions/tools/team";
+import {
+	type TeamEvent,
+	withConfiguredAgentToolPolicies,
+} from "../../extensions/tools/team";
 import type { HookEventPayload } from "../../hooks";
 import { buildTelemetryAgentIdentity } from "../../services/agent-events";
 import { resolveWorkspacePath } from "../../services/config";
@@ -845,7 +848,10 @@ export class LocalRuntimeHost implements RuntimeHost {
 			hookErrorMode: configWithProvider.hookErrorMode,
 			initialMessages: bootstrap.effectiveInput.initialMessages,
 			userFileContentLoader: loadUserFileContent,
-			toolPolicies: bootstrap.toolPolicies,
+			toolPolicies: withConfiguredAgentToolPolicies(
+				bootstrap.toolPolicies,
+				tools,
+			),
 			requestToolApproval: bootstrap.requestToolApproval
 				? async (request) => {
 						const requestToolApproval = bootstrap.requestToolApproval;

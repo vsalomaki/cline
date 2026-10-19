@@ -1,6 +1,6 @@
 import { DEFAULT_AUTO_APPROVAL_SETTINGS } from "@shared/AutoApprovalSettings"
 import { describe, expect, it } from "vitest"
-import { isToolAutoApproved } from "./sdk-tool-policies"
+import { buildToolPolicies, isToolAutoApproved } from "./sdk-tool-policies"
 
 describe("isToolAutoApproved", () => {
 	it("does not auto-approve command tools by default", () => {
@@ -52,5 +52,19 @@ describe("isToolAutoApproved", () => {
 		}
 
 		expect(isToolAutoApproved("firecrawl__scrape", settings)).toBe(false)
+	})
+
+	it("asks before spawn_agent unless everything a subagent can do is auto-approved", () => {
+		const actions = { ...DEFAULT_AUTO_APPROVAL_SETTINGS.actions, readFiles: true, editFiles: true, useBrowser: true }
+		const settings = { ...DEFAULT_AUTO_APPROVAL_SETTINGS, actions }
+
+		expect(buildToolPolicies(settings).spawn_agent).toEqual({ autoApprove: false })
+		expect(isToolAutoApproved("spawn_agent", settings)).toBe(true)
+		expect(isToolAutoApproved("subagent_code_reviewer", settings)).toBe(true)
+		for (const off of ["readFiles", "editFiles", "useBrowser"] as const) {
+			const offSettings = { ...settings, actions: { ...actions, [off]: false } }
+			expect(isToolAutoApproved("spawn_agent", offSettings)).toBe(false)
+			expect(isToolAutoApproved("subagent_code_reviewer", offSettings)).toBe(false)
+		}
 	})
 })
