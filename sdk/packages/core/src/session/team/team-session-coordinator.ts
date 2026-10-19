@@ -265,6 +265,8 @@ export async function waitForTeamRunUpdates(
 ): Promise<TeamRunUpdate[]> {
 	while (true) {
 		if (session.aborting) return [];
+		// A queued user message ends the wait; the turn that runs it waits again.
+		if (session.pendingPrompts.length > 0) return [];
 		if (session.pendingTeamRunUpdates.length > 0) {
 			const updates = [...session.pendingTeamRunUpdates];
 			session.pendingTeamRunUpdates.length = 0;

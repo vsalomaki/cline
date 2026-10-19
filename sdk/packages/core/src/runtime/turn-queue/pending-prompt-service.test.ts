@@ -125,6 +125,7 @@ describe("PendingPromptService", () => {
 		const session = {
 			sessionId: "session",
 			pendingPrompts: [],
+			teamRunWaiters: [],
 			aborting: false,
 			agent: { canStartRun: () => false, notifyPendingUserMessage },
 		} as unknown as ActiveSession;
@@ -158,6 +159,7 @@ describe("PendingPromptService", () => {
 		const session = {
 			sessionId: "session",
 			pendingPrompts: [],
+			teamRunWaiters: [],
 			aborting: false,
 			agent: { canStartRun: () => false, notifyPendingUserMessage },
 		} as unknown as ActiveSession;
@@ -208,11 +210,39 @@ describe("PendingPromptService", () => {
 		}
 	});
 
+	it("wakes a turn waiting on teammate runs instead of starting a second turn", () => {
+		const wake = vi.fn();
+		const send = vi.fn();
+		const session = {
+			sessionId: "session",
+			pendingPrompts: [],
+			teamRunWaiters: [wake],
+			aborting: false,
+			drainingPendingPrompts: false,
+			agent: { canStartRun: () => true, notifyPendingUserMessage: vi.fn() },
+		} as unknown as ActiveSession;
+		const controller = new PendingPromptsController({
+			getSession: () => session,
+			emit: vi.fn(),
+			send,
+		});
+
+		controller.enqueue("session", {
+			prompt: "How are the teammates doing?",
+			delivery: "queue",
+		});
+
+		expect(wake).toHaveBeenCalledTimes(1);
+		expect(session.pendingPrompts).toHaveLength(1);
+		expect(send).not.toHaveBeenCalled();
+	});
+
 	it("keeps prompts enqueued while the session is aborting", async () => {
 		const sessionId = "sess-enqueue-while-aborting";
 		const session = {
 			sessionId,
 			pendingPrompts: [],
+			teamRunWaiters: [],
 			aborting: true,
 			drainingPendingPrompts: false,
 			status: "running",

@@ -1,5 +1,6 @@
 import { type AgentMode, normalizeUserInput } from "@cline/shared";
 import { nanoid } from "nanoid";
+import { notifyTeamRunWaiters } from "../../session/team/team-session-coordinator";
 import type {
 	CoreSessionEvent,
 	SessionPendingPrompt,
@@ -311,6 +312,12 @@ export class PendingPromptsController {
 	}
 
 	scheduleDrain(sessionId: string, session: ActiveSession): void {
+		// A turn parked on teammate runs is still in progress: wake it, and the
+		// queue drains when that turn returns.
+		if (session.teamRunWaiters.length > 0) {
+			notifyTeamRunWaiters(session);
+			return;
+		}
 		if (
 			session.pendingPrompts.length === 0 ||
 			session.aborting ||

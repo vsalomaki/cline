@@ -599,7 +599,7 @@ export function createAgentTeamsTools(
 		createTool<TeamAwaitRunsInput, TeamRunToolSummary | TeamRunToolSummary[]>({
 			name: "team_await_runs",
 			description:
-				"Wait for async teammate runs. Provide runId to wait for one run, or omit it to wait for all active async runs. Uses a long timeout for legitimate teammate work.",
+				"Wait for async teammate runs. Provide runId to wait for one run, or omit it to wait for all active async runs. This blocks you, and the user cannot reach you until it returns. You usually don't need it: when you end your turn while runs are active, their results arrive as a new turn.",
 			inputSchema: zodToJsonSchema(TeamAwaitRunsInputSchema),
 			timeoutMs: TEAM_AWAIT_TIMEOUT_MS,
 			execute: async (input) => {

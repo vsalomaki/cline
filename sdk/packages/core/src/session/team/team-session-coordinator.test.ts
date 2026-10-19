@@ -1,6 +1,11 @@
 import { TeamMessageType } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
-import { dispatchTeamEventToBackend } from "./team-session-coordinator";
+import type { ActiveSession } from "../../types/session";
+import {
+	dispatchTeamEventToBackend,
+	notifyTeamRunWaiters,
+	waitForTeamRunUpdates,
+} from "./team-session-coordinator";
 
 describe("dispatchTeamEventToBackend", () => {
 	it("persists intentionally aborted teammate tasks as cancelled", async () => {
@@ -28,5 +33,27 @@ describe("dispatchTeamEventToBackend", () => {
 			undefined,
 			[],
 		);
+	});
+});
+
+describe("waitForTeamRunUpdates", () => {
+	it("stops waiting when the user queues a message", async () => {
+		const session = {
+			aborting: false,
+			pendingPrompts: [],
+			pendingTeamRunUpdates: [],
+			activeTeamRunIds: new Set(["run-1"]),
+			teamRunWaiters: [],
+		} as unknown as ActiveSession;
+
+		const waiting = waitForTeamRunUpdates(session);
+		session.pendingPrompts.push({
+			id: "p1",
+			prompt: "Status?",
+			delivery: "queue",
+		});
+		notifyTeamRunWaiters(session);
+
+		await expect(waiting).resolves.toEqual([]);
 	});
 });
