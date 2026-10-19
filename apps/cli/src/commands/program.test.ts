@@ -123,6 +123,12 @@ describe("tool-call options", () => {
 		expect(parse(["--no-review-before-finish"]).reviewBeforeFinish).toBe(false);
 		expect(parse(["--review-before-finish"]).reviewBeforeFinish).toBe(true);
 	});
+
+	it("parses --nested-subagents and --no-nested-subagents", () => {
+		expect(parse([]).nestedSubagents).toBeUndefined();
+		expect(parse(["--nested-subagents"]).nestedSubagents).toBe(true);
+		expect(parse(["--no-nested-subagents"]).nestedSubagents).toBe(false);
+	});
 });
 
 describe("language-server options", () => {

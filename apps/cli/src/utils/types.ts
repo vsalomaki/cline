@@ -99,6 +99,7 @@ export interface ParsedArgs {
 	parallelToolCalls?: boolean;
 	readBeforeWrite?: boolean;
 	reviewBeforeFinish?: boolean;
+	nestedSubagents?: boolean;
 	languageServers?: boolean;
 	codeIntelligenceTool?: boolean;
 	problemsAfterEdit?: "off" | "errors" | "warnings";

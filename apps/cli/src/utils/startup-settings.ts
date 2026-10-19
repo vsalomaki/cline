@@ -66,6 +66,13 @@ export function resolveStartupReviewBeforeFinish(
 	return args.reviewBeforeFinish ?? settings.reviewBeforeFinish;
 }
 
+export function resolveStartupNestedSubagents(
+	args: Pick<ParsedArgs, "nestedSubagents">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.nestedSubagents ?? settings.nestedSubagents;
+}
+
 /** The flag only switches the servers on or off; the server list stays the persisted one. */
 export function resolveStartupLanguageServers(
 	args: Pick<ParsedArgs, "languageServers">,

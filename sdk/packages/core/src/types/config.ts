@@ -344,6 +344,13 @@ export interface CoreSessionConfig
 	 */
 	reviewBeforeFinish?: boolean;
 	/**
+	 * Give subagents spawn_agent too, so they can start subagents of their
+	 * own. Those grandchildren cannot delegate further.
+	 * `CLINE_NESTED_SUBAGENTS` takes precedence.
+	 * @default false
+	 */
+	nestedSubagents?: boolean;
+	/**
 	 * Language intelligence the host supplies in process (the VS Code
 	 * extension passes its editor's). Never serialized; without it the SDK
 	 * starts its own language servers per `languageServers`.

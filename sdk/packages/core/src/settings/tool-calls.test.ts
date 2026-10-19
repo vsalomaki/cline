@@ -12,6 +12,7 @@ describe("resolveToolCallSettings", () => {
 			parallelToolCalls: true,
 			readBeforeWrite: true,
 			reviewBeforeFinish: true,
+			nestedSubagents: false,
 		});
 	});
 
@@ -23,6 +24,7 @@ describe("resolveToolCallSettings", () => {
 					parallelToolCalls: false,
 					readBeforeWrite: false,
 					reviewBeforeFinish: false,
+					nestedSubagents: true,
 				},
 				{},
 			),
@@ -31,6 +33,7 @@ describe("resolveToolCallSettings", () => {
 			parallelToolCalls: false,
 			readBeforeWrite: false,
 			reviewBeforeFinish: false,
+			nestedSubagents: true,
 		});
 	});
 
@@ -40,6 +43,7 @@ describe("resolveToolCallSettings", () => {
 			CLINE_PARALLEL_TOOL_CALLS: "off",
 			CLINE_READ_BEFORE_WRITE: "false",
 			CLINE_REVIEW_BEFORE_FINISH: "0",
+			CLINE_NESTED_SUBAGENTS: "on",
 		};
 		expect(
 			resolveToolCallSettings(
@@ -51,12 +55,14 @@ describe("resolveToolCallSettings", () => {
 			parallelToolCalls: false,
 			readBeforeWrite: false,
 			reviewBeforeFinish: false,
+			nestedSubagents: true,
 		});
 		expect(getToolCallEnvSources(env)).toEqual({
 			maxParallelToolCalls: "CLINE_MAX_PARALLEL_TOOL_CALLS",
 			parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
 			readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
 			reviewBeforeFinish: "CLINE_REVIEW_BEFORE_FINISH",
+			nestedSubagents: "CLINE_NESTED_SUBAGENTS",
 		});
 	});
 
@@ -70,6 +76,7 @@ describe("resolveToolCallSettings", () => {
 			parallelToolCalls: true,
 			readBeforeWrite: true,
 			reviewBeforeFinish: true,
+			nestedSubagents: false,
 		});
 		expect(getToolCallEnvSources(env)).toEqual({});
 	});

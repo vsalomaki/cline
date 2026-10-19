@@ -17,6 +17,7 @@ export type AgentLimitGroup =
 	| "providerRequest"
 	| "timeouts"
 	| "hooks"
+	| "subagents"
 	| "loop"
 	| "compaction"
 
@@ -116,6 +117,18 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		min: 0,
 		max: 1,
 		envVar: "CLINE_REVIEW_BEFORE_FINISH",
+	},
+	{
+		id: "session.nestedSubagents",
+		group: "subagents",
+		label: "Nested subagents",
+		description:
+			"Let a subagent start subagents of its own, one level deeper. Their work shows only as tool calls in the subagent's row.",
+		unit: "toggle",
+		default: 0,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_NESTED_SUBAGENTS",
 	},
 	{
 		id: "session.codeIntelligenceTool",
@@ -517,6 +530,7 @@ export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: str
 	{ id: "providerRequest", title: "Provider request", description: "Caps applied while assembling each request to the model." },
 	{ id: "timeouts", title: "Tool timeouts", description: "Command timeouts live under Terminal settings." },
 	{ id: "hooks", title: "Hooks", description: "Applies when hooks are on under Features." },
+	{ id: "subagents", title: "Subagents", description: "Applies when subagents are on under Features." },
 	{ id: "loop", title: "Loops and mistakes", description: "When Cline stops a task that is going nowhere." },
 	{ id: "compaction", title: "Compaction", description: "Applies when auto-compaction is on under Features." },
 ]
