@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import type { ConfiguredAgentConfig } from "./configured-agent-config";
 import {
+	type BuildDelegatedAgentConfigOptions,
 	createDelegatedAgent,
 	createDelegatedAgentConfigProvider,
 	type DelegatedAgentConfigProvider,
@@ -48,6 +49,10 @@ export interface ConfiguredAgentToolConfig {
 	) => AgentTool[] | Promise<AgentTool[]>;
 	onSubAgentEvent?: (event: AgentEvent) => void;
 	hookErrorMode?: HookErrorMode;
+	/** Compaction for each configured agent's own context, created per run on its connection. */
+	createPrepareTurn?: (
+		connection: Pick<DelegatedAgentRuntimeConfig, "providerId" | "modelId">,
+	) => BuildDelegatedAgentConfigOptions["prepareTurn"];
 	onSubAgentStart?: (context: SubAgentStartContext) => void | Promise<void>;
 	onSubAgentEnd?: (context: SubAgentEndContext) => void | Promise<void>;
 }
@@ -157,9 +162,12 @@ export function createConfiguredAgentTools(
 				inputSchema: zodToJsonSchema(ConfiguredAgentInputSchema),
 				execute: async (input, context) => {
 					const baseRuntimeConfig = options.configProvider.getRuntimeConfig();
-					const configProvider = createDelegatedAgentConfigProvider(
-						buildAgentRuntimeConfig(baseRuntimeConfig, config),
+					const agentRuntimeConfig = buildAgentRuntimeConfig(
+						baseRuntimeConfig,
+						config,
 					);
+					const configProvider =
+						createDelegatedAgentConfigProvider(agentRuntimeConfig);
 					const tools = options.createSubAgentTools
 						? await options.createSubAgentTools(config, input, context)
 						: [];
@@ -175,6 +183,7 @@ export function createConfiguredAgentTools(
 						abortSignal: context.signal,
 						onEvent: options.onSubAgentEvent,
 						hookErrorMode: options.hookErrorMode,
+						prepareTurn: options.createPrepareTurn?.(agentRuntimeConfig),
 					});
 					const subAgentId = subAgent.getAgentId();
 					const conversationId = subAgent.getConversationId();

@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentTool } from "@cline/shared";
+import { createDelegatedAgentPrepareTurn } from "../../../extensions/context/compaction";
 import {
 	createBuiltinTools,
 	resolveToolPresetName,
@@ -177,6 +178,10 @@ export function createSessionSpawnTool(
 					maxParallelToolCalls: config.maxParallelToolCalls,
 					parallelToolCalls: config.parallelToolCalls,
 					readBeforeWrite: config.readBeforeWrite,
+					mode: config.mode,
+					clineIdeName: config.extensionContext?.workspace?.ide,
+					clinePlatform:
+						config.extensionContext?.workspace?.platform ?? process.platform,
 					codeIntelligence: config.codeIntelligence,
 					problemsAfterEdit: config.problemsAfterEdit,
 					problemsTimeoutMs: config.problemsTimeoutMs,
@@ -205,6 +210,7 @@ export function createSessionSpawnTool(
 			updateConnectionDefaults: () => {},
 		},
 		createSubAgentTools,
+		createPrepareTurn: () => createDelegatedAgentPrepareTurn(config),
 		...lifecycle,
 	}) as AgentTool;
 }

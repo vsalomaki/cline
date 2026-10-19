@@ -19,7 +19,9 @@ import {
 	zodToJsonSchema,
 } from "@cline/shared";
 import { z } from "zod";
+import { resolveKnownModelsFromConfig } from "../../../services/llms/handler-factory";
 import {
+	type BuildDelegatedAgentConfigOptions,
 	createDelegatedAgent,
 	type DelegatedAgentConfigProvider,
 } from "./delegated-agent";
@@ -109,6 +111,10 @@ export interface SpawnAgentToolConfig {
 	 */
 	logger?: BasicLogger;
 	telemetry?: ITelemetryService;
+	/**
+	 * Compaction for each sub-agent's own context, created per run.
+	 */
+	createPrepareTurn?: () => BuildDelegatedAgentConfigOptions["prepareTurn"];
 }
 
 /**
@@ -127,7 +133,9 @@ export function createSpawnAgentTool(
 				? await config.createSubAgentTools(input, context)
 				: (config.subAgentTools ?? []);
 
-			const progress = new SubAgentProgress();
+			const progress = new SubAgentProgress(
+				resolveSubAgentContextWindow(config.configProvider),
+			);
 			const subAgent = createDelegatedAgent({
 				kind: "subagent",
 				prompt: input.systemPrompt,
@@ -146,6 +154,7 @@ export function createSpawnAgentTool(
 				hookErrorMode: config.hookErrorMode,
 				toolPolicies: config.toolPolicies,
 				requestToolApproval: config.requestToolApproval,
+				prepareTurn: config.createPrepareTurn?.(),
 			});
 			const subAgentId = subAgent.getAgentId();
 			const conversationId = subAgent.getConversationId();
@@ -217,17 +226,34 @@ export interface SubAgentProgressUpdate {
 	outputTokens: number;
 	/** Size of the sub-agent's context at its latest model request. */
 	contextTokens: number;
+	contextWindow?: number;
+	contextUsagePercentage?: number;
 	totalCost?: number;
+}
+
+/** The context window of the model sub-agents run on, when the catalog knows it. */
+export function resolveSubAgentContextWindow(
+	configProvider: DelegatedAgentConfigProvider,
+): number | undefined {
+	const runtimeConfig = configProvider.getRuntimeConfig();
+	return resolveKnownModelsFromConfig(runtimeConfig as AgentConfig)?.[
+		runtimeConfig.modelId
+	]?.contextWindow;
 }
 
 /** Running totals a spawn_agent call reports as tool updates while its sub-agent works. */
 export class SubAgentProgress {
-	private current: SubAgentProgressUpdate = {
-		toolCalls: 0,
-		inputTokens: 0,
-		outputTokens: 0,
-		contextTokens: 0,
-	};
+	private current: SubAgentProgressUpdate;
+
+	constructor(private readonly contextWindow?: number) {
+		this.current = {
+			toolCalls: 0,
+			inputTokens: 0,
+			outputTokens: 0,
+			contextTokens: 0,
+			...(contextWindow ? { contextWindow, contextUsagePercentage: 0 } : {}),
+		};
+	}
 
 	apply(event: AgentEvent): SubAgentProgressUpdate | undefined {
 		if (event.type === "content_start" && event.contentType === "tool") {
@@ -239,12 +265,20 @@ export class SubAgentProgress {
 			return this.current;
 		}
 		if (event.type === "usage") {
+			// inputTokens is the whole request, cached tokens included.
+			const contextTokens = event.inputTokens + event.outputTokens;
 			this.current = {
 				...this.current,
 				inputTokens: event.totalInputTokens,
 				outputTokens: event.totalOutputTokens,
-				// inputTokens is the whole request, cached tokens included.
-				contextTokens: event.inputTokens + event.outputTokens,
+				contextTokens,
+				...(this.contextWindow
+					? {
+							contextUsagePercentage: Math.round(
+								(contextTokens / this.contextWindow) * 100,
+							),
+						}
+					: {}),
 				...(event.totalCost !== undefined
 					? { totalCost: event.totalCost }
 					: {}),

@@ -320,11 +320,121 @@ describe("createSpawnAgentTool", () => {
 			},
 		);
 
-		expect(agentConstructorSpy).toHaveBeenCalledWith(
+		const { systemPrompt } = agentConstructorSpy.mock.calls.at(-1)?.[0] as {
+			systemPrompt: string;
+		};
+		expect(systemPrompt).toContain(inputSystemPrompt);
+		expect(systemPrompt.split("# Workspace Configuration")).toHaveLength(2);
+	});
+
+	it("gives sub-agents Cline's rules and environment around the role, for any provider", async () => {
+		const { createSpawnAgentTool } = await import("./spawn-agent-tool.js");
+		runMock.mockResolvedValue({
+			text: "ok",
+			iterations: 1,
+			finishReason: "completed",
+			usage: { inputTokens: 1, outputTokens: 1 },
+		});
+		const tool = createSpawnAgentTool({
+			configProvider: createDelegatedAgentConfigProvider({
+				providerId: "openai-compatible",
+				modelId: "local-model",
+				cwd: "/repo/demo",
+				clineIdeName: "VS Code",
+				clinePlatform: "linux",
+				mode: "plan",
+			}),
+			subAgentTools: [],
+		});
+
+		await tool.execute(
+			{ systemPrompt: "You map module boundaries.", task: "Investigate" },
+			{ agentId: "parent-6", conversationId: "conv-parent", iteration: 1 },
+		);
+
+		const { systemPrompt } = agentConstructorSpy.mock.calls.at(-1)?.[0] as {
+			systemPrompt: string;
+		};
+		expect(systemPrompt).toContain(
+			"<role>\nYou map module boundaries.\n</role>",
+		);
+		expect(systemPrompt).toContain("Working Directory: /repo/demo");
+		expect(systemPrompt).toContain("IDE: VS Code");
+		expect(systemPrompt).toContain("investigate only");
+	});
+
+	it("builds a configured agent's compaction on its own connection", async () => {
+		const { createConfiguredAgentTools } = await import(
+			"./configured-agent-tool.js"
+		);
+		runMock.mockResolvedValue({
+			text: "ok",
+			iterations: 1,
+			finishReason: "completed",
+			usage: { inputTokens: 1, outputTokens: 1 },
+		});
+		const createPrepareTurn = vi.fn(() => async () => undefined);
+		const [tool] = createConfiguredAgentTools({
+			configProvider: createDelegatedAgentConfigProvider({
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-6",
+			}),
+			agents: [
+				{
+					name: "local-reviewer",
+					description: "Reviews code",
+					systemPrompt: "You review code.",
+					providerId: "openai-compatible",
+					modelId: "local-model",
+				},
+			],
+			createPrepareTurn,
+		});
+
+		await tool?.execute(
+			{ prompt: "Review" },
+			{ agentId: "parent-9", conversationId: "conv-parent", iteration: 1 },
+		);
+
+		expect(createPrepareTurn).toHaveBeenCalledWith(
 			expect.objectContaining({
-				systemPrompt: inputSystemPrompt,
+				providerId: "openai-compatible",
+				modelId: "local-model",
 			}),
 		);
+	});
+
+	it("passes a fresh prepareTurn to each sub-agent", async () => {
+		const { createSpawnAgentTool } = await import("./spawn-agent-tool.js");
+		runMock.mockResolvedValue({
+			text: "ok",
+			iterations: 1,
+			finishReason: "completed",
+			usage: { inputTokens: 1, outputTokens: 1 },
+		});
+		const createPrepareTurn = vi.fn(() => async () => undefined);
+		const tool = createSpawnAgentTool({
+			configProvider: createDelegatedAgentConfigProvider({
+				providerId: "anthropic",
+				modelId: "claude-sonnet-4-6",
+			}),
+			subAgentTools: [],
+			createPrepareTurn,
+		});
+
+		for (const agentId of ["parent-7", "parent-8"]) {
+			await tool.execute(
+				{ systemPrompt: "Helper.", task: "Do it" },
+				{ agentId, conversationId: "conv-parent", iteration: 1 },
+			);
+		}
+
+		expect(createPrepareTurn).toHaveBeenCalledTimes(2);
+		const [first, second] = agentConstructorSpy.mock.calls
+			.slice(-2)
+			.map(([config]) => (config as { prepareTurn?: unknown }).prepareTurn);
+		expect(first).toBeTypeOf("function");
+		expect(second).not.toBe(first);
 	});
 
 	it("resolves connection settings lazily at execution time", async () => {
@@ -376,6 +486,27 @@ describe("createSpawnAgentTool", () => {
 				temperature: 0.3,
 			}),
 		);
+	});
+});
+
+describe("SubAgentProgress with a known context window", () => {
+	it("reports the context usage percentage", async () => {
+		const { SubAgentProgress } = await import("./spawn-agent-tool");
+		const progress = new SubAgentProgress(1000);
+
+		expect(
+			progress.apply({
+				type: "usage",
+				inputTokens: 240,
+				outputTokens: 10,
+				totalInputTokens: 240,
+				totalOutputTokens: 10,
+			}),
+		).toMatchObject({
+			contextTokens: 250,
+			contextWindow: 1000,
+			contextUsagePercentage: 25,
+		});
 	});
 });
 

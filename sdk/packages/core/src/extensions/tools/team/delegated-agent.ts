@@ -46,6 +46,8 @@ export interface DelegatedAgentRuntimeConfig
 	providerId: string;
 	clinePlatform?: string;
 	clineIdeName?: string;
+	/** The parent session's mode; a plan-mode subagent only investigates. */
+	mode?: string;
 	maxIterations?: number;
 	hooks?: AgentHooks;
 	extensions?: AgentExtension[];
@@ -95,6 +97,8 @@ export interface BuildDelegatedAgentConfigOptions {
 	) => Promise<ToolApprovalResult> | ToolApprovalResult;
 	role?: string;
 	cwd?: string;
+	/** Compaction for the delegated agent's own context. */
+	prepareTurn?: SessionRuntimeConfig["prepareTurn"];
 }
 
 export function createDelegatedAgentConfigProvider(
@@ -160,6 +164,7 @@ export function buildDelegatedAgentConfig(
 		codeIntelligence: runtimeConfig.codeIntelligence,
 		problemsAfterEdit: runtimeConfig.problemsAfterEdit,
 		problemsTimeoutMs: runtimeConfig.problemsTimeoutMs,
+		prepareTurn: options.prepareTurn,
 		role: options.role,
 	};
 }
