@@ -406,7 +406,7 @@ describe("repairMalformedToolCall", () => {
 		expect(
 			await repairMalformedToolCall({
 				toolCall: call,
-				tools: { "docs__search": {}, run_commands: {} },
+				tools: { docs__search: {}, run_commands: {} },
 				error: new NoSuchToolError({ toolName: call.toolName }),
 			}),
 		).toEqual({ ...call, toolName: "docs__search" });
@@ -447,10 +447,27 @@ describe("repairMalformedToolCall", () => {
 		});
 	});
 
-	it("does not rename Edit without an editor, or other edit tools", async () => {
+	it("renames Write to editor, its content becoming new_text", async () => {
+		const repaired = await repairMalformedToolCall({
+			toolCall: {
+				toolCallId: "call_1",
+				toolName: "Write",
+				input: '{"file_path": "/repo/new.ts", "content": "export {}"}',
+			},
+			tools: { editor: {}, read_files: {} },
+			error: new NoSuchToolError({ toolName: "Write" }),
+		});
+		expect(repaired?.toolName).toBe("editor");
+		expect(JSON.parse(repaired?.input ?? "")).toEqual({
+			path: "/repo/new.ts",
+			new_text: "export {}",
+		});
+	});
+
+	it("does not rename Edit or Write without an editor, or other edit tools", async () => {
 		for (const [toolName, tools] of [
 			["Edit", { apply_patch: {}, read_files: {} }],
-			["Write", { editor: {}, read_files: {} }],
+			["Write", { apply_patch: {}, read_files: {} }],
 			["MultiEdit", { editor: {}, read_files: {} }],
 		] as const) {
 			expect(

@@ -81,11 +81,12 @@ describe("canonicalToolForAlias", () => {
 		expect(canonicalToolForAlias("run_shell_command")).toBe("run_commands");
 		expect(canonicalToolForAlias("WebFetch")).toBe("fetch_web_content");
 		expect(canonicalToolForAlias("Edit")).toBe("editor");
+		expect(canonicalToolForAlias("Write")).toBe("editor");
+		expect(canonicalToolForAlias("write_file")).toBe("editor");
 	});
 
 	it("leaves other edit tools and unknown names unmapped", () => {
 		for (const name of [
-			"Write",
 			"MultiEdit",
 			"str_replace_editor",
 			"replace_in_file",
@@ -112,6 +113,17 @@ describe("canonicalInputForAlias", () => {
 			new_text: "b",
 			replace_all: false,
 		});
+	});
+
+	it("renames Write's fields to the editor's", () => {
+		expect(
+			JSON.parse(
+				canonicalInputForAlias(
+					"editor",
+					'{"file_path": "/repo/new.ts", "content": "export {}"}',
+				),
+			),
+		).toEqual({ path: "/repo/new.ts", new_text: "export {}" });
 	});
 
 	it("keeps a field the call already sends under our name", () => {
@@ -143,12 +155,9 @@ describe("mcpToolForClaudeName", () => {
 	});
 
 	it("maps a plugin server's name to the server's own tool", () => {
-		expect(
-			mcpToolForClaudeName(
-				"mcp__plugin_acme_docs__search",
-				tools,
-			),
-		).toBe("docs__search");
+		expect(mcpToolForClaudeName("mcp__plugin_acme_docs__search", tools)).toBe(
+			"docs__search",
+		);
 	});
 
 	it("leaves other names and unknown tools alone", () => {
