@@ -21,12 +21,13 @@ import {
 import {
 	COMPACTION_TRIGGER_RATIO,
 	createTokenEstimator,
+	DEFAULT_PRESERVE_RECENT_TOKENS,
+	DEFAULT_SUMMARY_BLOCK_CHARS,
 	estimateTokens,
 	MAX_INPUT_UNDERESTIMATE_FACTOR,
 	resolveEffectiveMaxInputTokens,
 	resolveSummarizerConfig,
 	serializeMessage,
-	TOOL_RESULT_CHAR_LIMIT,
 } from "./compaction-shared";
 
 type FakeChunk = Record<string, unknown>;
@@ -390,7 +391,7 @@ describe("createContextCompactionPrepareTurn", () => {
 	});
 
 	it("truncates text-block tool results when serializing compaction input", () => {
-		const longToolOutput = "x".repeat(TOOL_RESULT_CHAR_LIMIT + 100);
+		const longToolOutput = "x".repeat(DEFAULT_SUMMARY_BLOCK_CHARS + 100);
 
 		const serializedStringResult = serializeMessage({
 			role: "user",
@@ -422,12 +423,45 @@ describe("createContextCompactionPrepareTurn", () => {
 		);
 	});
 
+	it("cuts each tool result, file and thinking block at the given block limit", () => {
+		const serialized = serializeMessage(
+			{
+				role: "user",
+				content: [
+					{
+						type: "tool_result",
+						tool_use_id: "tool-1",
+						name: "tool",
+						content: "r".repeat(600),
+					},
+					{ type: "file", path: "a.ts", content: "f".repeat(700) },
+				],
+			},
+			500,
+		);
+		expect(serialized).toContain(
+			`${"r".repeat(500)}\n...[truncated 100 chars]`,
+		);
+		expect(serialized).toContain(
+			`${"f".repeat(500)}\n...[truncated 200 chars]`,
+		);
+
+		const thinking = serializeMessage(
+			{
+				role: "assistant",
+				content: [{ type: "thinking", thinking: "t".repeat(550) }],
+			},
+			500,
+		);
+		expect(thinking).toContain("...[truncated 50 chars]");
+	});
+
 	it("returns no result when the transcript has no typed user prompt", () => {
 		// The whole-history fold anchors on typed user prompts; a transcript
 		// of pure tool traffic has nothing to fold around.
 		const omittedTail = "TAIL_SHOULD_NOT_SURVIVE_BASIC_COMPACTION";
 		const longToolOutput =
-			"x".repeat(TOOL_RESULT_CHAR_LIMIT + 5_000) + omittedTail;
+			"x".repeat(DEFAULT_SUMMARY_BLOCK_CHARS + 5_000) + omittedTail;
 		const result = runBasicCompaction({
 			context: {
 				agentId: "agent-1",
@@ -1603,6 +1637,57 @@ describe("createContextCompactionPrepareTurn", () => {
 		expect(fromDefault.maxOutputTokens).toBe(8_192);
 	});
 
+	it("lets the compaction summary cap win over the provider's max output tokens", () => {
+		const fromCompaction = resolveSummarizerConfig({
+			activeProviderConfig: {
+				providerId: "openai",
+				modelId: "local-model",
+				maxOutputTokens: 32_000,
+				modelInfo: { id: "local-model", maxTokens: 4_000 },
+			} as LlmsProviders.ProviderConfig,
+			summaryMaxOutputTokens: 12_000,
+		});
+		expect(fromCompaction.maxOutputTokens).toBe(12_000);
+
+		const summarizerWins = resolveSummarizerConfig({
+			activeProviderConfig: {
+				providerId: "anthropic",
+				modelId: "primary-model",
+			} as LlmsProviders.ProviderConfig,
+			summarizer: {
+				providerId: "openai",
+				modelId: "small-summary",
+				maxOutputTokens: 6_000,
+			},
+			summaryMaxOutputTokens: 12_000,
+		});
+		expect(summarizerWins.maxOutputTokens).toBe(6_000);
+
+		const overSummarizerProvider = resolveSummarizerConfig({
+			activeProviderConfig: {
+				providerId: "anthropic",
+				modelId: "primary-model",
+			} as LlmsProviders.ProviderConfig,
+			summarizer: {
+				providerId: "openai",
+				modelId: "small-summary",
+				providerConfig: {
+					providerId: "openai",
+					modelId: "small-summary",
+					maxOutputTokens: 2_000,
+				},
+			},
+			summaryMaxOutputTokens: 12_000,
+		});
+		expect(overSummarizerProvider.maxOutputTokens).toBe(12_000);
+
+		const codex = resolveSummarizerConfig({
+			activeProviderConfig: { providerId: "openai-codex", modelId: "gpt-5.4" },
+			summaryMaxOutputTokens: 12_000,
+		});
+		expect(codex).not.toHaveProperty("maxOutputTokens");
+	});
+
 	it("clamps an explicit summarizer's default budget by its own model info but lets its explicit value win", () => {
 		const clamped = resolveSummarizerConfig({
 			activeProviderConfig: {
@@ -2111,7 +2196,7 @@ describe("createContextCompactionPrepareTurn", () => {
 		createHandlerMock.mockReturnValue({ createMessage });
 		const omittedTail = "TAIL_SHOULD_NOT_REACH_SUMMARIZER";
 		const longToolOutput =
-			"x".repeat(TOOL_RESULT_CHAR_LIMIT + 10_000) + omittedTail;
+			"x".repeat(DEFAULT_SUMMARY_BLOCK_CHARS + 10_000) + omittedTail;
 		const prepareTurn = createContextCompactionPrepareTurn({
 			providerId: "anthropic",
 			modelId: "mock-model",
@@ -2209,6 +2294,138 @@ describe("createContextCompactionPrepareTurn", () => {
 		expect(summarizerPrompt).toContain("...[truncated ");
 		expect(summarizerPrompt).not.toContain(omittedTail);
 		expect(summarizerPrompt.length).toBeLessThan(longToolOutput.length);
+	});
+
+	it("applies the configured summary block limit and output cap to the summarizer request", async () => {
+		const createMessage = vi.fn(() =>
+			streamChunks([
+				{ type: "text", id: "summary-limits", text: "## Goal\nLimits" },
+				{ type: "done", id: "summary-limits", success: true },
+			]),
+		);
+		createHandlerMock.mockReturnValue({ createMessage });
+		const toolOutput = `${"x".repeat(3_000)}${"y".repeat(500)}`;
+		const messages: LlmsProviders.Message[] = [
+			{ role: "user", content: "Run a large command" },
+			assistantToolUseMessage("tool-large"),
+			toolResultMessage("tool-large", toolOutput),
+			{ role: "assistant", content: "Observed large output" },
+			{ role: "user", content: "Latest request" },
+			{ role: "assistant", content: "Latest answer" },
+		];
+		const prepareTurn = createContextCompactionPrepareTurn(
+			{
+				providerId: "anthropic",
+				modelId: "mock-model",
+				providerConfig: {
+					providerId: "anthropic",
+					modelId: "mock-model",
+					maxOutputTokens: 32_000,
+				} as LlmsProviders.ProviderConfig,
+				compaction: {
+					enabled: true,
+					strategy: "agentic",
+					preserveRecentTokens: 1,
+					summaryBlockChars: 3_000,
+					summaryMaxOutputTokens: 12_000,
+				},
+				logger: undefined,
+			},
+			{ mode: "manual" },
+		);
+
+		const result = await prepareTurn?.({
+			agentId: "agent-1",
+			conversationId: "conv-1",
+			parentAgentId: null,
+			iteration: 1,
+			abortSignal: new AbortController().signal,
+			systemPrompt: "You are helpful.",
+			tools: [],
+			messages,
+			apiMessages: messages,
+			model: {
+				id: "mock-model",
+				provider: "anthropic",
+				info: { id: "mock-model", maxInputTokens: 100_000 },
+			},
+		});
+
+		expect(result?.messages).toBeDefined();
+		expect(createHandlerMock).toHaveBeenCalledWith(
+			expect.objectContaining({ maxOutputTokens: 12_000 }),
+		);
+		const createMessageCalls = createMessage.mock.calls as unknown as [
+			string,
+			Array<{ role: string; content: string }>,
+		][];
+		const summarizerPrompt = createMessageCalls[0]?.[1]?.[0]?.content ?? "";
+		expect(summarizerPrompt).toContain(
+			`${"x".repeat(3_000)}\n...[truncated 500 chars]`,
+		);
+		expect(summarizerPrompt).not.toContain("xy");
+	});
+
+	it("keeps the default 60K tokens of recent context verbatim", async () => {
+		expect(DEFAULT_PRESERVE_RECENT_TOKENS).toBe(60_000);
+		const createMessage = vi.fn(() =>
+			streamChunks([
+				{ type: "text", id: "summary-preserve", text: "## Goal\nPreserve" },
+				{ type: "done", id: "summary-preserve", success: true },
+			]),
+		);
+		createHandlerMock.mockReturnValue({ createMessage });
+		// About 200K and 40K estimated tokens: the cut lands on the reply that
+		// crosses 60K, so only the first prompt is summarized.
+		const oldReply = "a".repeat(600_000);
+		const recentReply = "b".repeat(120_000);
+		const messages: LlmsProviders.Message[] = [
+			{ role: "user", content: "Task one" },
+			{ role: "assistant", content: oldReply },
+			{ role: "user", content: "Task two" },
+			{ role: "assistant", content: recentReply },
+			{ role: "user", content: "Task three" },
+			{ role: "assistant", content: "Done" },
+		];
+		const prepareTurn = createContextCompactionPrepareTurn(
+			{
+				providerId: "anthropic",
+				modelId: "mock-model",
+				providerConfig: {
+					providerId: "anthropic",
+					modelId: "mock-model",
+				} as LlmsProviders.ProviderConfig,
+				compaction: { enabled: true, strategy: "agentic" },
+				logger: undefined,
+			},
+			{ mode: "manual" },
+		);
+
+		const result = await prepareTurn?.({
+			agentId: "agent-1",
+			conversationId: "conv-1",
+			parentAgentId: null,
+			iteration: 1,
+			abortSignal: new AbortController().signal,
+			systemPrompt: "You are helpful.",
+			tools: [],
+			messages,
+			apiMessages: messages,
+			model: {
+				id: "mock-model",
+				provider: "anthropic",
+				info: { id: "mock-model", maxInputTokens: 1_000_000 },
+			},
+		});
+
+		const kept = result?.messages ?? [];
+		expect(kept.map((message) => message.content).slice(1)).toEqual([
+			oldReply,
+			"Task two",
+			recentReply,
+			"Task three",
+			"Done",
+		]);
 	});
 
 	it("budgets agentic summary input before serialization", () => {

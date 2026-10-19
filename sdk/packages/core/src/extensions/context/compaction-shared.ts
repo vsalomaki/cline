@@ -26,14 +26,14 @@ export const COMPACTION_TRIGGER_RATIO = 0.9;
  */
 export const MAX_INPUT_UNDERESTIMATE_FACTOR = 4;
 export const DEFAULT_TARGET_RATIO = 0.7;
-export const DEFAULT_PRESERVE_RECENT_TOKENS = 20_000;
+export const DEFAULT_PRESERVE_RECENT_TOKENS = 60_000;
 // Headroom for the summarizer's output. Raised from 4096: models that reason
 // by default can spend part of a tight budget on thinking and return no
 // summary text at all, which skips compaction entirely. 8192 leaves room for a
 // real summary even when some reasoning slips through.
 export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 8_192;
-export const TOOL_RESULT_CHAR_LIMIT = 2_000;
-export const FILE_CONTENT_CHAR_LIMIT = 2_000;
+/** Per-block character cap on tool results, file contents and thinking in the summarizer input. */
+export const DEFAULT_SUMMARY_BLOCK_CHARS = 8_000;
 export const MIN_TRUNCATED_MESSAGE_TOKENS = 8;
 
 export interface FileOperationSummary {
@@ -107,8 +107,9 @@ export function truncateText(text: string, limit: number): string {
 
 export function flattenToolResultContent(
 	content: ToolResultContent["content"],
+	blockChars = DEFAULT_SUMMARY_BLOCK_CHARS,
 ): string {
-	const truncated = truncateToolResultContentForCompaction(content);
+	const truncated = truncateToolResultContentForCompaction(content, blockChars);
 	if (typeof truncated === "string") {
 		return truncated;
 	}
@@ -130,21 +131,22 @@ export function flattenToolResultContent(
 
 export function truncateToolResultContentForCompaction(
 	content: ToolResultContent["content"],
+	blockChars = DEFAULT_SUMMARY_BLOCK_CHARS,
 ): ToolResultContent["content"] {
 	if (typeof content === "string") {
-		return truncateText(content, TOOL_RESULT_CHAR_LIMIT);
+		return truncateText(content, blockChars);
 	}
 	return content.map((block) => {
 		switch (block.type) {
 			case "text":
 				return {
 					...block,
-					text: truncateText(block.text, TOOL_RESULT_CHAR_LIMIT),
+					text: truncateText(block.text, blockChars),
 				};
 			case "file":
 				return {
 					...block,
-					content: truncateText(block.content, FILE_CONTENT_CHAR_LIMIT),
+					content: truncateText(block.content, blockChars),
 				};
 			case "image":
 				return block;
@@ -160,7 +162,10 @@ export function formatToolInput(input: Record<string, unknown>): string {
 		.join(", ");
 }
 
-export function serializeMessage(message: MessageWithMetadata): string {
+export function serializeMessage(
+	message: MessageWithMetadata,
+	blockChars = DEFAULT_SUMMARY_BLOCK_CHARS,
+): string {
 	if (typeof message.content === "string") {
 		return `[${message.role === "user" ? "User" : "Bot"}]: ${message.content}`;
 	}
@@ -173,7 +178,9 @@ export function serializeMessage(message: MessageWithMetadata): string {
 				);
 				break;
 			case "thinking":
-				lines.push(`[Bot thinking]: ${truncateText(block.thinking, 2_000)}`);
+				lines.push(
+					`[Bot thinking]: ${truncateText(block.thinking, blockChars)}`,
+				);
 				break;
 			case "redacted_thinking":
 				lines.push("[Bot thinking]: [redacted]");
@@ -184,11 +191,13 @@ export function serializeMessage(message: MessageWithMetadata): string {
 				);
 				break;
 			case "tool_result":
-				lines.push(`[Tool result]: ${flattenToolResultContent(block.content)}`);
+				lines.push(
+					`[Tool result]: ${flattenToolResultContent(block.content, blockChars)}`,
+				);
 				break;
 			case "file":
 				lines.push(
-					`[${message.role === "user" ? "User" : "Bot"} file ${block.path}]: ${truncateText(block.content, FILE_CONTENT_CHAR_LIMIT)}`,
+					`[${message.role === "user" ? "User" : "Bot"} file ${block.path}]: ${truncateText(block.content, blockChars)}`,
 				);
 				break;
 			case "image":
@@ -206,8 +215,14 @@ export function serializeMessage(message: MessageWithMetadata): string {
 	return lines.join("\n");
 }
 
-export function serializeConversation(messages: MessageWithMetadata[]): string {
-	return messages.map(serializeMessage).join("\n\n").trim();
+export function serializeConversation(
+	messages: MessageWithMetadata[],
+	blockChars = DEFAULT_SUMMARY_BLOCK_CHARS,
+): string {
+	return messages
+		.map((message) => serializeMessage(message, blockChars))
+		.join("\n\n")
+		.trim();
 }
 
 export function createTokenEstimator(): EstimateMessageTokens {
@@ -752,8 +767,18 @@ function resolveSummaryMaxOutputTokens(config: ProviderConfig): number {
 export function resolveSummarizerConfig(options: {
 	activeProviderConfig: ProviderConfig;
 	summarizer?: CoreCompactionSummarizerConfig;
+	/**
+	 * Summary output cap from the compaction config. A dedicated summarizer's
+	 * own `maxOutputTokens` wins over it; it wins over the provider's.
+	 */
+	summaryMaxOutputTokens?: number;
 }): ProviderConfig {
 	const summarizer = options.summarizer;
+	const summaryMaxOutputTokens = isPositiveFiniteNumber(
+		options.summaryMaxOutputTokens,
+	)
+		? Math.floor(options.summaryMaxOutputTokens)
+		: undefined;
 	const withSummarizerDefaults = (config: ProviderConfig): ProviderConfig => {
 		if (config.providerId === "openai-codex") {
 			const { maxOutputTokens: _maxOutputTokens, ...rest } = config;
@@ -769,7 +794,11 @@ export function resolveSummarizerConfig(options: {
 		};
 	};
 	if (!summarizer) {
-		return withSummarizerDefaults(options.activeProviderConfig);
+		return withSummarizerDefaults({
+			...options.activeProviderConfig,
+			maxOutputTokens:
+				summaryMaxOutputTokens ?? options.activeProviderConfig.maxOutputTokens,
+		});
 	}
 	const baseProviderConfig =
 		summarizer.providerConfig?.providerId === summarizer.providerId
@@ -785,7 +814,9 @@ export function resolveSummarizerConfig(options: {
 		modelInfo: summarizer.modelInfo ?? baseProviderConfig?.modelInfo,
 		knownModels: summarizer.knownModels ?? baseProviderConfig?.knownModels,
 		maxOutputTokens:
-			summarizer.maxOutputTokens ?? baseProviderConfig?.maxOutputTokens,
+			summarizer.maxOutputTokens ??
+			summaryMaxOutputTokens ??
+			baseProviderConfig?.maxOutputTokens,
 	});
 }
 

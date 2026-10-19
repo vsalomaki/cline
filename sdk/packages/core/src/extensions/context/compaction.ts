@@ -283,6 +283,8 @@ const BUILTIN_COMPACTION_STRATEGIES = {
 				compaction?.preserveRecentTokens ?? DEFAULT_PRESERVE_RECENT_TOKENS,
 				context.budget.messages.targetTokens,
 			),
+			summaryBlockChars: compaction?.summaryBlockChars,
+			summaryMaxOutputTokens: compaction?.summaryMaxOutputTokens,
 			estimateMessageTokens,
 			logger,
 		}),

@@ -176,7 +176,7 @@ Rules:
 
 In the VS Code extension, the same limits can be set under **Settings → Agent
 Limits**, together with tool, ripgrep and hook timeouts, repeated-tool-call
-detection, the consecutive-mistake limit and the auto-compaction trigger. An env
+detection, the consecutive-mistake limit and [compaction](#compaction). An env
 var set for the editor takes precedence over the setting, and the settings page
 marks each field it overrides. Changes apply to the current task once it is idle.
 
@@ -321,6 +321,24 @@ seconds to start (60 for `jdtls`; set `startupTimeoutMs` to change it). Sessions
 the same process share servers, and a server stays up for two minutes after the
 last session using it ends, so the next session starts warm. A server that crashes
 is not restarted until a new session starts.
+
+### Compaction
+
+When the conversation nears the model's context window, Cline summarizes the older
+history and keeps the most recent part verbatim. In the VS Code extension these
+settings are under **Settings → Agent Limits → Compaction** and apply when
+auto-compaction is on under Features:
+
+| Setting | Default | Governs |
+|---------|---------|---------|
+| **Compact at** | 90% | Share of the context window, as the provider counts tokens, at which compaction runs |
+| **Keep recent context** | 60,000 tokens | Recent conversation kept verbatim, at most the size compaction shrinks the context to, so small context windows keep less |
+| **Summary input per block** | 8,000 characters | How much of each tool result, file and thinking block the summarizer reads; the rest of a block is cut |
+| **Summary length** | 8,192 tokens | Output cap for the summary. Until you change it, a Max Output Tokens set in the provider settings applies instead |
+
+The last three apply to the agentic strategy, the default. In the SDK they are the
+`compaction` fields `triggerRatio`, `preserveRecentTokens`, `summaryBlockChars` and
+`summaryMaxOutputTokens`. The CLI has no flags or env vars for them.
 
 ## Related Docs
 
