@@ -36,7 +36,7 @@ const DELEGATION_DESCRIPTIONS: Record<DelegationMode, string> = {
 	off: "Cline does all the work itself.",
 	subagents:
 		"Cline can hand focused tasks to subagents that run in parallel while it waits for them. You approve each handoff; the subagent then reads and edits files without asking.",
-	teams: "Cline can also start teammates that work in the background while it continues, and message, wait for or cancel them. You approve each teammate and each task; teammates then read and edit files without asking.",
+	teams: "Cline can also start teammates that work in the background while it continues and you keep talking to it. Teammates keep their role across tasks, and Cline can message, wait for or cancel them. You approve each teammate and each task; teammates then read and edit files without asking.",
 }
 
 const agentFeatures: FeatureToggle[] = [

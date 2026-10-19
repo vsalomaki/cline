@@ -223,6 +223,30 @@ The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls`,
 over the file. Values that are not valid (a non-positive or non-integer count, an
 unrecognized boolean) are ignored.
 
+### Subagents and agent teams
+
+Both let the main agent hand work to other agents. They differ in whether the main
+agent waits, and in how long the helpers live.
+
+| | Subagents (`spawn_agent`) | Agent teams (`team_*` tools) |
+|---|---|---|
+| Main agent while they work | Waits for the result. Several subagents started in one response run in parallel | Keeps going. A task given with `runMode: "async"` runs in the background, and its result arrives as a new turn for the main agent |
+| You while they work | The main agent's turn is busy, so messages queue | You can keep talking to the main agent; a queued message is answered while teammates continue |
+| Lifetime | One task. A subagent starts fresh and ends when it reports | A teammate is created once with a role and keeps its conversation across the tasks it is given |
+| Communication | Task in, final answer out | The main agent can message one teammate or all of them, check status, wait for runs or cancel them, and track tasks on a shared task list |
+| Saved state | Each subagent's messages, under the session | The team (teammates, tasks, runs, messages), restored when the session resumes |
+| Approval | Each `spawn_agent` call | Each `team_spawn_teammate` and `team_run_task` call. Status, messages and the task list need none |
+| Good for | Focused lookups or edits the main agent needs before its next step | Longer work split into roles that run side by side |
+
+In both cases the helpers run their own tools without asking (in VS Code: read, edit and
+web fetch, no terminal), never ask you a question, and each one is a separate model
+conversation whose tokens and cost add to the task. Agent teams include subagents.
+
+In the VS Code extension, choose **Settings → Features → Delegation**: Off, Subagents or
+Agent teams. Each subagent batch and each teammate run shows a status row with its task,
+tool calls, latest tool, tokens and cost. The CLI turns on both except in yolo mode; see
+[Agent teams](/cli/agent-teams) for the `/team` command.
+
 ### Language servers
 
 When a session has language servers (the editor's in VS Code, servers the CLI
