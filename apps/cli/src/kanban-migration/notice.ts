@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isRemoteServicesDisabled } from "@cline/shared";
 import { resolveClineDataDir } from "@cline/shared/storage";
 import { getCliSubscriptionUrl } from "../utils/cline-pass-errors";
 
@@ -115,7 +116,7 @@ export function getClineCliMigrationNotice(
 	const noticeState = readNoticeState(noticePath);
 	const forceNotice = isForceNoticeEnabled(env);
 	const disableNotice = env[DISABLE_NOTICE_ENV]?.trim() === "1";
-	if (disableNotice && !forceNotice) {
+	if (isRemoteServicesDisabled() || (disableNotice && !forceNotice)) {
 		return undefined;
 	}
 	// At most one notice per launch, oldest first, so a user who has already

@@ -37,6 +37,7 @@ import {
 	ToggleMarketplaceLocalInstalledEntryRequest,
 } from "@shared/proto/cline/marketplace"
 import { HostProvider } from "@/hosts/host-provider"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import type { Controller } from "../index"
 
 type MarketplaceType = "mcp" | "skill" | "plugin"
@@ -119,6 +120,9 @@ function sanitizeEntry(raw: unknown): MarketplaceEntry | undefined {
 }
 
 export async function fetchMarketplaceCatalog(): Promise<MarketplaceCatalog> {
+	if (isRemoteServicesDisabled()) {
+		return MarketplaceCatalog.create({ entries: [] })
+	}
 	const response = await fetch(MARKETPLACE_CATALOG_URL, {
 		headers: { Accept: "application/json" },
 	})

@@ -1,4 +1,7 @@
-import { formatUserCommandBlock } from "@cline/shared";
+import {
+	formatUserCommandBlock,
+	isRemoteServicesDisabled,
+} from "@cline/shared";
 import type { InteractiveSlashCommand } from "../interactive-welcome";
 
 export type SlashCommandSource =
@@ -70,6 +73,7 @@ const TUI_LOCAL_COMMANDS: Array<{
 	{
 		name: "account",
 		description: "View Cline account",
+		visible: !isRemoteServicesDisabled(),
 	},
 	{
 		name: "mcp",

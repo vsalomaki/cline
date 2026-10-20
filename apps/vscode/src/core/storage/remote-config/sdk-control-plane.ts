@@ -6,6 +6,7 @@ import { buildBasicClineHeaders } from "@/services/EnvUtils"
 import { CLINE_API_ENDPOINT } from "@/shared/cline/api"
 import { getAxiosSettings } from "@/shared/net"
 import { APIKeySchema, type APIKeySettings, type RemoteConfig, RemoteConfigSchema } from "@/shared/remote-config/schema"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import type { ConfiguredAPIKeys } from "@/shared/storage/state-keys"
 import { deleteRemoteConfigFromCache, readRemoteConfigFromCache, writeRemoteConfigToCache } from "../disk"
@@ -224,6 +225,9 @@ export class SdkRemoteConfigControlPlane {
 	}
 
 	private async discoverRemoteConfigOrg(): Promise<{ organizationId: string; discoveredValue?: string } | undefined> {
+		if (isRemoteServicesDisabled()) {
+			return undefined
+		}
 		const activeOrganizationId = AuthService.getInstance().getActiveOrganizationId()
 
 		// Opt-out is a local, admin-gated preference. Evaluate it before any

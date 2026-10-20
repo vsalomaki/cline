@@ -364,13 +364,37 @@ The last three apply to the agentic strategy, the default. In the SDK they are t
 `compaction` fields `triggerRatio`, `preserveRecentTokens`, `summaryBlockChars` and
 `summaryMaxOutputTokens`. The CLI has no flags or env vars for them.
 
-### Telemetry
+### Fork build: no remote services
 
-This build sends no telemetry. PostHog usage and error reporting, feature flags,
-OpenTelemetry export (including `OTEL_*`, `CLINE_OTEL_*` and organization remote
-config) and Langfuse tracing are all off, and the device ID is a random value
-stored locally instead of the machine ID. Environment variables set when Cline
-runs cannot turn any of it back on, and the telemetry setting is hidden.
+This build talks only to the providers, MCP servers and tools you configure.
+Environment variables set when Cline runs cannot turn any of the following back
+on.
+
+**Telemetry.** PostHog usage and error reporting, feature flags, OpenTelemetry
+export (including `OTEL_*`, `CLINE_OTEL_*` and organization remote config) and
+Langfuse tracing are all off, and the device ID is a random value stored locally
+instead of the machine ID. The telemetry setting is hidden.
+
+**Cline services.**
+
+- The Cline and ClinePass providers are not listed. A stored `cline` or
+  `cline-pass` selection fails with "The Cline provider is not available in this
+  build". With nothing configured, the default provider is OpenAI Compatible.
+- There is no Cline sign-in, account view, credit or spend-limit message, or
+  ClinePass promotion. Onboarding goes straight to configuring your own provider.
+- Organization remote config, banners, cloud sessions and Composio connectors
+  are off.
+- Model metadata comes from the catalog bundled with the build: nothing is
+  fetched from `models.dev` or Cline's recommended-models list. Model lists from
+  your own provider (OpenAI-compatible `/models`, Ollama, LM Studio, or a provider
+  you have a key for) still load.
+- The marketplace catalog is not fetched, and official plugin names
+  (`cline plugin install <name>`) are refused. Plugins from git, npm or a local
+  path install as usual, and installed plugins, skills and MCP servers keep
+  working.
+- The CLI never checks for updates, and `cline update` prints "Updates are
+  disabled in this build."
+- The webview's Content Security Policy allows no outbound connections.
 
 To build with upstream's behaviour, set `CLINE_REMOTE_SERVICES=on` when building
 the extension or the CLI.

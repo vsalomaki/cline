@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getUserOrganizations } from "@/core/controller/account/getUserOrganizations"
 import { ClineAccountService } from "./account-service"
 
@@ -110,5 +110,23 @@ describe("account confirmation", () => {
 			expect.objectContaining({ timeout: 0, method: "PUT", data: { organizationId: "org-new" } }),
 		)
 		expect(mocks.restore).toHaveBeenCalledOnce()
+	})
+})
+
+describe("account requests with remote services disabled", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off")
+	})
+
+	afterEach(() => {
+		vi.unstubAllEnvs()
+	})
+
+	it("sends no request", async () => {
+		const service = new ClineAccountService()
+
+		await expect(service.fetchMe()).resolves.toBeUndefined()
+		expect(mocks.request).not.toHaveBeenCalled()
 	})
 })

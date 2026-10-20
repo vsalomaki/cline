@@ -1,3 +1,5 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
+
 export type CloudModel = {
 	id: string;
 	name: string;
@@ -38,6 +40,7 @@ export async function loadCloudModels(
 	apiBaseUrl: string,
 	options: { isOrganizationSession?: boolean; fetchImpl?: typeof fetch } = {},
 ): Promise<CloudModel[]> {
+	if (isRemoteServicesDisabled()) return [];
 	const trimmedBaseUrl = apiBaseUrl.trim();
 	let end = trimmedBaseUrl.length;
 	while (end > 0 && trimmedBaseUrl[end - 1] === "/") end--;

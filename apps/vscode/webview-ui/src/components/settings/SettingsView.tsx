@@ -2,6 +2,7 @@ import type { ExtensionMessage } from "@shared/ExtensionMessage"
 import { isClineInternalTester } from "@shared/internal/account"
 import { ResetStateRequest } from "@shared/proto/cline/state"
 import type { UserOrganization } from "@shared/proto/index.cline"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import {
 	CheckCheck,
 	FlaskConical,
@@ -91,7 +92,7 @@ const SETTINGS_TABS: SettingsTab[] = [
 		headerText: "Remote Config",
 		icon: HardDriveDownload,
 		hidden: ({ activeOrganization } = { user: null, activeOrganization: null }) =>
-			!activeOrganization || !isAdminOrOwner(activeOrganization),
+			isRemoteServicesDisabled() || !activeOrganization || !isAdminOrOwner(activeOrganization),
 	},
 	{
 		id: "about",

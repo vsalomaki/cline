@@ -30,7 +30,11 @@ import {
 	ProviderSettingsManager,
 	SessionSource,
 } from "@cline/core";
-import { isLikelyAuthError, type MessageWithMetadata } from "@cline/shared";
+import {
+	getDefaultProviderId,
+	isLikelyAuthError,
+	type MessageWithMetadata,
+} from "@cline/shared";
 import { getPersistedProviderApiKey } from "../commands/auth";
 import { resolveSystemPrompt } from "../runtime/prompt";
 import { subscribeToAgentEvents } from "../runtime/session-events";
@@ -190,7 +194,9 @@ export class AcpAgent implements Agent {
 
 		const defaultMode = "act";
 		const providerId =
-			process.env.CLINE_PROVIDER ?? this.authResult?.providerId ?? "cline";
+			process.env.CLINE_PROVIDER ??
+			this.authResult?.providerId ??
+			getDefaultProviderId();
 
 		const providerModels = await Llms.getModelsForProvider(
 			providerId,
@@ -265,7 +271,9 @@ export class AcpAgent implements Agent {
 				// as a new session, with the model resolved against the
 				// provider's own catalog just like newSession.
 				const providerId =
-					process.env.CLINE_PROVIDER ?? this.authResult?.providerId ?? "cline";
+					process.env.CLINE_PROVIDER ??
+					this.authResult?.providerId ??
+					getDefaultProviderId();
 				const providerModels = await Llms.getModelsForProvider(
 					providerId,
 					CHAT_MODEL_QUERY_OPTIONS,

@@ -1264,3 +1264,21 @@ describe("models-dev-catalog", () => {
 		);
 	});
 });
+
+describe("fetchLiveProviderModels with remote services disabled", () => {
+	it("returns no live models without a request", async () => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+		try {
+			const fetcher = vi.fn();
+			await expect(
+				fetchLiveProviderModels(
+					"https://models.dev/api.json",
+					fetcher as unknown as typeof fetch,
+				),
+			).resolves.toEqual({});
+			expect(fetcher).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+});

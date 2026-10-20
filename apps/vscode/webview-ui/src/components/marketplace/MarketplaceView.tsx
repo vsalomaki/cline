@@ -7,6 +7,7 @@ import {
 	MarketplaceLocalInstalledEntryRequest,
 	ToggleMarketplaceLocalInstalledEntryRequest,
 } from "@shared/proto/cline/marketplace"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { VSCodeButton, VSCodeLink, VSCodeProgressRing, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 import {
 	CheckIcon,
@@ -1042,7 +1043,8 @@ const MarketplaceView = ({ initialType = "skill", onDone }: MarketplaceViewProps
 		setActiveSection("installed")
 	}, [initialType])
 
-	const mcpMarketplaceDisabled = activeType === "mcp" && remoteConfigSettings?.mcpMarketplaceEnabled === false
+	const mcpMarketplaceDisabled =
+		isRemoteServicesDisabled() || (activeType === "mcp" && remoteConfigSettings?.mcpMarketplaceEnabled === false)
 	const currentSection = mcpMarketplaceDisabled ? "installed" : activeSection
 
 	useEffect(() => {

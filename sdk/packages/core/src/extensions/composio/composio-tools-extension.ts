@@ -5,6 +5,7 @@ import {
 	createTool,
 	FeatureFlag,
 	getClineEnvironmentConfig,
+	isRemoteServicesDisabled,
 } from "@cline/shared";
 import { resolveClineDataDir } from "@cline/shared/storage";
 import {
@@ -133,6 +134,7 @@ export async function createComposioToolsExtension(options?: {
 	request?: ConnectorsRequest;
 	logger?: BasicLogger;
 }): Promise<AgentExtension | undefined> {
+	if (isRemoteServicesDisabled()) return undefined;
 	const hostRequest = options?.request;
 	const accountId = hostRequest ? undefined : getAccountId();
 	let request: ConnectorsRequest;

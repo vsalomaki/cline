@@ -1,5 +1,6 @@
 import { StateManager } from "@/core/storage/StateManager"
 import { featureFlagsService } from "@/services/feature-flags"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { FeatureFlag } from "@/shared/services/feature-flags/feature-flags"
 
 /**
@@ -19,11 +20,17 @@ function readCloudSessionsOverride(): boolean | undefined {
 
 /** Whether the `ext-cloud-sessions` rollout makes cloud sessions available to this user. */
 export function isCloudSessionsFeatureAvailable(): boolean {
+	if (isRemoteServicesDisabled()) {
+		return false
+	}
 	return readCloudSessionsOverride() ?? featureFlagsService.getBooleanFlagEnabled(FeatureFlag.CLOUD_SESSIONS)
 }
 
 /** Whether cloud sessions are both available and turned on by the user in Settings. */
 export function isCloudSessionsFeatureEnabled(): boolean {
+	if (isRemoteServicesDisabled()) {
+		return false
+	}
 	const override = readCloudSessionsOverride()
 	if (override !== undefined) {
 		return override

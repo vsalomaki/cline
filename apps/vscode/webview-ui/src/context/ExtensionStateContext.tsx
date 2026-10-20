@@ -9,6 +9,7 @@ import { OnboardingModelGroup, type TerminalProfile } from "@shared/proto/cline/
 import { convertProtoToClineMessage } from "@shared/proto-conversions/cline-message"
 import { convertProtoMcpServersToMcpServers } from "@shared/proto-conversions/mcp/mcp-server-conversion"
 import { fromProtobufModels } from "@shared/proto-conversions/models/typeConversion"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import type React from "react"
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import {
@@ -246,6 +247,9 @@ export const ExtensionStateContextProvider: React.FC<{
 	}, [closeMarketplaceView, setShowSettings, closeMcpView, setShowAccount, setShowWorktrees, setShowHistory])
 
 	const navigateToAccount = useCallback(() => {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		closeMarketplaceView()
 		setShowSettings(false)
 		closeMcpView()
@@ -828,11 +832,15 @@ export const ExtensionStateContextProvider: React.FC<{
 	}, [])
 
 	// Auto-refresh model lists on API key availability
+	const planModeApiProvider = state.apiConfiguration?.planModeApiProvider
+	const actModeApiProvider = state.apiConfiguration?.actModeApiProvider
 	useEffect(() => {
-		if (!openRouterModels || Object.keys(openRouterModels).length <= 1) {
+		const shouldRefresh = (provider: string) =>
+			!isRemoteServicesDisabled() || planModeApiProvider === provider || actModeApiProvider === provider
+		if (shouldRefresh("openrouter") && (!openRouterModels || Object.keys(openRouterModels).length <= 1)) {
 			refreshOpenRouterModels()
 		}
-		if (!vercelAiGatewayModels || Object.keys(vercelAiGatewayModels).length === 0) {
+		if (shouldRefresh("vercel-ai-gateway") && (!vercelAiGatewayModels || Object.keys(vercelAiGatewayModels).length === 0)) {
 			refreshVercelAiGatewayModels()
 		}
 		if (state.apiConfiguration?.basetenApiKey) {
@@ -842,6 +850,8 @@ export const ExtensionStateContextProvider: React.FC<{
 			refreshLiteLlmModels()
 		}
 	}, [
+		planModeApiProvider,
+		actModeApiProvider,
 		refreshOpenRouterModels,
 		refreshVercelAiGatewayModels,
 		state?.apiConfiguration?.basetenApiKey,

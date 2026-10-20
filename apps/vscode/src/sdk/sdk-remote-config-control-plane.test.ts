@@ -323,4 +323,21 @@ describe("SdkRemoteConfigControlPlane", () => {
 		expect(bundle?.remoteConfig?.version).toBe("v1")
 		expect(writeRemoteConfigToCache).toHaveBeenCalledWith("org-fallback", { version: "v1" })
 	})
+
+	it("fetches nothing when remote services are disabled", async () => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off")
+		try {
+			fetchUserRemoteConfig.mockResolvedValue(discoveryFixture)
+			const controlPlane = makeControlPlane()
+
+			const bundle = await controlPlane.fetchBundle({ workspacePath: "/workspace" })
+
+			expect(bundle).toBeUndefined()
+			expect(controlPlane.wasExplicitNoConfig()).toBe(true)
+			expect(fetchUserRemoteConfig).not.toHaveBeenCalled()
+			expect(axiosRequest).not.toHaveBeenCalled()
+		} finally {
+			vi.unstubAllEnvs()
+		}
+	})
 })

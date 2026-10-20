@@ -27,7 +27,7 @@ import {
 	MODEL_COLLECTIONS_BY_PROVIDER_ID,
 	OLLAMA_DEFAULT_CONTEXT_WINDOW,
 } from "@cline/llms"
-import { buildClineSystemPrompt, isClineProvider } from "@cline/shared"
+import { buildClineSystemPrompt, getDefaultProviderId, isClineProvider } from "@cline/shared"
 import type { ApiConfiguration } from "@shared/api"
 import { ClineClient } from "@shared/cline"
 import { resolveDelegationMode } from "@shared/Delegation"
@@ -467,7 +467,7 @@ const PROVIDER_MODEL_ID_MAP: Record<string, { plan: keyof ApiConfiguration; act:
 // Provider/model defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_PROVIDER_ID = "cline"
+const DEFAULT_PROVIDER_ID = getDefaultProviderId()
 
 /**
  * Providers whose model list comes from a live local endpoint (Ollama's

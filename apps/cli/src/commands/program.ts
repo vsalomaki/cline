@@ -1,3 +1,4 @@
+import { getDefaultProviderId } from "@cline/shared";
 import { Command, CommanderError, Option } from "commander";
 import { version } from "../../package.json";
 import { CLI_DEFAULT_MAX_CONSECUTIVE_MISTAKES } from "../runtime/defaults";
@@ -46,7 +47,10 @@ export function addRootOptions(cmd: Command): Command {
 				"Open the terminal user interface (TUI) for interactive sessions",
 			)
 			.option("--id <session-id>", "Resume an existing session by ID")
-			.option("-P, --provider <id>", "Provider id (default: cline)")
+			.option(
+				"-P, --provider <id>",
+				`Provider id (default: ${getDefaultProviderId()})`,
+			)
 			.option(
 				"-k, --key <api-key>",
 				"API key for this run, also saved as the provider's key",

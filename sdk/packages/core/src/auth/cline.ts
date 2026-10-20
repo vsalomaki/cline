@@ -3,6 +3,7 @@ import {
 	decodeJwtPayload,
 	getClineEnvironmentConfig,
 	type ITelemetryService,
+	isRemoteServicesDisabled,
 } from "@cline/shared";
 import { hashSecret, sdkDebug } from "../logging/early-logger";
 import {
@@ -526,11 +527,18 @@ async function exchangeAuthorizationCode(
 	);
 }
 
+function assertClineSignInAvailable(): void {
+	if (isRemoteServicesDisabled()) {
+		throw new Error("Cline sign-in is not available in this build");
+	}
+}
+
 export async function loginClineOAuth(
 	options: ClineOAuthProviderOptions & {
 		callbacks: OAuthLoginCallbacks;
 	},
 ): Promise<ClineOAuthCredentials> {
+	assertClineSignInAvailable();
 	captureAuthStarted(options.telemetry, options.provider ?? "cline");
 	const useWorkOSDeviceAuth = options.useWorkOSDeviceAuth ?? true;
 	const callbackPorts = options.callbackPorts?.length
@@ -663,6 +671,7 @@ export async function startClineDeviceAuth(options?: {
 	expiresInSeconds: number;
 	pollIntervalSeconds: number;
 }> {
+	assertClineSignInAvailable();
 	return await requestWorkOSDeviceAuthorization(
 		getClineEnvironmentConfig().workOsClientId,
 		options,
@@ -732,6 +741,7 @@ export async function refreshClineToken(
 	current: ClineOAuthCredentials,
 	options: ClineOAuthProviderOptions,
 ): Promise<ClineOAuthCredentials> {
+	assertClineSignInAvailable();
 	const refreshUrl = resolveUrl(
 		options.apiBaseUrl,
 		DEFAULT_AUTH_ENDPOINTS.refresh,

@@ -37,6 +37,7 @@ import { featureFlagsService } from "@/services/feature-flags"
 import { telemetryService } from "@/services/telemetry"
 import { CLINE_API_ENDPOINT } from "@/shared/cline/api"
 import { fetch, getAxiosSettings } from "@/shared/net"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { openExternal } from "@/utils/env"
 import { getProviderSettingsManager } from "./provider-migration"
@@ -364,7 +365,7 @@ export class AuthService {
 	 * Refreshes if necessary using the SDK's token management.
 	 */
 	async getAuthToken(): Promise<string | null> {
-		if (!this._clineAuthInfo?.idToken) {
+		if (isRemoteServicesDisabled() || !this._clineAuthInfo?.idToken) {
 			return null
 		}
 
@@ -551,6 +552,9 @@ export class AuthService {
 	 * Persists credentials to providers.json.
 	 */
 	async createAuthRequest(strict = false): Promise<String> {
+		if (isRemoteServicesDisabled()) {
+			throw new Error("Cline sign-in is not available in this build")
+		}
 		// In strict mode, don't open a new auth window if already authenticated
 		if (strict && this._authenticated) {
 			await this.sendAuthStatusUpdate()
@@ -869,6 +873,9 @@ export class AuthService {
 	 * This is called when the browser redirects back to the extension after OAuth.
 	 */
 	async handleAuthCallback(authorizationCode: string, provider: string): Promise<void> {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		try {
 			// Exchange the authorization code for tokens using the Cline API
 			const apiBaseUrl = ClineEnv.config().apiBaseUrl
@@ -970,7 +977,7 @@ export class AuthService {
 	async restoreRefreshTokenAndRetrieveAuthInfo(): Promise<void> {
 		try {
 			const creds = readClineCredentials()
-			if (!creds) {
+			if (isRemoteServicesDisabled() || !creds) {
 				this._authenticated = false
 				this._clineAuthInfo = null
 				return

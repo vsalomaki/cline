@@ -1,4 +1,5 @@
 import type { ClineMessage } from "@shared/ExtensionMessage"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { memo } from "react"
 import { ClineAuthStatus } from "@/components/account/ClineAuthStatus"
 import ClineFreeModelLimitError from "@/components/chat/ClineFreeModelLimitError"
@@ -46,7 +47,7 @@ const ErrorRow = memo((props: ErrorRowProps) => {
 					const isClineUsageBillingProvider = providerId === "cline"
 					const errorCode = clineError?._error?.code
 
-					if (clineError?.isErrorType(ClineErrorType.Balance)) {
+					if (!isRemoteServicesDisabled() && clineError?.isErrorType(ClineErrorType.Balance)) {
 						const errorDetails = clineError._error?.details
 						if (isClineUsageBillingProvider || errorDetails?.buy_credits_url) {
 							return (
@@ -62,7 +63,7 @@ const ErrorRow = memo((props: ErrorRowProps) => {
 						}
 					}
 
-					if (clineError?.isErrorType(ClineErrorType.SpendLimit)) {
+					if (!isRemoteServicesDisabled() && clineError?.isErrorType(ClineErrorType.SpendLimit)) {
 						const d = clineError._error?.details
 						return (
 							<SpendLimitError
