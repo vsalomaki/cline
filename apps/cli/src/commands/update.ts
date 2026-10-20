@@ -7,7 +7,7 @@ import {
 	resolveProductionHubOwnerContext,
 	resolveSharedHubOwnerContext,
 } from "@cline/core";
-import { resolveClineBuildEnv } from "@cline/shared";
+import { isRemoteServicesDisabled, resolveClineBuildEnv } from "@cline/shared";
 import { version } from "../../package.json";
 import { c, writeErr, writeln } from "../utils/output";
 import {
@@ -308,6 +308,7 @@ const CLIENT_COUNT_EXIT_TIMEOUT_MS = 3_000;
  * Skipped for npx, dev, unknown installs. Disable with CLINE_NO_AUTO_UPDATE=1.
  */
 export function autoUpdateOnStartup(): void {
+	if (isRemoteServicesDisabled()) return;
 	if (process.env.IS_DEV === "true") return;
 	if (process.env.CLINE_NO_AUTO_UPDATE === "1") return;
 	if (!isAutoUpdateEnabledGlobally()) return;
@@ -451,6 +452,10 @@ export interface CheckForUpdatesOptions {
 export async function checkForUpdates(
 	options: CheckForUpdatesOptions = {},
 ): Promise<number> {
+	if (isRemoteServicesDisabled()) {
+		writeln("Updates are disabled in this build.");
+		return 0;
+	}
 	const currentVersion = version;
 	const includeKanban = options.includeKanban ?? true;
 	writeln(

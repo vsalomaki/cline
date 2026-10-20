@@ -6,6 +6,7 @@ import type {
 	MessageWithMetadata,
 	ToolApprovalResult,
 } from "@cline/shared";
+import { getDefaultProviderId } from "@cline/shared";
 import { NodeHubClient } from "../hub/client/index";
 import { isSessionNotFoundError } from "../runtime/host/runtime-host";
 import {
@@ -2630,7 +2631,7 @@ export class CloudSessionController {
 				metadata: { ...metadata, interactive: true },
 				sessionConfig: {
 					sessionId,
-					providerId: metadata.provider ?? "cline",
+					providerId: metadata.provider ?? getDefaultProviderId(),
 					modelId:
 						metadata.model ??
 						metadata.modelId ??

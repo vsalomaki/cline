@@ -1364,4 +1364,24 @@ describe("BannerService", () => {
 			clock.restore()
 		})
 	})
+
+	describe("with remote services disabled", () => {
+		it("neither fetches banners nor sends banner events", async () => {
+			process.env.CLINE_REMOTE_SERVICES = "off"
+			try {
+				mockFetch.resolves(createSuccessResponse({ data: { items: [] } }))
+
+				await mockFetchForTesting(mockFetch, async () => {
+					const bannerService = BannerService.initialize(mockController)
+					bannerService.getActiveBanners()
+					await bannerService.drainForTesting()
+					await bannerService.sendBannerEvent("bnr_test1", "dismiss")
+
+					expect(mockFetch.called).to.be.false
+				})
+			} finally {
+				process.env.CLINE_REMOTE_SERVICES = "on"
+			}
+		})
+	})
 })

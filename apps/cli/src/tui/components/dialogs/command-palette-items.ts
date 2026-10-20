@@ -1,3 +1,5 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
+
 export type CommandPaletteAction =
 	| "settings"
 	| "change-model"
@@ -183,7 +185,9 @@ export function buildCommandPaletteItems(input: {
 	canForkSession: boolean;
 }): CommandPaletteItem[] {
 	return ACTION_ITEMS.filter(
-		(item) => !item.requiresFork || input.canForkSession,
+		(item) =>
+			(!item.requiresFork || input.canForkSession) &&
+			!(item.action === "account" && isRemoteServicesDisabled()),
 	).map((item) => ({
 		id: `action:${item.action}`,
 		label: item.label,

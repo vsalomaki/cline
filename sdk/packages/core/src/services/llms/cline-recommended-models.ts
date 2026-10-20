@@ -6,6 +6,7 @@ import {
 } from "@cline/llms";
 import {
 	getClineEnvironmentConfig,
+	isRemoteServicesDisabled,
 	type ProviderModel,
 	type ProviderModelFeaturedTier,
 } from "@cline/shared";
@@ -254,6 +255,9 @@ function resolveCatalogDisplayNames(
 export async function fetchClineRecommendedModels(
 	options: FetchClineRecommendedModelsOptions = {},
 ): Promise<ClineRecommendedModelsData> {
+	if (isRemoteServicesDisabled()) {
+		return cloneRecommendedModels(FALLBACK_CLINE_RECOMMENDED_MODELS);
+	}
 	const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	// The feed request and the catalog lookup share one deadline so a slow
 	// endpoint plus a cold catalog cannot stack two full timeout windows. An

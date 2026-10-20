@@ -54,6 +54,7 @@ import { telemetryService } from "@/services/telemetry"
 import type { ClineExtensionContext } from "@/shared/cline"
 import { toLegacyApiProvider } from "@/shared/model-catalog/provider-helpers"
 import { ShowMessageRequest, ShowMessageType } from "@/shared/proto/host/window"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { resolveDataDirFromEnv } from "@/shared/storage/storage-context"
 import { isClineManagedProvider } from "@/shared/utils/cline"
@@ -903,6 +904,9 @@ export class Controller {
 	 * MCP server management, OpenTelemetry, etc.).
 	 */
 	private startRemoteConfigTimer(): void {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		// Set up 1-hour interval
 		this.remoteConfigTimer = setInterval(() => {
 			this.refreshRemoteConfig().catch((err) => Logger.error("[SdkController] Remote config timer failed:", err))

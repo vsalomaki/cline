@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
 import type {
 	ClineAccountBalance,
 	ClineAccountOrganization,
@@ -274,6 +275,9 @@ export class ClineAccountService {
 			expectNoContent?: boolean;
 		},
 	): Promise<T> {
+		if (isRemoteServicesDisabled()) {
+			throw new Error("Cline account services are not available in this build");
+		}
 		const token = (await this.getAuthTokenFn())?.trim();
 		if (!token) {
 			throw new Error("No Cline account auth token found");

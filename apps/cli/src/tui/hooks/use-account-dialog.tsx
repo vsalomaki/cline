@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
 import type { ChoiceContext } from "@opentui-ui/dialog";
 import type { DialogActions } from "@opentui-ui/dialog/react";
 import { useCallback } from "react";
@@ -33,6 +34,10 @@ export function useAccountDialog(opts: {
 	} = opts;
 
 	const openAccountDialog = useCallback(async () => {
+		if (isRemoteServicesDisabled()) {
+			refocusTextarea();
+			return;
+		}
 		const action = await dialog.choice<AccountDialogAction>({
 			size: "large",
 			style: { maxHeight: termHeight - 2 },

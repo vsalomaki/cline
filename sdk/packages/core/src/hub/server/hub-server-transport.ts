@@ -14,6 +14,7 @@ import {
 	CLINE_DEFAULT_MODEL_ID,
 	captureSdkError,
 	createSessionId,
+	getDefaultProviderId,
 	HUB_CLIENT_TOOL_APPROVAL_CAPABILITY,
 } from "@cline/shared";
 import { isChatWorkspacePath } from "@cline/shared/storage";
@@ -515,7 +516,8 @@ export class HubServerTransport implements NativeHubTransport {
 		const inheritedAutoApproveTools =
 			originSession?.metadata?.autoApproveTools === true;
 		const autoApproveTools = unattended || inheritedAutoApproveTools;
-		const providerId = task.modelSelection?.providerId?.trim() || "cline";
+		const providerId =
+			task.modelSelection?.providerId?.trim() || getDefaultProviderId();
 		const modelId =
 			task.modelSelection?.modelId?.trim() ||
 			(providerId === "cline" ? CLINE_DEFAULT_MODEL_ID : "");

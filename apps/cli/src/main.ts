@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { basename } from "node:path";
 import type { ToolPolicy } from "@cline/core";
 
-import { CLINE_DEFAULT_MODEL_ID, registerDisposable } from "@cline/shared";
+import {
+	CLINE_DEFAULT_MODEL_ID,
+	getDefaultProviderId,
+	registerDisposable,
+} from "@cline/shared";
 import type { Command } from "commander";
 import { createDashboardCommand } from "./commands/dashboard-command";
 import { registerHistoryCommand } from "./commands/history-command";
@@ -1003,7 +1007,9 @@ export async function runCli(): Promise<void> {
 				isClinePassEnabled: true,
 			});
 		const provider = normalizeProviderId(
-			args.provider?.trim() || lastUsedProviderSettings?.provider || "cline",
+			args.provider?.trim() ||
+				lastUsedProviderSettings?.provider ||
+				getDefaultProviderId(),
 		);
 		let selectedProviderSettings =
 			providerSettingsManager.getProviderSettings(provider);

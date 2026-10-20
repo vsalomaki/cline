@@ -13,7 +13,7 @@ import {
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
-import { toPosixSeparators } from "@cline/shared";
+import { isRemoteServicesDisabled, toPosixSeparators } from "@cline/shared";
 import {
 	isPluginModulePath,
 	resolveClineDir,
@@ -1122,6 +1122,15 @@ export async function installPlugin(
 ): Promise<PluginInstallResult> {
 	const source = options.source.trim();
 	const parsed = parsePluginSource(source, options.sourceType);
+	if (
+		parsed.type === "official" &&
+		!options.officialPluginsRepo?.trim() &&
+		isRemoteServicesDisabled()
+	) {
+		throw new Error(
+			"Official Cline plugins are not available in this build; install from git, npm or a local path",
+		);
+	}
 	const explicitCwd = options.cwd?.trim();
 	const cwd = explicitCwd ? resolve(explicitCwd) : process.cwd();
 	const pluginRoot = getPluginRoot(explicitCwd ? cwd : undefined);

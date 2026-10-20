@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
 import {
 	builtinProviderSupportsModelOperation,
 	normalizeBuiltinModelOperationModalities,
@@ -543,6 +544,9 @@ export async function fetchLiveProviderModels(
 	options: { includeClineCloudModels?: boolean } = {},
 ): Promise<Record<string, Record<string, ModelInfo>>> {
 	const emptyProviderModels: Record<string, Record<string, ModelInfo>> = {};
+	if (isRemoteServicesDisabled()) {
+		return emptyProviderModels;
+	}
 	const [providerModels, clineRecommendedPayload] = await Promise.all([
 		fetchModelsDevProviderModels(modelsDevUrl, fetcher).catch(
 			() => emptyProviderModels,

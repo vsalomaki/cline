@@ -1,6 +1,7 @@
 import { buildModelInfoNameMap, type ModelInfo, openAiModelInfoSafeDefaults, resolveClinePassModelInfo } from "@shared/api"
 import { StringRequest } from "@shared/proto/cline/common"
 import type { OnboardingModel, OnboardingModelGroup, OpenRouterModelInfo } from "@shared/proto/index.cline"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { AlertCircleIcon, CircleCheckIcon, CircleIcon, ListIcon, LoaderCircleIcon, ZapIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -707,7 +708,7 @@ const OnboardingView = () => {
 		)
 	}
 
-	if (status === "empty") {
+	if (status === "empty" || isRemoteServicesDisabled()) {
 		return <OnboardingWelcomeFallback />
 	}
 

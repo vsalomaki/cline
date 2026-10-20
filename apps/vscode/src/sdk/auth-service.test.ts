@@ -10,7 +10,7 @@
 
 import path from "node:path"
 import { getValidClineCredentials, type ITelemetryService, type OAuthCredentials } from "@cline/core"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AuthService, type ClineAuthInfo, LogoutReason } from "./auth-service"
 
 // ---------------------------------------------------------------------------
@@ -882,3 +882,43 @@ describe("AuthService", () => {
 
 // Ensure createTestOAuthCredentials is used (suppress unused warning)
 void createTestOAuthCredentials
+
+describe("AuthService with remote services disabled", () => {
+	let authService: AuthService
+
+	beforeEach(() => {
+		resetSingleton()
+		authService = AuthService.getInstance(undefined, mockSdkTelemetry)
+		mockProviderSettings.clear()
+		vi.clearAllMocks()
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off")
+	})
+
+	afterEach(() => {
+		vi.unstubAllEnvs()
+	})
+
+	it("ignores stored Cline credentials", async () => {
+		mockProviderSettings.set("cline", {
+			provider: "cline",
+			auth: { accessToken: "workos:raw-access-token", refreshToken: "r", accountId: "user-123" },
+		})
+
+		await authService.restoreRefreshTokenAndRetrieveAuthInfo()
+
+		expect(testAccess(authService)._authenticated).toBe(false)
+		expect(testAccess(authService)._clineAuthInfo).toBeNull()
+		expect(getValidClineCredentials).not.toHaveBeenCalled()
+	})
+
+	it("returns no auth token", async () => {
+		testAccess(authService)._clineAuthInfo = createTestAuthInfo()
+		testAccess(authService)._authenticated = true
+
+		expect(await authService.getAuthToken()).toBeNull()
+	})
+
+	it("refuses to start sign-in", async () => {
+		await expect(authService.createAuthRequest()).rejects.toThrow("Cline sign-in is not available in this build")
+	})
+})

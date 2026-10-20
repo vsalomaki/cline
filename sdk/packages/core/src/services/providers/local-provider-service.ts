@@ -13,6 +13,7 @@ import type {
 	VoiceInputSelection,
 } from "@cline/shared";
 import {
+	isRemoteServicesDisabled,
 	isTranscriptionModel,
 	MODEL_TOOL_NAMES,
 	resolveProviderApiKeyOptional,
@@ -1066,6 +1067,13 @@ export async function listLocalProviders(
 	if (options.isClinePassEnabled !== true) {
 		providers = providers.filter(
 			(provider) => provider.id !== CLINE_PASS_PROVIDER_ID,
+		);
+	}
+	if (isRemoteServicesDisabled()) {
+		providers = providers.filter(
+			(provider) =>
+				provider.id !== CLINE_PROVIDER_ID &&
+				provider.id !== CLINE_PASS_PROVIDER_ID,
 		);
 	}
 

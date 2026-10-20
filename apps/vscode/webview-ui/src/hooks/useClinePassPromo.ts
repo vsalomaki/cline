@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { useCallback, useMemo } from "react"
 import { buildClinePassSubscribeUrl, buildClinePassSubscriptionPageUrl } from "@/components/onboarding/clinePassSubscribe"
 import { useApiConfigurationHandlers } from "@/components/settings/utils/useApiConfigurationHandlers"
@@ -20,7 +21,7 @@ export function useClinePassPromo() {
 	const { clineUser } = useClineAuth()
 	const { handleModeFieldChange } = useApiConfigurationHandlers()
 
-	const isSelfHostedOrUnknown = !environment || environment === "selfHosted"
+	const isSelfHostedOrUnknown = isRemoteServicesDisabled() || !environment || environment === "selfHosted"
 	const remoteProviders: string[] = remoteConfigSettings?.remoteConfiguredProviders || []
 	const isBlockedByRemoteConfig = remoteProviders.length > 0 && !remoteProviders.includes(CLINE_PASS_PROVIDER_ID)
 	const isClinePassEnabled = !isSelfHostedOrUnknown && !isBlockedByRemoteConfig

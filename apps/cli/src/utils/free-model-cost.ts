@@ -1,5 +1,8 @@
 import { type AgentEvent, buildClineClientHeaders } from "@cline/core";
-import { getClineEnvironmentConfig } from "@cline/shared";
+import {
+	getClineEnvironmentConfig,
+	isRemoteServicesDisabled,
+} from "@cline/shared";
 import type { Config } from "./types";
 
 const CLINE_RECOMMENDED_MODELS_TIMEOUT_MS = 5_000;
@@ -74,6 +77,7 @@ function getClineFreeModelIds(baseUrl: string): Promise<readonly string[]> {
 export async function shouldZeroClineFreeModelCost(
 	config: Pick<Config, "providerId" | "modelId" | "baseUrl">,
 ): Promise<boolean> {
+	if (isRemoteServicesDisabled()) return false;
 	// Free models are also selectable on ClinePass — they ride usage billing at $0
 	if (config.providerId !== "cline" && config.providerId !== "cline-pass")
 		return false;

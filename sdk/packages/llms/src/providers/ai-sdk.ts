@@ -25,6 +25,7 @@ import {
 	formatMessagesForAiSdk,
 	GeneratedMediaSchema,
 	generatedMediaModalityFromMediaType,
+	isRemoteServicesDisabled,
 	mcpToolForClaudeName,
 	modelProducesImages,
 	modelSupportsToolCalling,
@@ -2089,6 +2090,12 @@ async function createProviderModule(
 	config: GatewayResolvedProviderConfig,
 	context: GatewayProviderContext,
 ): Promise<ProviderFactoryResult> {
+	if (
+		isRemoteServicesDisabled() &&
+		(context.provider.id === "cline" || context.provider.id === "cline-pass")
+	) {
+		throw new Error("The Cline provider is not available in this build");
+	}
 	switch (kind) {
 		case "cline": {
 			const { createClineProviderModule } = await import("./vendors/cline");

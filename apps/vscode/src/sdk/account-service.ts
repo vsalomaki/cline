@@ -17,6 +17,7 @@ import { ClineEnv } from "@/config"
 import { buildBasicClineHeaders } from "@/services/EnvUtils"
 import { CLINE_API_ENDPOINT } from "@/shared/cline/api"
 import { getAxiosSettings } from "@/shared/net"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { AuthService } from "./auth-service"
 
@@ -67,6 +68,9 @@ export class ClineAccountService {
 		config: AxiosRequestConfig = {},
 		options?: { allowNullData?: boolean; authToken?: string },
 	): Promise<T> {
+		if (isRemoteServicesDisabled()) {
+			throw new Error("Cline account services are not available in this build")
+		}
 		const url = new URL(endpoint, this.baseUrl).toString()
 		// IMPORTANT: Prefixed with 'workos:' so backend can route verification to WorkOS provider
 		const clineAccountAuthToken = options?.authToken ?? (await this._authService.getAuthToken())

@@ -3,6 +3,7 @@ import {
 	type ProviderSettings,
 	type UserInstructionConfigService,
 } from "@cline/core";
+import { isRemoteServicesDisabled } from "@cline/shared";
 import { byLengthAsc, Fzf, type FzfResultItem } from "fzf";
 import type { Config } from "../utils/types";
 import { formatClineCredits, loadClineAccountSnapshot } from "./cline-account";
@@ -172,7 +173,7 @@ export async function resolveClineWelcomeLine(input: {
 	clineApiBaseUrl?: string;
 	clineProviderSettings?: ProviderSettings;
 }): Promise<string | undefined> {
-	if (input.config.providerId !== "cline") {
+	if (input.config.providerId !== "cline" || isRemoteServicesDisabled()) {
 		return undefined;
 	}
 	try {

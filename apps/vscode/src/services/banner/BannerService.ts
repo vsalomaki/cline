@@ -5,6 +5,7 @@ import { Controller } from "@/core/controller"
 import { StateManager } from "@/core/storage/StateManager"
 import { HostInfo, HostRegistryInfo } from "@/registry"
 import { fetch } from "@/shared/net"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { FeatureFlag } from "@/shared/services/feature-flags/feature-flags"
 import { Logger } from "@/shared/services/Logger"
 import { AuthService } from "../auth/AuthService"
@@ -250,6 +251,9 @@ export class BannerService {
 	}
 
 	public async sendBannerEvent(bannerId: string, eventType: "dismiss"): Promise<void> {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		try {
 			const url = new URL("/banners/v2/messages", ClineEnv.config().apiBaseUrl).toString()
 			const ideType = this.getIdeType()
@@ -292,7 +296,7 @@ export class BannerService {
 
 	private async doFetch(): Promise<Banner[]> {
 		// Do not fetch banners when feature flag is off
-		if (!featureFlagsService.getBooleanFlagEnabled(FeatureFlag.REMOTE_BANNERS)) {
+		if (isRemoteServicesDisabled() || !featureFlagsService.getBooleanFlagEnabled(FeatureFlag.REMOTE_BANNERS)) {
 			return []
 		}
 

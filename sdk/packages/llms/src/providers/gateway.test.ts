@@ -7608,3 +7608,44 @@ describe("sdk-gateway", () => {
 		);
 	});
 });
+
+describe("Cline providers with remote services disabled", () => {
+	it.each([
+		"cline",
+		"cline-pass",
+	])("%s fails without a request", async (providerId) => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+		try {
+			streamTextSpy.mockClear();
+			const gateway = createGateway({
+				providerConfigs: [
+					{
+						providerId,
+						apiKey: "test",
+						models: [{ id: "test-model", name: "Test Model" }],
+					},
+				],
+			});
+
+			const events = await collect(
+				await gateway.stream({
+					providerId,
+					modelId: "test-model",
+					messages: baseMessages,
+				}),
+			);
+
+			expect(events.at(-1)).toMatchObject({
+				type: "finish",
+				reason: "error",
+				error: expect.stringContaining(
+					"The Cline provider is not available in this build",
+				),
+				errorRetryable: false,
+			});
+			expect(streamTextSpy).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+});

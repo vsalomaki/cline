@@ -9,6 +9,7 @@
 
 import { CORE_BUILD_VERSION, SessionSource } from "@cline/core"
 import { type ApiHandler, createHandler, type ProviderConfig, resolveProviderRequestHeaders } from "@cline/llms"
+import { getDefaultProviderId } from "@cline/shared"
 import type { ApiConfiguration } from "@shared/api"
 import { ClineClient } from "@shared/cline"
 import { Logger } from "@shared/services/Logger"
@@ -135,7 +136,8 @@ export function buildSdkProviderConfig(
 	mode: Mode,
 	options?: BuildApiHandlerOptions,
 ): ProviderConfig {
-	const providerId = (mode === "plan" ? configuration.planModeApiProvider : configuration.actModeApiProvider) ?? "cline"
+	const providerId =
+		(mode === "plan" ? configuration.planModeApiProvider : configuration.actModeApiProvider) ?? getDefaultProviderId()
 
 	const apiKey = resolveApiKey(providerId, configuration)
 	const modelId = resolveModelId(providerId, mode, configuration)

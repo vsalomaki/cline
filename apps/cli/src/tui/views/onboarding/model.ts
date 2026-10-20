@@ -1,7 +1,8 @@
-import type {
-	ChatModelModalities,
-	ModelModality,
-	ModelOperation,
+import {
+	type ChatModelModalities,
+	isRemoteServicesDisabled,
+	type ModelModality,
+	type ModelOperation,
 } from "@cline/shared";
 import { isChatProviderModel } from "../../../utils/chat-models";
 import type {
@@ -124,7 +125,12 @@ export function getMainMenuOptions(options?: {
 	isClinePassEnabled?: boolean;
 }): MenuOption[] {
 	return MAIN_MENU.filter(
-		(option) => option.value !== "cline-pass" || options?.isClinePassEnabled,
+		(option) =>
+			(option.value !== "cline-pass" || options?.isClinePassEnabled) &&
+			!(
+				isRemoteServicesDisabled() &&
+				(option.value === "cline" || option.value === "cline-pass")
+			),
 	);
 }
 

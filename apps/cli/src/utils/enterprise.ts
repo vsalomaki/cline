@@ -13,6 +13,7 @@ import {
 } from "@cline/core";
 import {
 	getClineEnvironmentConfig,
+	isRemoteServicesDisabled,
 	type RemoteConfigBundle,
 	RemoteConfigSchema,
 } from "@cline/shared";
@@ -37,6 +38,9 @@ async function loadCliRemoteConfigBundle(): Promise<
 async function loadCliRemoteConfigBundleUncached(): Promise<
 	RemoteConfigBundle | undefined
 > {
+	if (isRemoteServicesDisabled()) {
+		return undefined;
+	}
 	const manager = new ProviderSettingsManager();
 	const settings = manager.getProviderSettings("cline");
 	const authToken = resolveLocalClineAuthToken(settings)?.trim();
