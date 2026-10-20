@@ -22,6 +22,8 @@ Cline stores shared configuration across a few well-known locations. The primary
       cline_mcp_settings.json  # MCP settings
     teams/                     # Team state
     sessions/                  # One folder of messages per session
+    memory/                    # User memory, when memory is on
+    projects/                  # Project memory, one folder per repository
     db/                        # SQLite databases (sessions.db, cron.db, ...)
     logs/                      # CLI and hub logs
   rules/                       # Global rules
@@ -126,6 +128,8 @@ cline doctor log
 | `CLINE_REVERT_DETECTION` | Whether an edit that restores a file to an earlier state gets a note ([Tool calls](#tool-calls)) |
 | `CLINE_REVIEW_BEFORE_FINISH` | Whether the agent reviews a run that changed files before its final report ([Tool calls](#tool-calls)) |
 | `CLINE_NESTED_SUBAGENTS` | Whether subagents may start subagents of their own ([Tool calls](#tool-calls)) |
+| `CLINE_MEMORY` | Whether the agent keeps project and user memory ([Memory](#memory)) |
+| `CLINE_MEMORY_EXTRACT` | Whether a finished request is checked for memories once the session is idle ([Memory](#memory)) |
 | `CLINE_LANGUAGE_SERVERS` | Whether the CLI starts language servers ([Language servers](#language-servers)) |
 | `CLINE_CODE_INTELLIGENCE_TOOL` | Whether the `code_intelligence` tool is offered ([Language servers](#language-servers)) |
 | `CLINE_PROBLEMS_AFTER_EDIT` | Which new problems are reported after an edit ([Language servers](#language-servers)) |
@@ -370,6 +374,69 @@ auto-compaction is on under Features:
 The last three apply to the agentic strategy, the default. In the SDK they are the
 `compaction` fields `triggerRatio`, `preserveRecentTokens`, `summaryBlockChars` and
 `summaryMaxOutputTokens`. The CLI has no flags or env vars for them.
+
+### Memory
+
+With memory on, the agent keeps short notes that last across sessions. It is off by
+default.
+
+- **Project memory** holds what was hard to find out about one repository: a cause found
+  after investigation, a setup quirk, a constraint or correction you gave. Every
+  worktree of a git repository shares it. Outside git, the project is the workspace
+  folder. A repository at your home folder (dotfiles) counts only when the home folder
+  itself is open; folders below it are keyed by their own path.
+- **User memory** holds your preferences and working style that are not tied to one
+  project or technology.
+
+Both live in the data directory, outside the repository, so they are never committed:
+
+```text
+~/.cline/data/
+  memory/                      # User memory
+    MEMORY.md                  # Index: one line per memory
+    <name>.md                  # One memory, with name, description, scope and updated
+  projects/<hash>/
+    project.json               # The repository (its .git folder) or folder this is for
+    memory/                    # Project memory, laid out like user memory
+```
+
+They are plain Markdown files: open, edit or delete them as you like. `MEMORY.md` is
+rebuilt from the memory files on every save.
+
+When a session starts, both indexes (up to 8 KB each) go into the main agent's system
+prompt, marked as notes rather than instructions. The agent reads a full memory and
+saves, updates or deletes one with the `memory` tool, which runs without asking. Each
+scope holds at most 50 memories; past that, the agent has to update or delete one first.
+Subagents and teammates get neither the index nor the tool.
+
+Memories are also picked up without the agent asking:
+
+- **At compaction**, the summary request also asks for memory candidates, so this costs
+  no extra request.
+- **After a request**, when it finished normally and the conversation shows something
+  hard-won (you corrected the agent, or a tool call failed and a later one succeeded),
+  one request goes to the summarizer model (the session's model when none is set)
+  about 30 seconds later. A new prompt, a cancel or the end of the session cancels it.
+  This never applies to one-shot runs, which end straight away.
+
+Each pass saves at most two memories and usually none. A saved memory is reported as a
+"Memory saved" status line.
+
+| Switch | Default | Where |
+|--------|---------|-------|
+| Memory | off | `--memory` / `--no-memory`, `"memory": { "enabled": true }` in `global-settings.json`, `CLINE_MEMORY`, SDK `memory.enabled` |
+| Check after a request | on | `"memory": { "extractAfterRun": false }`, `CLINE_MEMORY_EXTRACT`, SDK `memory.extractAfterRun` |
+
+In the CLI an env var wins over the flag and the file, and the flag wins over the file;
+the values the CLI starts with hold even when a hub started elsewhere runs the session.
+In the SDK the env vars apply only where `memory` leaves a value unset. In the CLI,
+`/memory` lists both indexes and prints their folders.
+
+<Warning>
+Files in a repository can try to get the agent to save a misleading note that later
+sessions then see. Review new memories now and then, and delete the ones you did not
+expect.
+</Warning>
 
 ### Fork build: no remote services
 

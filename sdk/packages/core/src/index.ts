@@ -665,6 +665,13 @@ export {
 	parseMcpInstallArgs,
 	uninstallMcpServer,
 } from "./services/mcp-install";
+export {
+	describeMemory,
+	type MemoryEntry,
+	type MemoryScope,
+	MemoryStore,
+	resolveMemoryLocation,
+} from "./services/memory";
 export type {
 	PluginCommandResult,
 	PluginCommandService,
@@ -966,6 +973,12 @@ export {
 	TOOL_LIMIT_ENV,
 	type ToolContextLimits,
 } from "./settings/context-limits";
+export {
+	applyMemoryEnv,
+	MEMORY_ENV,
+	type MemorySettings,
+	resolveMemorySettings,
+} from "./settings/memory";
 export {
 	DEFAULT_MAX_PARALLEL_TOOL_CALLS,
 	getToolCallEnvSources,

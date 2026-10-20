@@ -777,6 +777,8 @@ export function buildSummaryRequest(options: {
 	earlierUserMessages?: string[];
 	conversationText: string;
 	fileOps: FileOperationSummary;
+	/** Asks for memory candidates too, while memory is on. */
+	memoryCandidatesSection?: string;
 }): string {
 	const parts: string[] = [
 		`Summarize this session for continuation. Be concise and factual.
@@ -807,6 +809,9 @@ Immediate next steps.
 Read: ${options.fileOps.readFiles.join(", ") || "none"}
 Edited: ${options.fileOps.modifiedFiles.join(", ") || "none"}`,
 	];
+	if (options.memoryCandidatesSection) {
+		parts.push(options.memoryCandidatesSection);
+	}
 
 	if (options.previousSummary?.trim()) {
 		parts.push(`Previous summary:\n${options.previousSummary.trim()}`);

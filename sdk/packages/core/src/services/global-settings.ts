@@ -103,6 +103,14 @@ export const GlobalSettingsSchema = z
 		revertDetection: z.boolean().optional().catch(undefined),
 		reviewBeforeFinish: z.boolean().optional().catch(undefined),
 		nestedSubagents: z.boolean().optional().catch(undefined),
+		memory: z
+			.object({
+				enabled: z.boolean().optional().catch(undefined),
+				extractAfterRun: z.boolean().optional().catch(undefined),
+			})
+			.strip()
+			.optional()
+			.catch(undefined),
 		languageServers: LanguageServerSettingsSchema.optional().catch(undefined),
 		codeIntelligenceTool: z.boolean().optional().catch(undefined),
 		problemsAfterEdit: z
@@ -136,6 +144,7 @@ export const GlobalSettingsSchema = z
 			revertDetection?: boolean;
 			reviewBeforeFinish?: boolean;
 			nestedSubagents?: boolean;
+			memory?: { enabled?: boolean; extractAfterRun?: boolean };
 			languageServers?: LanguageServerSettings;
 			codeIntelligenceTool?: boolean;
 			problemsAfterEdit?: ProblemsAfterEditLevel;
@@ -178,6 +187,9 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.nestedSubagents !== undefined) {
 			normalized.nestedSubagents = settings.nestedSubagents;
+		}
+		if (settings.memory !== undefined) {
+			normalized.memory = settings.memory;
 		}
 		if (settings.languageServers !== undefined) {
 			normalized.languageServers = settings.languageServers;

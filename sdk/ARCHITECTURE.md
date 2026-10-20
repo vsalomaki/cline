@@ -1229,3 +1229,13 @@ session’s tool approval policies or approval callback, matching generic subage
 and teammates. The parent’s `subagent_<name>` delegation call still follows the
 parent’s approval policy. Tool allowlists and disabled-tool filtering remain in
 effect when constructing child tools. Inherited runtime hooks are unchanged.
+
+### Memory
+
+`services/memory` owns project and user memory behind `CoreSessionConfig.memory`.
+The runtime builder adds its extension (the `memory` tool plus a rule holding both
+indexes, read once per runtime build) to the lead agent only, the same way as the
+run review. The lead's auto-compaction asks the summarizer for memory candidates,
+and `LocalRuntimeHost` keeps one idle extractor per session that a new turn, an
+abort or teardown cancels. Both run in the process that owns the session, so in
+hub mode the daemon writes the files.

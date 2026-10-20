@@ -10,6 +10,7 @@ export type CommandPaletteAction =
 	| "plugins"
 	| "compact"
 	| "skills"
+	| "memory"
 	| "fork"
 	| "undo"
 	| "clear"
@@ -101,6 +102,13 @@ const ACTION_ITEMS: Array<{
 		shortcut: "Opt+W",
 		description: "Insert an installed skill or workflow command",
 		keywords: ["skills", "workflows", "marketplace"],
+	},
+	{
+		action: "memory",
+		label: "Show Memory",
+		shortcut: "Opt+Y",
+		description: "List saved memories and their folders",
+		keywords: ["memory", "memories", "notes"],
 	},
 	{
 		action: "fork",

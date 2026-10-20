@@ -80,6 +80,16 @@ export function resolveStartupNestedSubagents(
 	return args.nestedSubagents ?? settings.nestedSubagents;
 }
 
+export function resolveStartupMemory(
+	args: Pick<ParsedArgs, "memory">,
+	settings: GlobalSettings,
+): { enabled?: boolean; extractAfterRun?: boolean } {
+	return {
+		enabled: args.memory ?? settings.memory?.enabled,
+		extractAfterRun: settings.memory?.extractAfterRun,
+	};
+}
+
 /** The flag only switches the servers on or off; the server list stays the persisted one. */
 export function resolveStartupLanguageServers(
 	args: Pick<ParsedArgs, "languageServers">,

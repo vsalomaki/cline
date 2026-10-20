@@ -36,6 +36,11 @@ import type { HookEventPayload } from "../../hooks";
 import { buildTelemetryAgentIdentity } from "../../services/agent-events";
 import { resolveWorkspacePath } from "../../services/config";
 import { prepareLocalRuntimeBootstrap } from "../../services/local-runtime-bootstrap";
+import {
+	createSessionMemoryExtractor,
+	formatMemorySavedNotice,
+	type MemoryEntry,
+} from "../../services/memory";
 import { nowIso } from "../../services/session-artifacts";
 import {
 	toSessionRecord,
@@ -733,8 +738,20 @@ export class LocalRuntimeHost implements RuntimeHost {
 		let activeSessionRef: ActiveSession | undefined;
 		const rawInitialCompactionState =
 			explicitInitialCompactionState ?? resumedCompactionState;
+		const emitMemorySaved = (entries: MemoryEntry[]) =>
+			this.eventBridge.dispatchAgentEvent(sessionId, configWithProvider, {
+				type: "notice",
+				noticeType: "status",
+				displayRole: "status",
+				message: formatMemorySavedNotice(entries),
+				metadata: { memory: entries },
+			});
 		const autoCompact = createContextCompactionPrepareTurn(configWithProvider, {
 			hooks: bootstrap.compactionHooks,
+			memory: runtime.memory && {
+				store: runtime.memory.store,
+				onSaved: (entries) => emitMemorySaved(entries),
+			},
 		});
 		// Resuming an imported session summarizes the foreign transcript before
 		// the model sees it. The summary persists to the compaction sidecar and
@@ -999,6 +1016,13 @@ export class LocalRuntimeHost implements RuntimeHost {
 			drainingPendingPrompts: false,
 			pluginSandboxShutdown: bootstrap.pluginSandboxShutdown,
 			releaseCodeIntelligence: bootstrap.releaseCodeIntelligence,
+			memoryExtractor: createSessionMemoryExtractor({
+				memory: runtime.memory,
+				getConfig: () => active.config,
+				logger: configWithProvider.logger,
+				initialMessages,
+				onSaved: (entries) => emitMemorySaved(entries),
+			}),
 			submitAndExitObserved: false,
 			taskCompletedEmitted: false,
 			lastInteractiveTurnFinishReason: undefined,
@@ -1266,6 +1290,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 		// and start a fresh provider call, and the session could never be
 		// brought to a full stop.
 		session.aborting = true;
+		session.memoryExtractor?.cancel();
 		if (session.drainingPendingPrompts) {
 			this.pendingPromptsController.discardQueue(session);
 		}
@@ -1830,6 +1855,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 		// An abort that arrived between turns targeted a run that had already
 		// ended; only aborts issued from here on belong to this turn.
 		session.aborting = false;
+		session.memoryExtractor?.cancel();
 		const preparedInput = await this.prepareTurnInput(session, input);
 		const prompt = preparedInput.prompt.trim();
 		const images = preparedInput?.userImages?.length;
@@ -1895,6 +1921,9 @@ export class LocalRuntimeHost implements RuntimeHost {
 		if (hasPendingTeamRunWork(session)) return;
 		session.lastInteractiveTurnFinishReason = finishReason;
 		await this.markTurnIdle(session);
+		if (finishReason === "completed" && !session.aborting) {
+			session.memoryExtractor?.schedule(session.agent.getMessages());
+		}
 		session.aborting = false;
 	}
 
@@ -2418,6 +2447,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			endReason: string;
 		},
 	): Promise<void> {
+		session.memoryExtractor?.cancel();
 		// Fallback `task.completed` emission for completed sessions that did
 		// not observe an explicit `submit_and_exit` tool call, routed through
 		// the shared teardown choke point so it can neither double-fire nor
@@ -2515,6 +2545,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 		// this is the branch that silently dropped `task.completed` when
 		// truthful status reporting re-routed interactive stops onto it.
 		this.emitTaskCompletedOnTeardown(session);
+		session.memoryExtractor?.cancel();
 		const cleanupErrors: unknown[] = [];
 		const recordCleanupError = (stage: string, error: unknown) => {
 			cleanupErrors.push(error);

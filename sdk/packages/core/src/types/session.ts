@@ -3,6 +3,7 @@ import type { AgentFinishReason } from "@cline/shared";
 import type { SessionAccumulatedUsage } from "../runtime/host/runtime-host";
 import type { BuiltRuntime } from "../runtime/orchestration/session-runtime";
 import type { SessionRuntime } from "../runtime/orchestration/session-runtime-orchestrator";
+import type { MemoryIdleExtractor } from "../services/memory/extraction";
 import type { SessionCompactionState } from "../session/models/session-compaction";
 import type { SessionRow } from "../session/models/session-row";
 import type { RootSessionArtifacts } from "../session/services/session-service";
@@ -36,6 +37,7 @@ export type ActiveSession = {
 	drainingPendingPrompts: boolean;
 	pluginSandboxShutdown?: () => Promise<void>;
 	releaseCodeIntelligence?: () => Promise<void>;
+	memoryExtractor?: MemoryIdleExtractor;
 	turnUsageBaseline?: SessionAccumulatedUsage;
 	turnAggregateUsageBaseline?: SessionAccumulatedUsage;
 	turnPrimaryUsage?: SessionAccumulatedUsage;

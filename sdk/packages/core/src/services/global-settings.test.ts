@@ -90,6 +90,15 @@ describe("global-settings", () => {
 		});
 	});
 
+	it("reads the memory switches and drops invalid values", () => {
+		expect(
+			GlobalSettingsSchema.parse({
+				memory: { enabled: true, extractAfterRun: "yes", other: 1 },
+			}).memory,
+		).toEqual({ enabled: true, extractAfterRun: undefined });
+		expect(GlobalSettingsSchema.parse({ memory: "on" }).memory).toBeUndefined();
+	});
+
 	it("uses the schema when reading and writing settings", async () => {
 		const root = await mkdtemp(join(tmpdir(), "core-global-settings-"));
 		try {

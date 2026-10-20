@@ -28,6 +28,7 @@ import type {
 	SubAgentTurnContext,
 	TeamEvent,
 } from "../../extensions/tools/team";
+import type { SessionMemory } from "../../services/memory";
 import type { WorkspaceManager } from "../../services/workspace/workspace-manager";
 import type { CoreSessionConfig } from "../../types/config";
 
@@ -55,6 +56,8 @@ export interface BuiltRuntime {
 	delegatedAgentConfigProvider?: DelegatedAgentConfigProvider;
 	extensions?: AgentConfig["extensions"];
 	completionPolicy?: AgentConfig["completionPolicy"];
+	/** Present while memory is on; its extension is already in `extensions`. */
+	memory?: SessionMemory;
 	registerLeadAgent?: (agent: LeadAgentHandle) => void;
 	shutdown: (reason: string) => Promise<void> | void;
 }

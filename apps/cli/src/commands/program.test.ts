@@ -135,6 +135,12 @@ describe("tool-call options", () => {
 		expect(parse(["--nested-subagents"]).nestedSubagents).toBe(true);
 		expect(parse(["--no-nested-subagents"]).nestedSubagents).toBe(false);
 	});
+
+	it("parses --memory and --no-memory", () => {
+		expect(parse([]).memory).toBeUndefined();
+		expect(parse(["--memory"]).memory).toBe(true);
+		expect(parse(["--no-memory"]).memory).toBe(false);
+	});
 });
 
 describe("language-server options", () => {

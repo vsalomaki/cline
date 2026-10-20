@@ -1,5 +1,11 @@
 import { createHandlerAsync } from "@cline/llms";
 import type { BasicLogger } from "@cline/shared";
+import {
+	applyMemoryCandidates,
+	buildMemoryCandidatesSection,
+	type CompactionMemory,
+	splitMemoryCandidates,
+} from "../../services/memory/extraction";
 import { countUserRunMessages } from "../../session/user-run-messages";
 import type {
 	CoreCompactionContext,
@@ -128,6 +134,7 @@ export async function runAgenticCompaction(options: {
 	summaryMaxOutputTokens?: number;
 	estimateMessageTokens: EstimateMessageTokens;
 	logger?: BasicLogger;
+	memory?: CompactionMemory;
 }): Promise<CoreCompactionResult | undefined> {
 	const messages = options.context.messages;
 	if (messages.length < 2) {
@@ -225,12 +232,16 @@ export async function runAgenticCompaction(options: {
 		earlierUserMessageCandidates,
 		Math.floor(summarizerInputLimit * EARLIER_USER_MESSAGES_TARGET_SHARE),
 	);
+	const memoryCandidatesSection = options.memory
+		? buildMemoryCandidatesSection(options.memory.store)
+		: undefined;
 	const summaryRequestOverheadTokens = estimateTokens(
 		buildSummaryRequest({
 			previousSummary,
 			earlierUserMessages: summarizerUserMessages,
 			conversationText: "",
 			fileOps: preProjectionFileOps,
+			memoryCandidatesSection,
 		}).length,
 	);
 	const availableSummaryInputTokens =
@@ -284,6 +295,7 @@ export async function runAgenticCompaction(options: {
 		earlierUserMessages: summarizerUserMessages,
 		conversationText,
 		fileOps,
+		memoryCandidatesSection,
 	});
 	options.logger?.debug("Agentic compaction summarizer diagnostics", {
 		messagesToSummarize: messagesToSummarize.length,
@@ -331,7 +343,25 @@ export async function runAgenticCompaction(options: {
 		return undefined;
 	}
 
-	const summary = ensureFilesSection(rawSummary, fileOps);
+	let summaryText = rawSummary;
+	if (options.memory) {
+		const split = splitMemoryCandidates(rawSummary);
+		summaryText = split.summary;
+		try {
+			const saved = applyMemoryCandidates(
+				options.memory.store,
+				split.candidates,
+				options.logger,
+			);
+			if (saved.length > 0) options.memory.onSaved?.(saved);
+		} catch (error) {
+			options.logger?.log("Saving memory candidates failed", {
+				severity: "warn",
+				error,
+			});
+		}
+	}
+	const summary = ensureFilesSection(summaryText, fileOps);
 	const tokensBefore = messages.reduce(
 		(total, message) => total + options.estimateMessageTokens(message),
 		0,

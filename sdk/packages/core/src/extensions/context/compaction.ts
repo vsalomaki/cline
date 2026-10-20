@@ -4,6 +4,7 @@ import type {
 	CompactionHookRunner,
 } from "../../hooks/hook-file-hooks";
 import { resolveConnectionProviderConfig } from "../../services/llms/handler-factory";
+import type { CompactionMemory } from "../../services/memory/extraction";
 import {
 	captureCompactionBudgetEmergency,
 	captureCompactionExecuted,
@@ -85,6 +86,7 @@ type BuiltinCompactionStrategyOptions = {
 	compaction: CoreCompactionConfig | undefined;
 	estimateMessageTokens: EstimateMessageTokens;
 	logger: Pick<CoreSessionConfig, "logger">["logger"];
+	memory?: CompactionMemory;
 };
 
 type BuiltinCompactionStrategyRunner = (
@@ -101,6 +103,8 @@ export interface ContextCompactionPrepareTurnOptions {
 	compaction?: Partial<CoreCompactionConfig>;
 	/** File hooks that run before compaction and add context after it. */
 	hooks?: CompactionHookRunner;
+	/** Memory the agentic summary also extracts candidates into. */
+	memory?: CompactionMemory;
 }
 
 async function runCompactionHook<T>(
@@ -274,6 +278,7 @@ const BUILTIN_COMPACTION_STRATEGIES = {
 		compaction,
 		estimateMessageTokens,
 		logger,
+		memory,
 	}) =>
 		runAgenticCompaction({
 			context,
@@ -287,6 +292,7 @@ const BUILTIN_COMPACTION_STRATEGIES = {
 			summaryMaxOutputTokens: compaction?.summaryMaxOutputTokens,
 			estimateMessageTokens,
 			logger,
+			memory,
 		}),
 } satisfies Record<CoreCompactionStrategy, BuiltinCompactionStrategyRunner>;
 
@@ -585,6 +591,7 @@ export function createContextCompactionPrepareTurn(
 			compaction: userCompaction,
 			estimateMessageTokens,
 			logger: config.logger,
+			memory: options.memory,
 		};
 		let executedStrategy = telemetryStrategy;
 		let result: CoreCompactionResult | undefined;

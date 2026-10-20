@@ -1,6 +1,7 @@
 import {
 	getCurrentContextSize,
 	type ManagedHubBuildMismatchEvent,
+	resolveMemorySettings,
 	summarizeUsageFromMessages,
 	upgradeManagedHub,
 	watchManagedHubBuildMismatch,
@@ -761,6 +762,8 @@ function App(props: TuiProps) {
 	const { handleSlashCommand, openHistory } = useLocalCommandActions({
 		slashCommandRegistry,
 		canForkSession,
+		workspaceRoot,
+		memoryEnabled: resolveMemorySettings(props.config.memory).enabled,
 		openAccount,
 		openConfig,
 		openMcpManager,
