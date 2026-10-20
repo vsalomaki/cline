@@ -1,5 +1,6 @@
 import { ClineEndpoint } from "@/config"
 import { isPostHogConfigValid, PostHogClientConfig, posthogConfig } from "@/shared/services/config/posthog-config"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { ClineError } from "./ClineError"
 import { IErrorProvider } from "./providers/IErrorProvider"
@@ -54,7 +55,7 @@ export class ErrorProviderFactory {
 	 */
 	public static getDefaultConfig(): ErrorProviderConfig {
 		// Use no-op provider in self-hosted mode to avoid external network calls
-		if (ClineEndpoint.isSelfHosted()) {
+		if (ClineEndpoint.isSelfHosted() || isRemoteServicesDisabled()) {
 			return {
 				type: "no-op",
 				config: posthogConfig,

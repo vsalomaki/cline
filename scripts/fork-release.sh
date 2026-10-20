@@ -100,6 +100,13 @@ prev=$(git describe --tags --abbrev=0 --match "v*+$family" --match "v*+$family.*
 git worktree add --detach "$work" "$sha"
 trap 'git -C "$root" worktree remove --force "$work"' EXIT
 
+# Keep telemetry keys, collector config and the remote-services opt-in in the
+# builder's shell out of the release.
+unset TELEMETRY_SERVICE_API_KEY ERROR_SERVICE_API_KEY CLINE_REMOTE_SERVICES
+for var in "${!OTEL_@}" "${!CLINE_TRACE_@}"; do
+	unset "$var"
+done
+
 cd "$work"
 bun install
 git checkout bun.lock

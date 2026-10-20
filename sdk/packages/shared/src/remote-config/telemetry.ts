@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "../runtime/remote-services";
 import type { OpenTelemetryClientConfig } from "../services/telemetry";
 import type {
 	RemoteConfigBundle,
@@ -116,6 +117,9 @@ export class DefaultRemoteConfigTelemetryAdapter
 		bundle: RemoteConfigBundle,
 		_context: RemoteConfigSyncContext,
 	): Partial<OpenTelemetryClientConfig> | undefined {
+		if (isRemoteServicesDisabled()) {
+			return undefined;
+		}
 		return {
 			...resolveOpenTelemetryConfigFromRemoteConfig(bundle.remoteConfig),
 			...normalizeBundleTelemetry(bundle.telemetry),

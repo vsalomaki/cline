@@ -54,4 +54,24 @@ describe("resolveCoreDistinctId", () => {
 			rmSync(tempDir, { recursive: true, force: true });
 		}
 	});
+
+	it("skips the machine ID when remote services are disabled", async () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "cline-distinct-id-"));
+		try {
+			vi.stubEnv("CLINE_DATA_DIR", tempDir);
+			vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+			machineIdSyncMock.mockReturnValue("machine-id-123");
+
+			const { resolveCoreDeviceId, resolveCoreDistinctId } = await import(
+				"./distinct-id"
+			);
+			const distinctId = resolveCoreDistinctId();
+
+			expect(distinctId).toMatch(/^cl-/);
+			expect(resolveCoreDeviceId()).toBe(distinctId);
+			expect(machineIdSyncMock).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
+	});
 });

@@ -1,4 +1,5 @@
 import { parseKeyPairsIntoRecord } from "../parse/headers/utils";
+import { isRemoteServicesDisabled } from "../runtime/remote-services";
 import type { OpenTelemetryClientConfig, TelemetryMetadata } from "./telemetry";
 
 export interface ClineTelemetryServiceConfig extends OpenTelemetryClientConfig {
@@ -50,6 +51,12 @@ export function createClineTelemetryServiceMetadata(
 export function createClineTelemetryServiceConfig(
 	configOverrides: Partial<ClineTelemetryServiceConfig> = {},
 ): ClineTelemetryServiceConfig {
+	if (isRemoteServicesDisabled()) {
+		return {
+			enabled: false,
+			metadata: createClineTelemetryServiceMetadata(configOverrides.metadata),
+		};
+	}
 	return {
 		...getTelemetryBuildTimeConfig(),
 		...configOverrides,

@@ -1,9 +1,10 @@
-import type {
-	BasicLogger,
-	FeatureFlagsAndPayloads,
-	FeatureFlagsContext,
-	FeatureFlagsSettings,
-	IFeatureFlagsProvider,
+import {
+	type BasicLogger,
+	type FeatureFlagsAndPayloads,
+	type FeatureFlagsContext,
+	type FeatureFlagsSettings,
+	type IFeatureFlagsProvider,
+	isRemoteServicesDisabled,
 } from "@cline/shared";
 import { PostHog, type PostHogOptions } from "posthog-node";
 
@@ -72,7 +73,7 @@ export class PostHogFeatureFlagsProvider implements IFeatureFlagsProvider {
 	}
 
 	get enabled(): boolean {
-		return this.settings.enabled;
+		return !isRemoteServicesDisabled() && this.settings.enabled;
 	}
 
 	getSettings(): FeatureFlagsSettings {

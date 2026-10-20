@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@cline/shared";
 import type { Tracer } from "@opentelemetry/api";
 import type { Telemetry } from "ai";
 
@@ -199,6 +200,9 @@ export async function resolveAiSdkTelemetry(
 	providerId: string,
 	samplingKey?: string,
 ): Promise<AiSdkTelemetryDecision> {
+	if (isRemoteServicesDisabled()) {
+		return TELEMETRY_DISABLED;
+	}
 	if (!isClineProviderId(providerId)) {
 		if (!isAllProvidersTracingEnabled()) {
 			return TELEMETRY_DISABLED;

@@ -541,6 +541,10 @@ export {
 	LOOPBACK_NO_PROXY_HOSTS,
 } from "./runtime/loopback-proxy-bypass";
 export {
+	CLINE_REMOTE_SERVICES_ENV,
+	isRemoteServicesDisabled,
+} from "./runtime/remote-services";
+export {
 	disableCurrentDirectoryExecutableSearch,
 	NO_DEFAULT_CURRENT_DIRECTORY_IN_EXE_PATH_ENV,
 } from "./runtime/windows-exe-path";

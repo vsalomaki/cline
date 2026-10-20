@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		environment: "node",
+		// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
+		env: { CLINE_REMOTE_SERVICES: "on" },
 		include: ["src/**/*.test.ts"],
 		exclude: ["src/**/*.e2e.test.ts"],
 		// Process, Git, and SQLite integration coverage shares this suite with

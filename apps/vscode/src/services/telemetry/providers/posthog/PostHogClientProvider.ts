@@ -2,6 +2,7 @@ import { type EventMessage, PostHog } from "posthog-node"
 import { ClineEndpoint } from "@/config"
 import { fetch } from "@/shared/net"
 import { posthogConfig } from "@/shared/services/config/posthog-config"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 
 export class PostHogClientProvider {
@@ -22,7 +23,7 @@ export class PostHogClientProvider {
 
 	private constructor() {
 		// Skip PostHog client initialization in self-hosted mode
-		if (ClineEndpoint.isSelfHosted()) {
+		if (ClineEndpoint.isSelfHosted() || isRemoteServicesDisabled()) {
 			this.client = null
 			return
 		}

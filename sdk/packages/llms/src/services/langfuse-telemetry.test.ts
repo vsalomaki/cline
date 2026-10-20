@@ -172,6 +172,22 @@ describe("langfuse telemetry", () => {
 		expect(registerDisposableSpy).toHaveBeenCalledOnce();
 	});
 
+	it("stays disabled for every provider when remote services are disabled", async () => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+		vi.stubEnv("CLINE_LANGFUSE_ALL_PROVIDERS", "1");
+		getDelegateSpy.mockReturnValue({ _clineOtlpTraceRelay: true });
+
+		for (const providerId of ["cline", "openai-compatible"]) {
+			await expect(
+				resolveAiSdkTelemetry(providerId, "task-a"),
+			).resolves.toEqual({
+				isEnabled: false,
+			});
+		}
+		expect(spanProcessorConfigSpy).not.toHaveBeenCalled();
+		expect(tracerProviderInstances).toHaveLength(0);
+	});
+
 	it("uses direct credentials even when a non-relay host owns an immutable tracer", async () => {
 		getDelegateSpy.mockReturnValue({
 			forceFlush: forceFlushSpy,

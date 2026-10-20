@@ -11,6 +11,7 @@ import { OpenTelemetryTelemetryProvider } from "@/services/telemetry/providers/o
 import { type TelemetryService } from "@/services/telemetry/TelemetryService"
 import { ApiProvider } from "@/shared/api"
 import { isOpenTelemetryConfigValid, remoteConfigToOtelConfig } from "@/shared/services/config/otel-config"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { syncWorker } from "@/shared/services/worker/sync"
 import { BlobStoreSettings } from "@/shared/storage"
@@ -241,6 +242,9 @@ export function transformRemoteConfigToStateShape(remoteConfig: RemoteConfig): P
 
 export const REMOTE_CONFIG_OTEL_PROVIDER_ID = "OpenTelemetryRemoteConfiguredProvider"
 async function applyRemoteOTELConfig(transformed: Partial<RemoteConfigFields>, telemetryService: TelemetryService) {
+	if (isRemoteServicesDisabled()) {
+		return
+	}
 	try {
 		const otelConfig = remoteConfigToOtelConfig(transformed)
 		if (isOpenTelemetryConfigValid(otelConfig)) {

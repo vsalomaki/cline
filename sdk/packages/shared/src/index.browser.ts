@@ -450,6 +450,10 @@ export {
 	getClineEnvironmentConfig,
 	resolveClineEnvironment,
 } from "./runtime/cline-environment";
+export {
+	CLINE_REMOTE_SERVICES_ENV,
+	isRemoteServicesDisabled,
+} from "./runtime/remote-services";
 export type {
 	CaptureAgentUnexpectedReasoningTokensInput,
 	CaptureSdkErrorInput,

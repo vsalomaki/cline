@@ -19,6 +19,8 @@ export default defineConfig({
 	},
 	test: {
 		environment: "node",
+		// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
+		env: { CLINE_REMOTE_SERVICES: "on" },
 		include: ["src/**/*.test.ts"],
 	},
 });

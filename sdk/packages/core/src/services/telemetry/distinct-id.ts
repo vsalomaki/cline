@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isRemoteServicesDisabled } from "@cline/shared";
 import { resolveSessionDataDir } from "@cline/shared/storage";
 import { nanoid } from "nanoid";
 import * as nodeMachineId from "node-machine-id";
@@ -42,6 +43,9 @@ function resolveMachineIdSync(): ((original?: boolean) => string) | undefined {
 }
 
 function getMachineDistinctId(): string | undefined {
+	if (isRemoteServicesDisabled()) {
+		return undefined;
+	}
 	try {
 		const machineIdSync = resolveMachineIdSync();
 		if (!machineIdSync) {

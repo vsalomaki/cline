@@ -1,6 +1,7 @@
 import { machineId } from "node-machine-id"
 import { v4 as uuidv4 } from "uuid"
 import { HostRegistryInfo } from "@/registry"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import { StorageContext } from "@/shared/storage"
 
@@ -51,6 +52,9 @@ export async function initializeDistinctId(storage: StorageContext, uuid: () => 
  * This works across all platforms (VS Code, JetBrains, CLI)
  */
 async function getMachineId(): Promise<string | undefined> {
+	if (isRemoteServicesDisabled()) {
+		return undefined
+	}
 	try {
 		// Get the machine ID using node-machine-id package
 		// This provides a deterministic ID across different operating systems
