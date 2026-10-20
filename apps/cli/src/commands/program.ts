@@ -113,6 +113,11 @@ export function addRootOptions(cmd: Command): Command {
 				"Only the main agent starts subagents (default)",
 			)
 			.option(
+				"--memory",
+				"Keep project and user memory across sessions, outside the repository",
+			)
+			.option("--no-memory", "Do not use memory (default)")
+			.option(
 				"--language-servers",
 				"Start language servers for the code_intelligence tool and problems after edits (default)",
 			)
@@ -306,6 +311,9 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.nestedSubagents === "boolean") {
 		result.nestedSubagents = opts.nestedSubagents;
+	}
+	if (typeof opts.memory === "boolean") {
+		result.memory = opts.memory;
 	}
 	if (typeof opts.languageServers === "boolean") {
 		result.languageServers = opts.languageServers;

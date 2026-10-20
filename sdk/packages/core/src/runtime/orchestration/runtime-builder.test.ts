@@ -348,6 +348,41 @@ Use the review guidance.`,
 		}
 	});
 
+	it("gives the lead alone memory, and only when it is switched on", async () => {
+		const dataDir = mkdtempSync(join(tmpdir(), "runtime-builder-memory-"));
+		tempDirs.push(dataDir);
+		const previousDataDir = process.env.CLINE_DATA_DIR;
+		process.env.CLINE_DATA_DIR = dataDir;
+		try {
+			const build = (config: Partial<CoreSessionConfig>) =>
+				new DefaultRuntimeBuilder().build({ config: makeBaseConfig(config) });
+			const names = (extensions?: AgentExtension[]) =>
+				(extensions ?? []).map((extension) => extension.name);
+
+			const on = await build({ memory: { enabled: true } });
+			expect(names(on.extensions)).toContain("cline-memory");
+			expect(on.memory?.store.location.userDir).toBe(join(dataDir, "memory"));
+			expect(
+				(await collectExtensionTools(on.extensions)).map((tool) => tool.name),
+			).toContain("memory");
+			expect(
+				names(on.delegatedAgentConfigProvider?.getRuntimeConfig().extensions),
+			).not.toContain("cline-memory");
+
+			for (const off of [
+				await build({}),
+				await build({ memory: { enabled: true }, enableTools: false }),
+			]) {
+				expect(names(off.extensions)).not.toContain("cline-memory");
+				expect(off.memory).toBeUndefined();
+			}
+			expect(existsSync(join(dataDir, "memory"))).toBe(false);
+		} finally {
+			if (previousDataDir === undefined) delete process.env.CLINE_DATA_DIR;
+			else process.env.CLINE_DATA_DIR = previousDataDir;
+		}
+	});
+
 	it("does not register the plan-mode command-guard when tools are disabled", async () => {
 		const runtime = await new DefaultRuntimeBuilder().build({
 			config: makeBaseConfig({

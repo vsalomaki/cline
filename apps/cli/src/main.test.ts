@@ -179,8 +179,13 @@ vi.mock("@cline/core", async () => {
 	const { readGlobalSettings } = await vi.importActual<
 		typeof import("../../../sdk/packages/core/src/services/global-settings")
 	>("../../../sdk/packages/core/src/services/global-settings");
+	const { applyMemoryEnv, resolveMemorySettings } = await vi.importActual<
+		typeof import("../../../sdk/packages/core/src/settings/memory")
+	>("../../../sdk/packages/core/src/settings/memory");
 	return {
 		readGlobalSettings,
+		applyMemoryEnv,
+		resolveMemorySettings,
 		setSdkLogger: vi.fn(),
 		resolveProviderConfig: llmMocks.resolveProviderConfig,
 		createUserInstructionConfigService: vi.fn(() => ({

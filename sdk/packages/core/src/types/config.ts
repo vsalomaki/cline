@@ -373,6 +373,13 @@ export interface CoreSessionConfig
 	 */
 	nestedSubagents?: boolean;
 	/**
+	 * Project and user memory for the lead agent: the `memory` tool, the saved
+	 * index in its system prompt, and extraction at compaction and after runs.
+	 * `CLINE_MEMORY` and `CLINE_MEMORY_EXTRACT` apply where this leaves a value unset.
+	 * @default { enabled: false, extractAfterRun: true }
+	 */
+	memory?: { enabled?: boolean; extractAfterRun?: boolean };
+	/**
 	 * Language intelligence the host supplies in process (the VS Code
 	 * extension passes its editor's). Never serialized; without it the SDK
 	 * starts its own language servers per `languageServers`.

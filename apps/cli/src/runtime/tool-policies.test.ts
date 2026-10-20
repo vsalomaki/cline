@@ -27,6 +27,7 @@ describe("tool policy helpers", () => {
 			code_intelligence: { autoApprove: true },
 			fetch_web_content: { autoApprove: true },
 			list_files: { autoApprove: true },
+			memory: { autoApprove: true },
 			run_commands: { autoApprove: false, enabled: true },
 			read_files: { autoApprove: true, enabled: true },
 			search_codebase: { autoApprove: true },

@@ -6,6 +6,7 @@ const SAFE_AUTO_APPROVE_TOOL_NAMES = [
 	"code_intelligence",
 	"fetch_web_content",
 	"list_files",
+	"memory",
 	"read_files",
 	"search_codebase",
 	"skills",

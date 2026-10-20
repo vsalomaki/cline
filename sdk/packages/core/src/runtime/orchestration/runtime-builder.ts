@@ -61,6 +61,7 @@ import {
 	isModelToolEnabledGlobally,
 	resolveDisabledToolNames,
 } from "../../services/global-settings";
+import { createSessionMemory } from "../../services/memory";
 import { createLocalTeamStore } from "../../services/storage/team-store";
 import { resolveToolCallSettings } from "../../settings/tool-calls";
 import type { CoreAgentMode, CoreSessionConfig } from "../../types/config";
@@ -622,6 +623,18 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			resolveToolCallSettings(config).reviewBeforeFinish
 				? createRunReview({ cwd: config.cwd })
 				: undefined;
+		const memory = normalized.enableTools
+			? await createSessionMemory({
+					memory: config.memory,
+					workspaceRoot: workspaceConfigRoot,
+				}).catch((error) => {
+					(logger ?? config.logger)?.log("Memory is unavailable", {
+						severity: "warn",
+						error,
+					});
+					return undefined;
+				})
+			: undefined;
 		const injectedExtensions = [
 			userInstructionPlugin,
 			planModeCommandGuard,
@@ -964,11 +977,17 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 				this.teamRuntimeEntries.get(registryKey)
 					?.delegatedAgentConfigProvider ?? delegatedAgentConfigProvider,
 			// The review is the lead's alone: it holds per-run state, and only the
-			// lead gets the completion policy.
-			extensions: runReview
-				? [...(runtimeExtensions ?? []), runReview.extension]
-				: runtimeExtensions,
+			// lead gets the completion policy. Memory is the lead's alone too.
+			extensions:
+				runReview || memory
+					? [
+							...(runtimeExtensions ?? []),
+							...(runReview ? [runReview.extension] : []),
+							...(memory ? [memory.extension] : []),
+						]
+					: runtimeExtensions,
 			completionPolicy,
+			memory,
 			registerLeadAgent: (agent) => {
 				leadAgentInstance = agent;
 				if (pendingLeadTeamTools.length > 0) {

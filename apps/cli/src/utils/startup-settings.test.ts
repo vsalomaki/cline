@@ -1,10 +1,15 @@
-import type { GlobalSettings } from "@cline/core";
+import {
+	applyMemoryEnv,
+	type GlobalSettings,
+	resolveMemorySettings,
+} from "@cline/core";
 import { describe, expect, it } from "vitest";
 import {
 	resolveStartupCodeIntelligenceTool,
 	resolveStartupCompactionMode,
 	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
+	resolveStartupMemory,
 	resolveStartupMode,
 	resolveStartupNestedSubagents,
 	resolveStartupParallelToolCalls,
@@ -302,6 +307,43 @@ describe("language-server startup settings", () => {
 				makeSettings({ problemsTimeoutMs: 5000 }),
 			),
 		).toBe(5000);
+	});
+});
+
+describe("resolveStartupMemory", () => {
+	it("lets the flag switch memory and keeps the persisted extraction setting", () => {
+		expect(resolveStartupMemory({}, makeSettings())).toEqual({
+			enabled: undefined,
+			extractAfterRun: undefined,
+		});
+		expect(
+			resolveStartupMemory(
+				{ memory: false },
+				makeSettings({ memory: { enabled: true, extractAfterRun: false } }),
+			),
+		).toEqual({ enabled: false, extractAfterRun: false });
+		expect(
+			resolveStartupMemory({}, makeSettings({ memory: { enabled: true } })),
+		).toEqual({ enabled: true, extractAfterRun: undefined });
+	});
+
+	it("lets the invocation's env vars win when resolved before the session starts", () => {
+		const env = { CLINE_MEMORY: "0", CLINE_MEMORY_EXTRACT: "off" };
+		const resolved = resolveMemorySettings(
+			applyMemoryEnv(
+				resolveStartupMemory(
+					{ memory: true },
+					makeSettings({ memory: { extractAfterRun: true } }),
+				),
+				env,
+			),
+			env,
+		);
+		expect(resolved).toEqual({ enabled: false, extractAfterRun: false });
+		// The hub daemon resolves again with its own env; the client's values hold.
+		expect(resolveMemorySettings(resolved, { CLINE_MEMORY: "1" })).toEqual(
+			resolved,
+		);
 	});
 });
 

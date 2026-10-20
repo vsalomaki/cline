@@ -60,6 +60,7 @@ import {
 	resolveStartupCompactionMode,
 	resolveStartupLanguageServers,
 	resolveStartupMaxParallelToolCalls,
+	resolveStartupMemory,
 	resolveStartupMode,
 	resolveStartupNestedSubagents,
 	resolveStartupParallelToolCalls,
@@ -952,6 +953,13 @@ export async function runCli(): Promise<void> {
 		args,
 		persistedGlobalSettings,
 	);
+	// The hub daemon may run with another environment, so this invocation's
+	// env vars are folded in here, over the flag and the settings file.
+	const effectiveMemory = coreServer.resolveMemorySettings(
+		coreServer.applyMemoryEnv(
+			resolveStartupMemory(args, persistedGlobalSettings),
+		),
+	);
 	const effectiveLanguageServers = resolveStartupLanguageServers(
 		args,
 		persistedGlobalSettings,
@@ -1151,6 +1159,7 @@ export async function runCli(): Promise<void> {
 			revertDetection: effectiveRevertDetection,
 			reviewBeforeFinish: effectiveReviewBeforeFinish,
 			nestedSubagents: effectiveNestedSubagents,
+			memory: effectiveMemory,
 			languageServers: effectiveLanguageServers,
 			codeIntelligenceTool: effectiveCodeIntelligenceTool,
 			problemsAfterEdit: effectiveProblemsAfterEdit,

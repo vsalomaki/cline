@@ -1,3 +1,4 @@
+import { describeMemory } from "@cline/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ChoiceContext } from "@opentui-ui/dialog";
 import { useDialog } from "@opentui-ui/dialog/react";
@@ -10,6 +11,7 @@ import { withLoadingDialog } from "../components/dialogs/loading-dialog";
 import { useSession } from "../contexts/session-context";
 import type { AppView, TuiProps } from "../types";
 import { hydrateSessionMessages } from "../utils/hydrate-messages";
+import { formatMemorySummary } from "../utils/memory-summary";
 import type { LocalSlashCommandInvocation } from "../utils/skill-command-input";
 import { HistoryDialogContent } from "../views/history-view";
 import { runLocalSlashCommandAction } from "./local-command-actions";
@@ -18,6 +20,8 @@ import type { OpenConfigOptions } from "./use-config-panel";
 export function useLocalCommandActions(input: {
 	slashCommandRegistry: SlashCommandRegistry;
 	canForkSession: boolean;
+	workspaceRoot: string;
+	memoryEnabled: boolean;
 	openAccount: () => void;
 	openConfig: (options?: OpenConfigOptions) => void;
 	openMcpManager: () => Promise<boolean>;
@@ -41,6 +45,8 @@ export function useLocalCommandActions(input: {
 	const {
 		slashCommandRegistry,
 		canForkSession,
+		workspaceRoot,
+		memoryEnabled,
 		openAccount,
 		openConfig,
 		openMcpManager,
@@ -214,6 +220,21 @@ export function useLocalCommandActions(input: {
 		}
 	}, [canForkSession, dialog, onFork, refocusTextarea, session]);
 
+	const showMemory = useCallback(async () => {
+		try {
+			const memory = await describeMemory(workspaceRoot);
+			session.appendEntry({
+				kind: "status",
+				text: formatMemorySummary(memory, memoryEnabled),
+			});
+		} catch (error) {
+			session.appendEntry({
+				kind: "error",
+				text: `Could not read memory: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}, [memoryEnabled, session, workspaceRoot]);
+
 	const handleSlashCommand = useCallback(
 		(command: string, invocation?: LocalSlashCommandInvocation) => {
 			const resolved = resolveSlashCommand(slashCommandRegistry, command);
@@ -236,6 +257,7 @@ export function useLocalCommandActions(input: {
 				clearConversation: onClearConversation,
 				openHelp,
 				openHistory,
+				showMemory,
 				exitCline: onExit,
 			});
 		},
@@ -254,6 +276,7 @@ export function useLocalCommandActions(input: {
 			runCompact,
 			runFork,
 			session.isRunning,
+			showMemory,
 			slashCommandRegistry,
 		],
 	);

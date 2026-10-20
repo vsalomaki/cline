@@ -23,6 +23,7 @@ export type LocalSlashCommandName =
 	| "theme"
 	| "compact"
 	| "skills"
+	| "memory"
 	| "fork"
 	| "undo"
 	| "clear"
@@ -93,6 +94,10 @@ const TUI_LOCAL_COMMANDS: Array<{
 		preserveInput: true,
 	},
 	{
+		name: "memory",
+		description: "Show saved memories and their folders",
+	},
+	{
 		name: "fork",
 		description: "Create a named fork of the current session",
 	},
@@ -127,6 +132,7 @@ const SYSTEM_COMMAND_ORDER = [
 	"plugins",
 	"compact",
 	"skills",
+	"memory",
 	"fork",
 	"undo",
 	"clear",

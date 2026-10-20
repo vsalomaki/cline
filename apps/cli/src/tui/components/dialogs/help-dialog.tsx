@@ -177,6 +177,12 @@ const HELP_ROWS: HelpRow[] = [
 	},
 	{
 		kind: "entry",
+		id: "c-memory",
+		key: "/memory",
+		desc: "Show saved memories and their folders",
+	},
+	{
+		kind: "entry",
 		id: "c-fork",
 		key: "/fork",
 		desc: "Fork this session and continue there",

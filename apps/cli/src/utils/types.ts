@@ -101,6 +101,7 @@ export interface ParsedArgs {
 	revertDetection?: boolean;
 	reviewBeforeFinish?: boolean;
 	nestedSubagents?: boolean;
+	memory?: boolean;
 	languageServers?: boolean;
 	codeIntelligenceTool?: boolean;
 	problemsAfterEdit?: "off" | "errors" | "warnings";
