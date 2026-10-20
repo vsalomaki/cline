@@ -14,6 +14,7 @@ import {
 	findCheckpointForRun,
 	getProviderAuthStorageId,
 	loadRulesForSystemPromptFromRecords,
+	type MemorySettings,
 	type PreparedRemoteConfigCoreIntegration,
 	type RuleConfig,
 	readSessionCheckpointHistory,
@@ -849,6 +850,10 @@ export class Controller {
 		this.sessionConfigChanges.handleDelegationSettingChanged(previous, next)
 	}
 
+	handleMemorySettingChanged(previous: MemorySettings, next: MemorySettings): void {
+		this.sessionConfigChanges.handleMemorySettingChanged(previous, next)
+	}
+
 	handleCommandTimeoutsChanged(): void {
 		this.sessionConfigChanges.handleCommandTimeoutsChanged()
 	}
@@ -1253,6 +1258,11 @@ export class Controller {
 	 * This avoids using the VS Code extension host's `process.cwd()` (often `/`),
 	 * which produces invalid SDK workspace metadata with an empty hint.
 	 */
+	/** The root the active session's memory uses, else the one a new task would get. */
+	async getMemoryWorkspaceRoot(): Promise<string> {
+		return this.sessions.getActiveSession()?.startResult?.manifest?.workspace_root?.trim() || this.getWorkspaceRoot()
+	}
+
 	private async getWorkspaceRoot(): Promise<string> {
 		try {
 			const { paths } = await HostProvider.workspace.getWorkspacePaths({})

@@ -18,6 +18,7 @@ export default defineConfig({
 			"src/services/cloud/workspace-cloud-defaults.test.ts",
 			"src/core/controller/remoteConfig/**/*.test.ts",
 			"src/core/controller/state/**/*.test.ts",
+			"src/core/controller/memory/**/*.test.ts",
 			"src/core/controller/slash/**/*.test.ts",
 			"src/core/controller/task/newTask.test.ts",
 			"src/core/hooks/sdk-hook-files.test.ts",

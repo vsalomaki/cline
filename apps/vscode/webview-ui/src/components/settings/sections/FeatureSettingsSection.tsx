@@ -9,6 +9,7 @@ import { useExtensionState } from "@/context/ExtensionStateContext"
 import Section from "../Section"
 import { featureSettingControlId, featureSettingElementId } from "../settingsTargets"
 import { updateSetting, updateSettings } from "../utils/settingsHandlers"
+import MemoryManager from "./MemoryManager"
 
 // Reusable checkbox component for feature settings
 interface FeatureCheckboxProps {
@@ -164,6 +165,8 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 		webSearchEnabled,
 		subagentsEnabled,
 		agentTeamsEnabled,
+		memoryEnabled,
+		memoryExtractAfterRun,
 		worktreesEnabled,
 		backgroundEditEnabled,
 		showFeatureTips,
@@ -216,6 +219,24 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 										<SelectItem value="teams">Agent teams</SelectItem>
 									</SelectContent>
 								</Select>
+							</div>
+							<FeatureRow
+								checked={memoryEnabled}
+								description="Cline saves only hard-won findings: project memory per git repository, user memory for your preferences. Both are stored outside the repository."
+								id="memory"
+								label="Memory"
+								onChange={(checked) => updateSetting("memoryEnabled", checked)}
+							/>
+							<div className="pl-4 pb-3 space-y-3">
+								<FeatureRow
+									checked={memoryExtractAfterRun}
+									description="Check a finished request for memories once the task is idle."
+									disabled={!memoryEnabled}
+									id="memory-extract"
+									label="Save memories automatically"
+									onChange={(checked) => updateSetting("memoryExtractAfterRun", checked)}
+								/>
+								<MemoryManager />
 							</div>
 							{agentFeatures.map((feature) => (
 								<FeatureRow

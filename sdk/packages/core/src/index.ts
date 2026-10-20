@@ -667,6 +667,8 @@ export {
 } from "./services/mcp-install";
 export {
 	describeMemory,
+	isMemoryWriteDone,
+	MEMORY_INDEX_FILE,
 	type MemoryEntry,
 	type MemoryScope,
 	MemoryStore,

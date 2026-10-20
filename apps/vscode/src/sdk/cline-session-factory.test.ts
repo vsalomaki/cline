@@ -1605,6 +1605,52 @@ describe("buildSessionConfig", () => {
 		expect(enabledConfig.enableAgentTeams).toBe(false)
 	})
 
+	describe("memory", () => {
+		const previousEnv = { enabled: process.env.CLINE_MEMORY, extract: process.env.CLINE_MEMORY_EXTRACT }
+		afterEach(() => {
+			for (const [name, value] of [
+				["CLINE_MEMORY", previousEnv.enabled],
+				["CLINE_MEMORY_EXTRACT", previousEnv.extract],
+			] as const) {
+				if (value === undefined) {
+					delete process.env[name]
+				} else {
+					process.env[name] = value
+				}
+			}
+		})
+
+		it("is off by default with the after-run check on", async () => {
+			delete process.env.CLINE_MEMORY
+			delete process.env.CLINE_MEMORY_EXTRACT
+
+			const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+			expect(config.memory).toEqual({ enabled: false, extractAfterRun: true })
+		})
+
+		it("passes the stored settings", async () => {
+			delete process.env.CLINE_MEMORY
+			delete process.env.CLINE_MEMORY_EXTRACT
+			mocks.stateManager.getGlobalSettingsKey.mockImplementation((key: string) =>
+				key === "memoryEnabled" ? true : key === "memoryExtractAfterRun" ? false : undefined,
+			)
+
+			const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+			expect(config.memory).toEqual({ enabled: true, extractAfterRun: false })
+		})
+
+		it("lets CLINE_MEMORY and CLINE_MEMORY_EXTRACT override the settings", async () => {
+			process.env.CLINE_MEMORY = "1"
+			process.env.CLINE_MEMORY_EXTRACT = "0"
+
+			const config = await buildSessionConfig({ cwd: "/tmp/workspace" })
+
+			expect(config.memory).toEqual({ enabled: true, extractAfterRun: false })
+		})
+	})
+
 	it("emits the shared mode-tag instructions in both act and plan system prompts", async () => {
 		mocks.stateManager.getApiConfiguration.mockReturnValue({} as any)
 

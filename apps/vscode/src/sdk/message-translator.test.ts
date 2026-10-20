@@ -3227,6 +3227,133 @@ describe("sdkToolToClineSayTool — team tools", () => {
 	})
 })
 
+describe("memory rows", () => {
+	const agentEvent = (event: Record<string, unknown>): CoreSessionEvent => ({
+		type: "agent_event",
+		payload: { sessionId: "s1", event: event as unknown as AgentEvent },
+	})
+	const memoryInput = {
+		action: "save",
+		scope: "project",
+		name: "Build quirk",
+		description: "Run protos before vitest",
+		content: "…",
+	}
+	const runMemoryCall = (input: Record<string, unknown>, output: string) => {
+		const state = new MessageTranslatorState()
+		const start = translateSessionEvent(
+			agentEvent({ type: "content_start", contentType: "tool", toolName: "memory", toolCallId: "m1", input }),
+			state,
+		)
+		const end = translateSessionEvent(
+			agentEvent({ type: "content_end", contentType: "tool", toolName: "memory", toolCallId: "m1", output }),
+			state,
+		)
+		return { start: start.messages, end: end.messages }
+	}
+
+	it("turns a memory tool call into a memoryAction row", () => {
+		const { start, end } = runMemoryCall(memoryInput, 'Saved project memory "build-quirk".')
+
+		expect(start[0].partial).toBe(true)
+		expect(end).toHaveLength(1)
+		expect(end[0].ts).toBe(start[0].ts)
+		expect(end[0].partial).toBe(false)
+		expect(JSON.parse(end[0].text!)).toEqual({
+			tool: "memoryAction",
+			memory: { action: "save", scope: "project", name: "Build quirk", description: "Run protos before vitest" },
+		})
+	})
+
+	it("carries the tool's refusal when a write did not happen", () => {
+		const { end } = runMemoryCall(
+			{ ...memoryInput, scope: "user" },
+			'A user memory named "build-quirk" already exists. Use update to change it.',
+		)
+
+		expect(JSON.parse(end[0].text!).memory).toMatchObject({
+			action: "save",
+			scope: "user",
+			error: 'A user memory named "build-quirk" already exists. Use update to change it.',
+		})
+	})
+
+	it("shows a failed memory call as one row carrying the error", () => {
+		const state = new MessageTranslatorState()
+		translateSessionEvent(
+			agentEvent({ type: "content_start", contentType: "tool", toolName: "memory", toolCallId: "m1", input: memoryInput }),
+			state,
+		)
+		const end = translateSessionEvent(
+			agentEvent({ type: "content_end", contentType: "tool", toolName: "memory", toolCallId: "m1", error: "EACCES" }),
+			state,
+		)
+
+		expect(end.messages.map((message) => message.say)).toEqual(["tool"])
+		expect(JSON.parse(end.messages[0].text!).memory).toMatchObject({ action: "save", error: "EACCES" })
+	})
+
+	it("marks a replayed memory write without a result as unfinished", () => {
+		const messages: SdkMessage[] = [
+			{ role: "user", content: '<user_input mode="act">remember this</user_input>' } as SdkMessage,
+			{ role: "assistant", content: [{ type: "tool_use", id: "m1", name: "memory", input: memoryInput }] } as SdkMessage,
+		]
+
+		const rows = sdkMessagesToClineMessages(messages).filter((message) => message.say === "tool")
+
+		expect(rows).toHaveLength(1)
+		expect(JSON.parse(rows[0].text!).memory).toMatchObject({ action: "save", error: "The memory tool did not finish." })
+	})
+
+	it("never marks a view as failed", () => {
+		const { end } = runMemoryCall({ action: "view", scope: "project" }, "No project memories yet.")
+
+		expect(JSON.parse(end[0].text!).memory).toEqual({ action: "view", scope: "project" })
+	})
+
+	it("turns a Memory saved notice into one row per saved memory", () => {
+		const state = new MessageTranslatorState()
+		const result = translateSessionEvent(
+			agentEvent({
+				type: "notice",
+				noticeType: "status",
+				displayRole: "status",
+				message: "Memory saved: Build quirk (project): Run protos before vitest; Terse (user): Short answers",
+				metadata: {
+					memory: [
+						{ scope: "project", slug: "build-quirk", name: "Build quirk", description: "Run protos before vitest" },
+						{ scope: "user", slug: "terse", name: "Terse", description: "Short answers" },
+					],
+				},
+			}),
+			state,
+		)
+
+		expect(result.messages.map((message) => [message.say, JSON.parse(message.text!)])).toEqual([
+			[
+				"tool",
+				{
+					tool: "memoryAction",
+					memory: {
+						action: "save",
+						scope: "project",
+						name: "Build quirk",
+						description: "Run protos before vitest",
+						automatic: true,
+					},
+				},
+			],
+			[
+				"tool",
+				{
+					tool: "memoryAction",
+					memory: { action: "save", scope: "user", name: "Terse", description: "Short answers", automatic: true },
+				},
+			],
+		])
+	})
+})
+
 describe("sdkToolToClineSayTool — fetch_web_content and skills (S6-39, S6-40)", () => {
 	it("S6-39: fetch_web_content extracts URL from SDK requests array", () => {
 		const state = new MessageTranslatorState()

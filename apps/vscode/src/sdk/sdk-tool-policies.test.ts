@@ -82,4 +82,15 @@ describe("isToolAutoApproved", () => {
 		expect(policies.team_status).toBeUndefined()
 		expect(policies.team_send_message).toBeUndefined()
 	})
+
+	it("leaves the memory tool unlisted, so the SDK runs it without asking", () => {
+		const actions = Object.fromEntries(Object.keys(DEFAULT_AUTO_APPROVAL_SETTINGS.actions).map((key) => [key, false]))
+		const policies = buildToolPolicies({
+			...DEFAULT_AUTO_APPROVAL_SETTINGS,
+			actions,
+		} as typeof DEFAULT_AUTO_APPROVAL_SETTINGS)
+
+		expect(policies.memory).toBeUndefined()
+		expect(policies["*"]).toBeUndefined()
+	})
 })

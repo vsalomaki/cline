@@ -128,6 +128,8 @@ export interface ExtensionState {
 	webSearchEnabled?: boolean
 	subagentsEnabled?: boolean
 	agentTeamsEnabled?: boolean
+	memoryEnabled?: boolean
+	memoryExtractAfterRun?: boolean
 	worktreesEnabled?: ClineFeatureSetting
 	favoritedModelIds: string[]
 	// NEW: Add workspace information
@@ -296,6 +298,7 @@ export interface ClineSayTool {
 		| "summarizeTask"
 		| "useSkill"
 		| "teamAction"
+		| "memoryAction"
 	path?: string
 	diff?: string
 	content?: string
@@ -307,6 +310,18 @@ export interface ClineSayTool {
 	/** One-based inclusive line range requested by read_file; readLineEnd omitted = open-ended read (for UI summaries). */
 	readLineStart?: number
 	readLineEnd?: number
+	memory?: ClineSayMemory
+}
+
+export interface ClineSayMemory {
+	action: "save" | "update" | "delete" | "view"
+	scope: "project" | "user"
+	name?: string
+	description?: string
+	/** Saved by compaction or the after-run check rather than a tool call. */
+	automatic?: boolean
+	/** The tool's refusal, e.g. the name is taken or the scope is full. */
+	error?: string
 }
 
 // must keep in sync with system prompt

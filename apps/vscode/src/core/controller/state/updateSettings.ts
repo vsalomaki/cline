@@ -218,6 +218,21 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			}
 		}
 
+		if (request.memoryEnabled !== undefined || request.memoryExtractAfterRun !== undefined) {
+			const readMemory = () => ({
+				enabled: controller.stateManager.getGlobalSettingsKey("memoryEnabled") ?? false,
+				extractAfterRun: controller.stateManager.getGlobalSettingsKey("memoryExtractAfterRun") ?? true,
+			})
+			const previous = readMemory()
+			if (request.memoryEnabled !== undefined) {
+				controller.stateManager.setGlobalState("memoryEnabled", !!request.memoryEnabled)
+			}
+			if (request.memoryExtractAfterRun !== undefined) {
+				controller.stateManager.setGlobalState("memoryExtractAfterRun", !!request.memoryExtractAfterRun)
+			}
+			controller.handleMemorySettingChanged(previous, readMemory())
+		}
+
 		// Update auto-condense setting
 		if (request.useAutoCondense !== undefined) {
 			if (controller.task) {

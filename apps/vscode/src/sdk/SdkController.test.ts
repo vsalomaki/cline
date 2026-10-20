@@ -823,3 +823,26 @@ describe("cloud tasks stay in the cloud", () => {
 		expect(mode(undefined)).toBe("plan")
 	})
 })
+
+describe("getMemoryWorkspaceRoot", () => {
+	it("uses the active session's workspace root", async () => {
+		const controller = {
+			sessions: { getActiveSession: () => ({ startResult: { manifest: { workspace_root: "/resumed/project" } } }) },
+			getWorkspaceRoot: vi.fn(async () => "/window/folder"),
+		}
+
+		await expect(SdkController.prototype.getMemoryWorkspaceRoot.call(controller as never)).resolves.toBe("/resumed/project")
+		expect(controller.getWorkspaceRoot).not.toHaveBeenCalled()
+	})
+
+	it("falls back to the root a new task would get", async () => {
+		const controller = {
+			sessions: { getActiveSession: () => undefined },
+			getWorkspaceRoot: async () => "/home/me/.cline/data/workspaces/chat",
+		}
+
+		await expect(SdkController.prototype.getMemoryWorkspaceRoot.call(controller as never)).resolves.toBe(
+			"/home/me/.cline/data/workspaces/chat",
+		)
+	})
+})

@@ -313,6 +313,8 @@ export const ExtensionStateContextProvider: React.FC<{
 		webSearchEnabled: false,
 		subagentsEnabled: false,
 		agentTeamsEnabled: false,
+		memoryEnabled: false,
+		memoryExtractAfterRun: true,
 		worktreesEnabled: { user: true, featureFlag: false },
 		cloudSessionsAvailable: false,
 		cloudSessionsEnabled: false,

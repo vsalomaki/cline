@@ -22,6 +22,8 @@ vi.mock("@/context/ExtensionStateContext", () => ({
 	useExtensionState: vi.fn(() => mockExtensionState.value),
 }))
 
+vi.mock("./MemoryManager", () => ({ default: () => null }))
+
 vi.mock("@/components/settings/utils/settingsHandlers", () => ({
 	updateSetting: (...args: unknown[]) => mockUpdateSetting(...args),
 	updateSettings: vi.fn(),
@@ -34,7 +36,27 @@ describe("FeatureSettingsSection", () => {
 			...mockExtensionState.value,
 			useAutoCondense: false,
 			compactionStrategy: "basic",
+			memoryEnabled: false,
+			memoryExtractAfterRun: true,
 		}
+	})
+
+	it("turns memory on and disables the automatic saves while it is off", () => {
+		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
+
+		expect(screen.getByRole("switch", { name: "Save memories automatically" })).toBeDisabled()
+		fireEvent.click(screen.getByRole("switch", { name: "Memory" }))
+
+		expect(mockUpdateSetting).toHaveBeenCalledWith("memoryEnabled", true)
+	})
+
+	it("switches automatic memory saves off once memory is on", () => {
+		mockExtensionState.value = { ...mockExtensionState.value, memoryEnabled: true }
+		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
+
+		fireEvent.click(screen.getByRole("switch", { name: "Save memories automatically" }))
+
+		expect(mockUpdateSetting).toHaveBeenCalledWith("memoryExtractAfterRun", false)
 	})
 
 	it("renders Hooks feature toggle", () => {

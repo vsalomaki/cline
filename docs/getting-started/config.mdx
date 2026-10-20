@@ -424,13 +424,24 @@ Each pass saves at most two memories and usually none. A saved memory is reporte
 
 | Switch | Default | Where |
 |--------|---------|-------|
-| Memory | off | `--memory` / `--no-memory`, `"memory": { "enabled": true }` in `global-settings.json`, `CLINE_MEMORY`, SDK `memory.enabled` |
-| Check after a request | on | `"memory": { "extractAfterRun": false }`, `CLINE_MEMORY_EXTRACT`, SDK `memory.extractAfterRun` |
+| Memory | off | VS Code **Settings → Features → Memory**, `--memory` / `--no-memory`, `"memory": { "enabled": true }` in `global-settings.json`, `CLINE_MEMORY`, SDK `memory.enabled` |
+| Check after a request | on | VS Code **Save memories automatically** (under Memory), `"memory": { "extractAfterRun": false }`, `CLINE_MEMORY_EXTRACT`, SDK `memory.extractAfterRun` |
 
 In the CLI an env var wins over the flag and the file, and the flag wins over the file;
 the values the CLI starts with hold even when a hub started elsewhere runs the session.
-In the SDK the env vars apply only where `memory` leaves a value unset. In the CLI,
-`/memory` lists both indexes and prints their folders.
+In VS Code an env var set where VS Code starts wins over the setting, and a change to
+either setting applies to the open task once it is idle. In the SDK the env vars apply
+only where `memory` leaves a value unset. In the CLI, `/memory` lists both indexes and
+prints their folders.
+
+In VS Code, every memory the agent saves, updates, deletes or reads shows as a row in
+the chat, and so does each memory saved at compaction or after a request ("Memory saved
+automatically"). Click a saved or updated memory to open its file. A write the tool
+refused, for example because the name is taken or the scope is full, shows the reason.
+**Manage memories** under the Memory setting lists the project memories of the workspace
+the current task runs on (a new task's when none is open) and your user memories, with
+buttons to open or delete each one (delete asks for a second click) and to open each
+scope's `MEMORY.md`.
 
 <Warning>
 Files in a repository can try to get the agent to save a misleading note that later
