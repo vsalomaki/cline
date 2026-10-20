@@ -8,6 +8,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { getFileReadLedger } from "../../../session/services/file-read-ledger";
+import {
+	formatRevertNote,
+	getFileWriteHistory,
+} from "../../../session/services/file-write-history";
 import { DEFAULT_CONTEXT_LIMITS } from "../../../settings/context-limits";
 import { startProblemsCheck } from "../code-intelligence/problems-after-edit";
 import type { EditFileInput } from "../schemas";
@@ -280,8 +284,15 @@ export function createEditorExecutor(
 			}
 		}
 		const problems = await startProblemsCheck(context, [filePath]);
+		const history = getFileWriteHistory(context.metadata);
+		await history?.beforeWrite(filePath);
 		const result = await applyEdit(input, filePath);
 		await ledger?.recordCurrent(filePath);
-		return result + ((await problems?.report(cwd)) ?? "");
+		const editsAgo = await history?.afterWrite(filePath);
+		const revertNote =
+			editsAgo === undefined
+				? ""
+				: formatRevertNote([{ path: filePath, editsAgo }]);
+		return result + revertNote + ((await problems?.report(cwd)) ?? "");
 	};
 }

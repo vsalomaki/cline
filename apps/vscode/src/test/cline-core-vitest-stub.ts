@@ -63,6 +63,7 @@ export function resolveToolCallSettings(
 		maxParallelToolCalls?: number
 		parallelToolCalls?: boolean
 		readBeforeWrite?: boolean
+		revertDetection?: boolean
 		reviewBeforeFinish?: boolean
 		nestedSubagents?: boolean
 	} = {},
@@ -71,6 +72,7 @@ export function resolveToolCallSettings(
 		maxParallelToolCalls: config.maxParallelToolCalls ?? 4,
 		parallelToolCalls: config.parallelToolCalls ?? true,
 		readBeforeWrite: config.readBeforeWrite ?? true,
+		revertDetection: config.revertDetection ?? true,
 		reviewBeforeFinish: config.reviewBeforeFinish ?? true,
 		nestedSubagents: config.nestedSubagents ?? false,
 	}
@@ -80,6 +82,7 @@ export function getToolCallEnvSources(): {
 	maxParallelToolCalls?: string
 	parallelToolCalls?: string
 	readBeforeWrite?: string
+	revertDetection?: string
 	reviewBeforeFinish?: string
 	nestedSubagents?: string
 } {

@@ -59,6 +59,13 @@ export function resolveStartupReadBeforeWrite(
 	return args.readBeforeWrite ?? settings.readBeforeWrite;
 }
 
+export function resolveStartupRevertDetection(
+	args: Pick<ParsedArgs, "revertDetection">,
+	settings: GlobalSettings,
+): boolean | undefined {
+	return args.revertDetection ?? settings.revertDetection;
+}
+
 export function resolveStartupReviewBeforeFinish(
 	args: Pick<ParsedArgs, "reviewBeforeFinish">,
 	settings: GlobalSettings,

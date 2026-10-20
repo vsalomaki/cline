@@ -721,6 +721,7 @@ export class DefaultRuntimeBuilder implements RuntimeBuilder {
 			maxParallelToolCalls: config.maxParallelToolCalls,
 			parallelToolCalls: config.parallelToolCalls,
 			readBeforeWrite: config.readBeforeWrite,
+			revertDetection: config.revertDetection,
 			maxIterations: config.maxIterations,
 			hooks,
 			extensions: runtimeExtensions,

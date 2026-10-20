@@ -89,6 +89,14 @@ export function addRootOptions(cmd: Command): Command {
 				"Allow edits to files the agent has not read",
 			)
 			.option(
+				"--revert-detection",
+				"Note in an edit's result when it restores a file to an earlier state from this session (default)",
+			)
+			.option(
+				"--no-revert-detection",
+				"Do not point out edits that restore a file to an earlier state",
+			)
+			.option(
 				"--review-before-finish",
 				"Send the agent back once to review a request that changed files before its final report (default)",
 			)
@@ -289,6 +297,9 @@ export function commanderToParsedArgs(program: Command): ParsedArgs {
 	}
 	if (typeof opts.readBeforeWrite === "boolean") {
 		result.readBeforeWrite = opts.readBeforeWrite;
+	}
+	if (typeof opts.revertDetection === "boolean") {
+		result.revertDetection = opts.revertDetection;
 	}
 	if (typeof opts.reviewBeforeFinish === "boolean") {
 		result.reviewBeforeFinish = opts.reviewBeforeFinish;

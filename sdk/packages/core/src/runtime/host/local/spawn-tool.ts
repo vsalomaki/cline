@@ -190,6 +190,7 @@ export function createSessionSpawnTool(
 					maxParallelToolCalls: config.maxParallelToolCalls,
 					parallelToolCalls: config.parallelToolCalls,
 					readBeforeWrite: config.readBeforeWrite,
+					revertDetection: config.revertDetection,
 					mode: config.mode,
 					clineIdeName: config.extensionContext?.workspace?.ide,
 					clinePlatform:
@@ -218,6 +219,7 @@ export function createSessionSpawnTool(
 					maxParallelToolCalls: config.maxParallelToolCalls,
 					parallelToolCalls: config.parallelToolCalls,
 					readBeforeWrite: config.readBeforeWrite,
+					revertDetection: config.revertDetection,
 				},
 			updateConnectionDefaults: () => {},
 		},

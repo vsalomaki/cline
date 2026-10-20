@@ -11,6 +11,7 @@ import {
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
+	resolveStartupRevertDetection,
 	resolveStartupReviewBeforeFinish,
 	resolveStartupToolAutoApprove,
 } from "./startup-settings";
@@ -193,6 +194,24 @@ describe("resolveStartupReadBeforeWrite", () => {
 			resolveStartupReadBeforeWrite(
 				{ readBeforeWrite: true },
 				makeSettings({ readBeforeWrite: false }),
+			),
+		).toBe(true);
+	});
+});
+
+describe("resolveStartupRevertDetection", () => {
+	it("prefers the flag over the persisted value and leaves unset to Core", () => {
+		expect(resolveStartupRevertDetection({}, makeSettings())).toBeUndefined();
+		expect(
+			resolveStartupRevertDetection(
+				{},
+				makeSettings({ revertDetection: false }),
+			),
+		).toBe(false);
+		expect(
+			resolveStartupRevertDetection(
+				{ revertDetection: true },
+				makeSettings({ revertDetection: false }),
 			),
 		).toBe(true);
 	});

@@ -66,6 +66,7 @@ import {
 	resolveStartupProblemsAfterEdit,
 	resolveStartupProblemsTimeoutMs,
 	resolveStartupReadBeforeWrite,
+	resolveStartupRevertDetection,
 	resolveStartupReviewBeforeFinish,
 	resolveStartupToolAutoApprove,
 } from "./utils/startup-settings";
@@ -939,6 +940,10 @@ export async function runCli(): Promise<void> {
 		args,
 		persistedGlobalSettings,
 	);
+	const effectiveRevertDetection = resolveStartupRevertDetection(
+		args,
+		persistedGlobalSettings,
+	);
 	const effectiveReviewBeforeFinish = resolveStartupReviewBeforeFinish(
 		args,
 		persistedGlobalSettings,
@@ -1143,6 +1148,7 @@ export async function runCli(): Promise<void> {
 			maxParallelToolCalls: effectiveMaxParallelToolCalls,
 			parallelToolCalls: effectiveParallelToolCalls,
 			readBeforeWrite: effectiveReadBeforeWrite,
+			revertDetection: effectiveRevertDetection,
 			reviewBeforeFinish: effectiveReviewBeforeFinish,
 			nestedSubagents: effectiveNestedSubagents,
 			languageServers: effectiveLanguageServers,

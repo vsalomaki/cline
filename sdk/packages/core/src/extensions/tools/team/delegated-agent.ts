@@ -38,6 +38,7 @@ export type DelegatedAgentConnectionConfig = Pick<
 	| "maxParallelToolCalls"
 	| "parallelToolCalls"
 	| "readBeforeWrite"
+	| "revertDetection"
 >;
 
 export interface DelegatedAgentRuntimeConfig
@@ -125,6 +126,7 @@ export function createDelegatedAgentConfigProvider(
 			maxParallelToolCalls: runtimeConfig.maxParallelToolCalls,
 			parallelToolCalls: runtimeConfig.parallelToolCalls,
 			readBeforeWrite: runtimeConfig.readBeforeWrite,
+			revertDetection: runtimeConfig.revertDetection,
 		}),
 		updateConnectionDefaults: (overrides) => {
 			runtimeConfig = {
