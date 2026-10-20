@@ -100,6 +100,7 @@ export const GlobalSettingsSchema = z
 			.catch(undefined),
 		parallelToolCalls: z.boolean().optional().catch(undefined),
 		readBeforeWrite: z.boolean().optional().catch(undefined),
+		revertDetection: z.boolean().optional().catch(undefined),
 		reviewBeforeFinish: z.boolean().optional().catch(undefined),
 		nestedSubagents: z.boolean().optional().catch(undefined),
 		languageServers: LanguageServerSettingsSchema.optional().catch(undefined),
@@ -132,6 +133,7 @@ export const GlobalSettingsSchema = z
 			maxParallelToolCalls?: number;
 			parallelToolCalls?: boolean;
 			readBeforeWrite?: boolean;
+			revertDetection?: boolean;
 			reviewBeforeFinish?: boolean;
 			nestedSubagents?: boolean;
 			languageServers?: LanguageServerSettings;
@@ -167,6 +169,9 @@ export const GlobalSettingsSchema = z
 		}
 		if (settings.readBeforeWrite !== undefined) {
 			normalized.readBeforeWrite = settings.readBeforeWrite;
+		}
+		if (settings.revertDetection !== undefined) {
+			normalized.revertDetection = settings.revertDetection;
 		}
 		if (settings.reviewBeforeFinish !== undefined) {
 			normalized.reviewBeforeFinish = settings.reviewBeforeFinish;

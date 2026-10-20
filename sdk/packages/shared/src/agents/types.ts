@@ -771,6 +771,11 @@ export interface AgentConfig {
 	 */
 	readBeforeWrite?: boolean;
 	/**
+	 * Note in an edit's result when it restores a file to an earlier state.
+	 * @default true
+	 */
+	revertDetection?: boolean;
+	/**
 	 * Maximum output tokens per API call
 	 */
 	maxTokensPerTurn?: number;
@@ -957,6 +962,7 @@ export const AgentConfigSchema = z.object({
 	maxParallelToolCalls: z.number().int().positive().optional(),
 	parallelToolCalls: z.boolean().optional(),
 	readBeforeWrite: z.boolean().optional(),
+	revertDetection: z.boolean().optional(),
 	maxTokensPerTurn: z.number().positive().optional(),
 	temperature: z.number().nonnegative().optional(),
 	apiTimeoutMs: z.number().positive().optional(),

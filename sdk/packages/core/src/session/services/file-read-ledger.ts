@@ -5,7 +5,7 @@ interface FileStamp {
 	size: number;
 }
 
-async function canonicalPath(absolutePath: string): Promise<string> {
+export async function canonicalPath(absolutePath: string): Promise<string> {
 	return fs.realpath(absolutePath).catch(() => absolutePath);
 }
 

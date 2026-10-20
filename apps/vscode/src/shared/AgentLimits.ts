@@ -107,6 +107,18 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		envVar: "CLINE_READ_BEFORE_WRITE",
 	},
 	{
+		id: "session.revertDetection",
+		group: "toolCalls",
+		label: "Point out reverted edits",
+		description:
+			"When an edit puts a file back to how it was earlier in this task, add a note to the edit's result asking the agent to check why the later changes were made. Helps models that keep undoing their own work. Shell commands are not checked.",
+		unit: "toggle",
+		default: 1,
+		min: 0,
+		max: 1,
+		envVar: "CLINE_REVERT_DETECTION",
+	},
+	{
 		id: "session.reviewBeforeFinish",
 		group: "toolCalls",
 		label: "Review before finishing",

@@ -40,6 +40,7 @@ import { createContextCompactionPrepareTurn } from "../../extensions/context/com
 import { createFakeCodeIntelligence } from "../../extensions/tools/code-intelligence/fake-provider.fixtures";
 import { getCodeIntelligence } from "../../extensions/tools/code-intelligence/problems-after-edit";
 import { FileReadLedger } from "../../session/services/file-read-ledger";
+import { FileWriteHistory } from "../../session/services/file-write-history";
 import { MESSAGE_BUILDER_LIMIT_ENV } from "../../session/services/message-builder";
 import type { CoreCompactionContext } from "../../types/config";
 import {
@@ -988,6 +989,67 @@ describe("SessionRuntime message preparation", () => {
 		} finally {
 			await fs.rm(file, { force: true });
 		}
+	});
+
+	it("keeps the write history through compaction and restore, not a new run", async () => {
+		const prepareTurn = vi.fn(
+			(context: { emitStatusNotice?: (...args: never[]) => void }) => {
+				(
+					context.emitStatusNotice as
+						| ((message: string, metadata?: Record<string, unknown>) => void)
+						| undefined
+				)?.("compacted", { phase: "completed" });
+				return undefined;
+			},
+		);
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(makeAgentConfig({ prepareTurn }), deps);
+		await session.run("go");
+
+		const history = configs[0]?.toolContextMetadata?.fileWriteHistory;
+		expect(history).toBeInstanceOf(FileWriteHistory);
+		const file = path.join(os.tmpdir(), `write-history-${process.pid}.txt`);
+		await fs.writeFile(file, "first");
+		try {
+			const writes = history as FileWriteHistory;
+			await writes.beforeWrite(file);
+			await fs.writeFile(file, "second");
+			await writes.afterWrite(file);
+			await configs[0]?.prepareTurn?.({
+				agentId: "agent-1",
+				conversationId: "conv-1",
+				parentAgentId: null,
+				iteration: 2,
+				messages: [],
+				systemPrompt: "system",
+				tools: [],
+				model: {},
+			});
+			session.restore([]);
+			await writes.beforeWrite(file);
+			await fs.writeFile(file, "first");
+			await expect(writes.afterWrite(file)).resolves.toBe(1);
+
+			await session.run("new conversation");
+			await writes.beforeWrite(file);
+			await fs.writeFile(file, "second");
+			await expect(writes.afterWrite(file)).resolves.toBeUndefined();
+		} finally {
+			await fs.rm(file, { force: true });
+		}
+	});
+
+	it("omits the write history when revertDetection is off", async () => {
+		const { deps, configs } = makeRecordingRuntimeFactory();
+		const session = new SessionRuntime(
+			makeAgentConfig({ revertDetection: false }),
+			deps,
+		);
+		await session.run("go");
+
+		expect(configs[0]?.toolContextMetadata).not.toHaveProperty(
+			"fileWriteHistory",
+		);
 	});
 
 	it("omits the read ledger when readBeforeWrite is off", async () => {

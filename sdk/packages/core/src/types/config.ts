@@ -353,6 +353,12 @@ export interface CoreSessionConfig
 	 */
 	readBeforeWrite?: boolean;
 	/**
+	 * Add a note to an `editor` or `apply_patch` result when the write restores
+	 * a file to an earlier state from this session. `CLINE_REVERT_DETECTION` takes precedence.
+	 * @default true
+	 */
+	revertDetection?: boolean;
+	/**
 	 * When the agent answers without tool calls after files changed during the
 	 * request, send it back once to review the run before its final report.
 	 * `CLINE_REVIEW_BEFORE_FINISH` takes precedence.

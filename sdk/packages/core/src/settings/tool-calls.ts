@@ -9,6 +9,7 @@ export const TOOL_CALL_ENV = {
 	maxParallelToolCalls: "CLINE_MAX_PARALLEL_TOOL_CALLS",
 	parallelToolCalls: "CLINE_PARALLEL_TOOL_CALLS",
 	readBeforeWrite: "CLINE_READ_BEFORE_WRITE",
+	revertDetection: "CLINE_REVERT_DETECTION",
 	reviewBeforeFinish: "CLINE_REVIEW_BEFORE_FINISH",
 	nestedSubagents: "CLINE_NESTED_SUBAGENTS",
 } as const;
@@ -18,6 +19,8 @@ export interface ToolCallSettings {
 	parallelToolCalls: boolean;
 	/** Refuse edits to existing files that were not read, or changed since. */
 	readBeforeWrite: boolean;
+	/** Note in an edit's result when it restores a file to an earlier state. */
+	revertDetection: boolean;
 	/** Ask the agent to review a run that changed files before its final report. */
 	reviewBeforeFinish: boolean;
 	/** Let a subagent start subagents of its own, one level deeper. */
@@ -69,6 +72,10 @@ export function resolveToolCallSettings(
 			parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) ??
 			config.readBeforeWrite ??
 			true,
+		revertDetection:
+			parseBooleanEnv(env[TOOL_CALL_ENV.revertDetection]) ??
+			config.revertDetection ??
+			true,
 		reviewBeforeFinish:
 			parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) ??
 			config.reviewBeforeFinish ??
@@ -95,6 +102,9 @@ export function getToolCallEnvSources(
 	}
 	if (parseBooleanEnv(env[TOOL_CALL_ENV.readBeforeWrite]) !== undefined) {
 		sources.readBeforeWrite = TOOL_CALL_ENV.readBeforeWrite;
+	}
+	if (parseBooleanEnv(env[TOOL_CALL_ENV.revertDetection]) !== undefined) {
+		sources.revertDetection = TOOL_CALL_ENV.revertDetection;
 	}
 	if (parseBooleanEnv(env[TOOL_CALL_ENV.reviewBeforeFinish]) !== undefined) {
 		sources.reviewBeforeFinish = TOOL_CALL_ENV.reviewBeforeFinish;

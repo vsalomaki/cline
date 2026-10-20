@@ -69,6 +69,7 @@ import {
 } from "../../services/telemetry/core-events";
 import { toPersistedToolResultContent } from "../../session/persisted-tool-result-content";
 import { FileReadLedger } from "../../session/services/file-read-ledger";
+import { FileWriteHistory } from "../../session/services/file-write-history";
 import {
 	DEFAULT_MAX_TOOL_RESULT_CHARS,
 	getMessageBuilderOptions,
@@ -384,6 +385,7 @@ export class SessionRuntime {
 	private readonly conversation: ConversationStore;
 	private readonly toolResultCache: ToolResultCache;
 	private readonly fileReadLedger: FileReadLedger | undefined;
+	private readonly fileWriteHistory: FileWriteHistory | undefined;
 	private readonly codeIntelligenceMetadata: Record<string, unknown>;
 	private cacheableToolNames = new Set<string>();
 	private readonly maxCachedResultChars: number;
@@ -487,8 +489,12 @@ export class SessionRuntime {
 		this.toolResultCache = new ToolResultCache(
 			config.sessionId ?? this.agentId,
 		);
-		this.fileReadLedger = resolveToolCallSettings(config).readBeforeWrite
+		const toolCallSettings = resolveToolCallSettings(config);
+		this.fileReadLedger = toolCallSettings.readBeforeWrite
 			? new FileReadLedger()
+			: undefined;
+		this.fileWriteHistory = toolCallSettings.revertDetection
+			? new FileWriteHistory()
 			: undefined;
 		this.codeIntelligenceMetadata = createCodeIntelligenceMetadata(
 			config.codeIntelligence,
@@ -656,9 +662,11 @@ export class SessionRuntime {
 
 	clearHistory(): void {
 		this.conversation.clearHistory();
+		this.fileWriteHistory?.clear();
 		this.resetConversationBoundaryTrackers();
 	}
 
+	// Keeps the write history: compaction results also arrive through restore().
 	restore(messages: readonly MessageWithMetadata[]): void {
 		this.conversation.restore(messages);
 		this.resetConversationBoundaryTrackers();
@@ -788,6 +796,7 @@ export class SessionRuntime {
 		const rejection = this.getRunAdmissionError();
 		if (rejection) return Promise.reject(rejection);
 		this.conversation.resetForRun();
+		this.fileWriteHistory?.clear();
 		this.resetConversationBoundaryTrackers();
 		return this.executeRun({
 			userMessage,
@@ -1087,6 +1096,9 @@ export class SessionRuntime {
 				...this.config.toolContextMetadata,
 				toolResultCache: this.toolResultCache,
 				...(this.fileReadLedger ? { fileReadLedger: this.fileReadLedger } : {}),
+				...(this.fileWriteHistory
+					? { fileWriteHistory: this.fileWriteHistory }
+					: {}),
 				...this.codeIntelligenceMetadata,
 			},
 			hooks: this.createRuntimeHooks(),

@@ -833,6 +833,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			maxParallelToolCalls: configWithProvider.maxParallelToolCalls,
 			parallelToolCalls: configWithProvider.parallelToolCalls,
 			readBeforeWrite: configWithProvider.readBeforeWrite,
+			revertDetection: configWithProvider.revertDetection,
 			codeIntelligence: configWithProvider.codeIntelligence,
 			problemsAfterEdit: configWithProvider.problemsAfterEdit,
 			problemsTimeoutMs: configWithProvider.problemsTimeoutMs,

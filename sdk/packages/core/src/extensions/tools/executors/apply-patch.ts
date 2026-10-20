@@ -10,6 +10,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { getFileReadLedger } from "../../../session/services/file-read-ledger";
+import {
+	formatRevertNote,
+	getFileWriteHistory,
+	type RevertedFile,
+} from "../../../session/services/file-write-history";
 import { startProblemsCheck } from "../code-intelligence/problems-after-edit";
 import type { ApplyPatchInput } from "../schemas";
 import type { ApplyPatchExecutor } from "../types";
@@ -455,12 +460,36 @@ export function createApplyPatchExecutor(
 				)
 				.map(([filePath]) => resolveFilePath(cwd, filePath, restrictToCwd)),
 		);
+		const history = getFileWriteHistory(context.metadata);
+		if (history) {
+			for (const filePath of Object.keys(changes)) {
+				await history.beforeWrite(
+					resolveFilePath(cwd, filePath, restrictToCwd),
+				);
+			}
+		}
 		const touched = await applyChanges(changes, cwd, encoding, restrictToCwd);
 		if (ledger) {
 			for (const [filePath, change] of Object.entries(changes)) {
 				await ledger.recordCurrent(
 					resolveFilePath(cwd, change.movePath ?? filePath, restrictToCwd),
 				);
+			}
+		}
+		const reverted: RevertedFile[] = [];
+		if (history) {
+			for (const [filePath, change] of Object.entries(changes)) {
+				const sourcePath = resolveFilePath(cwd, filePath, restrictToCwd);
+				const writtenPath = change.movePath
+					? resolveFilePath(cwd, change.movePath, restrictToCwd)
+					: sourcePath;
+				if (writtenPath !== sourcePath) {
+					await history.afterWrite(sourcePath);
+				}
+				const editsAgo = await history.afterWrite(writtenPath);
+				if (editsAgo !== undefined) {
+					reverted.push({ path: writtenPath, editsAgo });
+				}
 			}
 		}
 
@@ -473,6 +502,10 @@ export function createApplyPatchExecutor(
 		if (fuzz > 0) {
 			responseLines.push(`Note: Patch applied with fuzz factor ${fuzz}`);
 		}
-		return responseLines.join("\n") + ((await problems?.report(cwd)) ?? "");
+		return (
+			responseLines.join("\n") +
+			formatRevertNote(reverted) +
+			((await problems?.report(cwd)) ?? "")
+		);
 	};
 }

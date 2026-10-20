@@ -118,6 +118,12 @@ describe("tool-call options", () => {
 		expect(parse(["--read-before-write"]).readBeforeWrite).toBe(true);
 	});
 
+	it("parses --no-revert-detection and --revert-detection", () => {
+		expect(parse([]).revertDetection).toBeUndefined();
+		expect(parse(["--no-revert-detection"]).revertDetection).toBe(false);
+		expect(parse(["--revert-detection"]).revertDetection).toBe(true);
+	});
+
 	it("parses --no-review-before-finish and --review-before-finish", () => {
 		expect(parse([]).reviewBeforeFinish).toBeUndefined();
 		expect(parse(["--no-review-before-finish"]).reviewBeforeFinish).toBe(false);
