@@ -349,14 +349,17 @@ is not restarted until a new session starts.
 ### Compaction
 
 When the conversation nears the model's context window, Cline summarizes the older
-history and keeps the most recent part verbatim. In the VS Code extension these
+history and keeps the most recent part verbatim. The messages you typed before that
+part stay word for word next to the summary, up to 2,000 characters each and a
+quarter of the size compaction shrinks the context to, oldest left out first (agentic
+strategy; the basic strategy keeps all of them). In the VS Code extension these
 settings are under **Settings → Agent Limits → Compaction** and apply when
 auto-compaction is on under Features:
 
 | Setting | Default | Governs |
 |---------|---------|---------|
 | **Compact at** | 90% | Share of the context window, as the provider counts tokens, at which compaction runs |
-| **Keep recent context** | 60,000 tokens | Recent conversation kept verbatim, at most the size compaction shrinks the context to, so small context windows keep less |
+| **Keep recent context** | 60,000 tokens | Recent conversation kept verbatim, at most three quarters of the size compaction shrinks the context to with the agentic strategy, so small context windows keep less |
 | **Summary input per block** | 8,000 characters | How much of each tool result, file and thinking block the summarizer reads; the rest of a block is cut |
 | **Summary length** | 8,192 tokens | Output cap for the summary. Until you change it, a Max Output Tokens set in the provider settings applies instead |
 

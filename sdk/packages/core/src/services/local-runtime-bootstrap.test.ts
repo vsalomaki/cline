@@ -319,8 +319,8 @@ describe("prepareLocalRuntimeBootstrap", () => {
 			writeSessionMetadata: async () => {},
 		});
 
-		expect(bootstrap.config.systemPrompt).toContain(
-			`1. Platform: ${process.platform}`,
+		expect(bootstrap.config.systemPrompt).toMatch(
+			/1\. Platform: (Linux|macOS|Windows)\n/,
 		);
 		expect(bootstrap.config.systemPrompt).toContain(
 			`4. Working Directory: ${workspaceRoot}`,

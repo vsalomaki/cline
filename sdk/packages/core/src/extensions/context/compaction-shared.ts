@@ -9,6 +9,7 @@ import {
 
 export { CHARS_PER_TOKEN, estimateTokens };
 
+import { getUserRunSpan } from "../../session/user-run-messages";
 import type { CoreCompactionSummarizerConfig } from "../../types/config";
 import type { ProviderConfig } from "../../types/provider-settings";
 
@@ -35,6 +36,10 @@ export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 8_192;
 /** Per-block character cap on tool results, file contents and thinking in the summarizer input. */
 export const DEFAULT_SUMMARY_BLOCK_CHARS = 8_000;
 export const MIN_TRUNCATED_MESSAGE_TOKENS = 8;
+/** Characters kept of each typed user message carried verbatim past agentic compaction. */
+export const EARLIER_USER_MESSAGE_CHARS = 2_000;
+/** Share of the message target the verbatim earlier user messages may use. */
+export const EARLIER_USER_MESSAGES_TARGET_SHARE = 0.25;
 
 export interface FileOperationSummary {
 	readFiles: string[];
@@ -49,6 +54,8 @@ export interface CompactionSummaryMetadata {
 	details: FileOperationSummary;
 	tokensBefore: number;
 	generatedAt: number;
+	/** Earlier user messages left out of the verbatim blocks for space, across compactions. */
+	droppedUserMessages: number;
 }
 
 export type EstimateMessageTokens = (message: MessageWithMetadata) => number;
@@ -297,7 +304,66 @@ export function getCompactionSummaryMetadata(
 		},
 		tokensBefore: Number(metadata.tokensBefore ?? 0),
 		generatedAt: Number(metadata.generatedAt ?? 0),
+		droppedUserMessages:
+			typeof metadata.droppedUserMessages === "number" &&
+			Number.isInteger(metadata.droppedUserMessages) &&
+			metadata.droppedUserMessages > 0
+				? metadata.droppedUserMessages
+				: 0,
 	};
+}
+
+/**
+ * The text of a message the user typed: not a tool result, compaction
+ * summary, hook context or runtime notice.
+ */
+export function typedUserMessageText(
+	message: MessageWithMetadata,
+): string | undefined {
+	if (!isTurnStartMessage(message) || getUserRunSpan(message) === 0) {
+		return undefined;
+	}
+	const text =
+		typeof message.content === "string"
+			? message.content
+			: message.content
+					.flatMap((block) => (block.type === "text" ? [block.text] : []))
+					.join("\n");
+	return text.trim() || undefined;
+}
+
+export function formatEarlierUserMessage(text: string): string {
+	return `<user_message>\n${truncateText(text, EARLIER_USER_MESSAGE_CHARS)}\n</user_message>`;
+}
+
+/** The verbatim user message blocks a summary message carries after its summary text. */
+export function earlierUserMessageBlocks(
+	summaryMessage: MessageWithMetadata,
+): string[] {
+	if (typeof summaryMessage.content === "string") {
+		return [];
+	}
+	return summaryMessage.content
+		.slice(1)
+		.flatMap((block) => (block.type === "text" ? [block.text] : []));
+}
+
+/** Keeps the newest messages that fit the token budget, in their original order. */
+export function selectEarlierUserMessages(
+	messages: string[],
+	budgetTokens: number,
+): string[] {
+	let start = messages.length;
+	let usedTokens = 0;
+	while (start > 0) {
+		const cost = estimateTokens(messages[start - 1].length);
+		if (usedTokens + cost > budgetTokens) {
+			break;
+		}
+		usedTokens += cost;
+		start -= 1;
+	}
+	return messages.slice(start);
 }
 
 export function isToolResultOnlyUserMessage(
@@ -707,6 +773,8 @@ export function ensureFilesSection(
 
 export function buildSummaryRequest(options: {
 	previousSummary?: string;
+	/** Formatted `<user_message>` blocks, oldest first. */
+	earlierUserMessages?: string[];
 	conversationText: string;
 	fileOps: FileOperationSummary;
 }): string {
@@ -715,6 +783,14 @@ export function buildSummaryRequest(options: {
 
 ## Goal
 One sentence: what is being built or fixed.
+
+## User instructions
+Every instruction, preference, constraint and correction the user gave that still applies, quoted in the user's own words. Keep ALL CAPS emphasis as written. Carry these over from the previous summary unless the user withdrew them. Write "none" if there are none.
+
+## Decisions and rejected approaches
+- Decided: choices made and why
+- Rejected: approaches tried and abandoned, each with the reason it failed, so they are not tried again
+Carry these over from the previous summary. Write "none" if there are none.
 
 ## State
 - Done: completed steps
@@ -734,6 +810,12 @@ Edited: ${options.fileOps.modifiedFiles.join(", ") || "none"}`,
 
 	if (options.previousSummary?.trim()) {
 		parts.push(`Previous summary:\n${options.previousSummary.trim()}`);
+	}
+
+	if (options.earlierUserMessages?.length) {
+		parts.push(
+			`Earlier user messages (verbatim, oldest first):\n${options.earlierUserMessages.join("\n")}`,
+		);
 	}
 
 	parts.push(`Conversation:\n${options.conversationText || "(empty)"}`);
@@ -825,14 +907,29 @@ export function buildSummaryMessage(options: {
 	fileOps: FileOperationSummary;
 	tokensBefore: number;
 	userRunSpan: number;
+	/** Formatted `<user_message>` blocks, oldest first. */
+	earlierUserMessages: string[];
+	droppedUserMessages: number;
 }): MessageWithMetadata {
+	const { earlierUserMessages, droppedUserMessages } = options;
+	let earlierHeading = "";
+	if (earlierUserMessages.length > 0 || droppedUserMessages > 0) {
+		const dropped =
+			droppedUserMessages > 0
+				? ` ${droppedUserMessages} older message${droppedUserMessages === 1 ? " was" : "s were"} left out for space.`
+				: "";
+		earlierHeading = `\n\n## Earlier user messages\nWhat the user wrote before this summary, verbatim, oldest first.${dropped}`;
+	}
 	return {
 		role: "user",
+		// One block per message, so the next compaction can carry them forward
+		// without parsing them back out of the summary text.
 		content: [
 			{
 				type: "text",
-				text: `Context summary:\n\n${options.summary}`,
+				text: `Context summary:\n\n${options.summary}${earlierHeading}`,
 			},
+			...earlierUserMessages.map((text) => ({ type: "text" as const, text })),
 		],
 		metadata: {
 			kind: "compaction_summary",
@@ -842,6 +939,7 @@ export function buildSummaryMessage(options: {
 			details: options.fileOps,
 			tokensBefore: options.tokensBefore,
 			generatedAt: Date.now(),
+			droppedUserMessages,
 		} satisfies CompactionSummaryMetadata,
 	};
 }

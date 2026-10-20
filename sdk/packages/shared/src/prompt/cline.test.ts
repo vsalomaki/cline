@@ -70,7 +70,45 @@ describe("buildClineSystemPrompt task discipline", () => {
 	it("checks a correction against the codebase before acting on it", () => {
 		expect(prompt).toContain("do not simply agree and start editing");
 		expect(prompt).toContain("establish the actual state of the codebase");
-		expect(prompt).toContain("not on memory of earlier turns");
+	});
+
+	it("treats a new message as continuing the work so far", () => {
+		expect(prompt).toContain("A new user message usually continues it");
+		expect(prompt).toContain("Do not start over or repeat work");
+		expect(prompt).toContain("treat the summary as what happened");
+		expect(prompt).toContain("stay in force until the user changes them");
+		expect(prompt).toContain("Text the user writes in ALL CAPS is emphasis");
+		expect(prompt).toContain("For what a file contains now, read it again");
+	});
+
+	it("keeps the model from flipping back to an abandoned approach", () => {
+		expect(prompt).toContain(
+			"look back at why it was made and what happened after it",
+		);
+		expect(prompt).toContain(
+			"Do not go back to an approach you already tried and abandoned",
+		);
+		expect(prompt).toContain(
+			"say in one line what you tried and why it failed",
+		);
+	});
+
+	it("names the platform and writes the date as YYYY-MM-DD", () => {
+		expect(prompt).toContain("Platform: Linux");
+		expect(prompt).toMatch(/Date: \d{4}-\d{2}-\d{2}\n/);
+		expect(
+			buildClineSystemPrompt({
+				...BASE_OPTIONS,
+				mode: "act",
+				platform: "win32",
+			}),
+		).toContain("Platform: Windows");
+	});
+
+	it("keeps the simple-question exception next to the tool-call rule", () => {
+		expect(prompt).toContain(
+			"A response without tool calls is treated as your final answer and ends the task. The one exception is a simple question",
+		);
 	});
 
 	it("points directory listing at list_files", () => {
@@ -204,7 +242,7 @@ describe("buildClineSubAgentSystemPrompt", () => {
 
 		expect(prompt).toContain("<role>\nYou review TypeScript changes.\n</role>");
 		expect(prompt).toContain("Working Directory: /workspace/project");
-		expect(prompt).toContain("Platform: linux");
+		expect(prompt).toContain("Platform: Linux");
 		expect(prompt).toContain("IDE: VS Code");
 		expect(prompt).toContain("Your final answer goes to the main agent");
 		expect(prompt).not.toContain("{{");

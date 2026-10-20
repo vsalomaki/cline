@@ -9,6 +9,22 @@ import {
 
 const WORKSPACE_CONFIGURATION_MARKER = "# Workspace Configuration";
 
+const PLATFORM_NAMES: Record<string, string> = {
+	win32: "Windows",
+	darwin: "macOS",
+	linux: "Linux",
+};
+
+function platformName(platform: string): string {
+	return PLATFORM_NAMES[platform] ?? platform;
+}
+
+/** Today's local date as YYYY-MM-DD; locale formats like 10/20/2026 are ambiguous. */
+function currentDate(now = new Date()): string {
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 /**
  * Explains the <user_input mode="..."> wrapper and <mode_notice> elements the
  * runtime stamps on user messages (prepareTurnInput / formatUserInputBlock).
@@ -202,9 +218,9 @@ export function buildClineSystemPrompt(
 		.join("\n\n");
 
 	return basePrompt
-		.replace("{{PLATFORM_NAME}}", platform)
+		.replace("{{PLATFORM_NAME}}", platformName(platform))
 		.replace("{{CWD}}", workspaceRoot)
-		.replace("{{CURRENT_DATE}}", new Date().toLocaleDateString())
+		.replace("{{CURRENT_DATE}}", currentDate())
 		.replace("{{IDE_NAME}}", ide)
 		.replace(
 			"{{CLINE_METADATA}}",
@@ -245,8 +261,8 @@ export function buildClineSubAgentSystemPrompt(
 		"{{ROLE}}",
 		() => role || "Complete the task you were given.",
 	)
-		.replace("{{PLATFORM_NAME}}", options.platform || "unknown")
-		.replace("{{CURRENT_DATE}}", new Date().toLocaleDateString())
+		.replace("{{PLATFORM_NAME}}", platformName(options.platform || "unknown"))
+		.replace("{{CURRENT_DATE}}", currentDate())
 		.replace("{{IDE_NAME}}", options.ide || "Terminal Shell")
 		.replace("{{CWD}}", workspaceRoot)
 		.replace(
