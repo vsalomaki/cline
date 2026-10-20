@@ -9,7 +9,10 @@ import {
 	projectSessionCompactionState,
 } from "../../session/models/session-compaction";
 import type { CoreCompactionContext } from "../../types/config";
-import { buildAgenticSummaryInputBudget } from "./agentic-compaction";
+import {
+	buildAgenticSummaryInputBudget,
+	runAgenticCompaction,
+} from "./agentic-compaction";
 import { runBasicCompaction } from "./basic-compaction";
 import {
 	createCompactionStateAwarePrepareTurn,
@@ -19,10 +22,12 @@ import {
 	resolveCompactionTriggerRatio,
 } from "./compaction";
 import {
+	buildSummaryRequest,
 	COMPACTION_TRIGGER_RATIO,
 	createTokenEstimator,
 	DEFAULT_PRESERVE_RECENT_TOKENS,
 	DEFAULT_SUMMARY_BLOCK_CHARS,
+	EARLIER_USER_MESSAGE_CHARS,
 	estimateTokens,
 	MAX_INPUT_UNDERESTIMATE_FACTOR,
 	resolveEffectiveMaxInputTokens,
@@ -5232,5 +5237,287 @@ describe("compaction hooks", () => {
 			},
 		})?.(turn());
 		expect(result?.messages).toEqual(compacted);
+	});
+});
+
+describe("buildSummaryRequest", () => {
+	it("asks the summary to keep the user's instructions in their own words", () => {
+		const request = buildSummaryRequest({
+			previousSummary: "## User instructions\n- DO NOT TOUCH THE CONFIG",
+			conversationText: "user: use tabs",
+			fileOps: { readFiles: [], modifiedFiles: [] },
+		});
+
+		expect(request).toContain("## User instructions");
+		expect(request).toContain("quoted in the user's own words");
+		expect(request).toContain("Keep ALL CAPS emphasis as written");
+		expect(request).toContain("Carry these over from the previous summary");
+	});
+
+	it("asks the summary to record decisions and rejected approaches", () => {
+		const request = buildSummaryRequest({
+			conversationText: "user: try the cache",
+			fileOps: { readFiles: [], modifiedFiles: [] },
+		});
+
+		expect(request).toContain("## Decisions and rejected approaches");
+		expect(request).toContain(
+			"approaches tried and abandoned, each with the reason it failed",
+		);
+		expect(
+			request.indexOf("## Decisions and rejected approaches"),
+		).toBeLessThan(request.indexOf("## State"));
+	});
+});
+
+describe("earlier user messages across compaction", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		createHandlerMock.mockReturnValue({
+			createMessage: vi.fn(() =>
+				streamChunks([
+					{ type: "text", id: "s", text: "## Goal\nShip it" },
+					{ type: "done", id: "s", success: true },
+				]),
+			),
+		});
+	});
+
+	function runForcedAgenticCompaction(
+		messages: MessageWithMetadata[],
+		targetTokens = 100_000,
+	) {
+		return runAgenticCompaction({
+			context: {
+				agentId: "agent-1",
+				conversationId: "conv-1",
+				parentAgentId: null,
+				iteration: 1,
+				messages,
+				model: {
+					id: "mock-model",
+					provider: "anthropic",
+					info: { id: "mock-model", maxInputTokens: 100_000 },
+				},
+				mode: "manual",
+				budget: {
+					request: {
+						inputTokens: 100_000,
+						maxInputTokens: 100_000,
+						triggerTokens: 90_000,
+						targetTokens,
+						overheadTokens: 0,
+						thresholdRatio: 0.9,
+						utilizationRatio: 1,
+					},
+					messages: {
+						inputTokens: 100_000,
+						triggerTokens: 90_000,
+						targetTokens,
+					},
+				},
+			},
+			providerConfig: {
+				providerId: "anthropic",
+				modelId: "mock-model",
+			} as LlmsProviders.ProviderConfig,
+			preserveRecentTokens: 1,
+			estimateMessageTokens: createTokenEstimator(),
+		});
+	}
+
+	function contentTexts(message: MessageWithMetadata | undefined): string[] {
+		if (!message) {
+			return [];
+		}
+		if (typeof message.content === "string") {
+			return [message.content];
+		}
+		return message.content.flatMap((block) =>
+			block.type === "text" ? [block.text] : [],
+		);
+	}
+
+	const typed = (text: string): MessageWithMetadata => ({
+		role: "user",
+		content: text,
+	});
+	const reply = (text: string): MessageWithMetadata => ({
+		role: "assistant",
+		content: text,
+	});
+
+	it("keeps typed user messages before the cut verbatim, without tool results or injected context", async () => {
+		const messages: MessageWithMetadata[] = [
+			typed('<user_input mode="act">Use tabs, NOT spaces</user_input>'),
+			assistantToolUseMessage("tool-1"),
+			toolResultMessage("tool-1", "SECRET TOOL OUTPUT"),
+			{
+				role: "user",
+				content: [
+					{
+						type: "text",
+						text: '<hook_context source="SessionStart">hook text</hook_context>',
+					},
+				],
+				metadata: { displayRole: "system", userRunSpan: 0 },
+			},
+			reply("Done with tabs"),
+			typed("Keep the public API stable"),
+			reply("Understood"),
+			{
+				role: "user",
+				content: "Loop warning",
+				metadata: { kind: "loop_detection_notice" },
+			},
+			reply("Continuing"),
+			typed("Now add the tests"),
+			reply("Working on tests"),
+		];
+
+		const result = await runForcedAgenticCompaction(messages);
+
+		const [summaryBlock, ...earlier] = contentTexts(result?.messages[0]);
+		expect(summaryBlock).toContain("## Earlier user messages");
+		expect(earlier).toEqual([
+			'<user_message>\n<user_input mode="act">Use tabs, NOT spaces</user_input>\n</user_message>',
+			"<user_message>\nKeep the public API stable\n</user_message>",
+		]);
+		expect(result?.messages.slice(1)).toEqual([
+			typed("Now add the tests"),
+			reply("Working on tests"),
+		]);
+		const firstContent = JSON.stringify(result?.messages[0]?.content);
+		expect(firstContent).not.toContain("SECRET TOOL OUTPUT");
+		expect(firstContent).not.toContain("hook text");
+		expect(firstContent).not.toContain("Loop warning");
+		// The summarizer still reads them, to quote them under "User instructions".
+		const request = createHandlerMock.mock.results[0]?.value.createMessage.mock
+			.calls[0]?.[1]?.[0]?.content as string;
+		expect(request).toContain("Keep the public API stable");
+	});
+
+	it("caps each earlier user message", async () => {
+		const long = `start ${"x".repeat(4_994)}`;
+		const result = await runForcedAgenticCompaction([
+			typed(long),
+			reply("ok"),
+			typed("latest"),
+			reply("working"),
+		]);
+
+		const earlier = contentTexts(result?.messages[0]).slice(1);
+		expect(earlier).toEqual([
+			`<user_message>\n${long.slice(0, EARLIER_USER_MESSAGE_CHARS)}\n...[truncated 3000 chars]\n</user_message>`,
+		]);
+	});
+
+	it("keeps the newest earlier messages that fit their share of the target and counts the rest", async () => {
+		const messages: MessageWithMetadata[] = [];
+		for (const label of ["first", "second", "third", "fourth"]) {
+			messages.push(typed(`${label} ${"y".repeat(600)}`), reply("ok"));
+		}
+		messages.push(typed("latest"), reply("working"));
+
+		// 25% of 2,000 tokens fits two of the ~210-token messages.
+		const result = await runForcedAgenticCompaction(messages, 2_000);
+
+		const [summaryBlock, ...earlier] = contentTexts(result?.messages[0]);
+		expect(earlier.map((text) => text.split(" ")[0])).toEqual([
+			"<user_message>\nthird",
+			"<user_message>\nfourth",
+		]);
+		expect(summaryBlock).toContain("2 older messages were left out for space.");
+		expect(result?.messages[0]?.metadata).toMatchObject({
+			droppedUserMessages: 2,
+		});
+	});
+
+	it("carries earlier messages forward once on the next compaction", async () => {
+		const first = await runForcedAgenticCompaction([
+			typed("Use tabs, NOT spaces"),
+			reply("ok"),
+			typed("Keep the public API stable"),
+			reply("ok"),
+			typed("Add the tests"),
+			reply("added"),
+		]);
+		const second = await runForcedAgenticCompaction([
+			...(first?.messages ?? []),
+			typed("Rename the helper"),
+			reply("renamed"),
+			typed("latest"),
+			reply("working"),
+		]);
+
+		expect(contentTexts(second?.messages[0]).slice(1)).toEqual([
+			"<user_message>\nUse tabs, NOT spaces\n</user_message>",
+			"<user_message>\nKeep the public API stable\n</user_message>",
+			"<user_message>\nAdd the tests\n</user_message>",
+			"<user_message>\nRename the helper\n</user_message>",
+		]);
+		expect(
+			JSON.stringify(second?.messages).split("Use tabs, NOT spaces").length - 1,
+		).toBe(1);
+	});
+
+	it("shows the summarizer an earlier message even when it is left out of the verbatim blocks", async () => {
+		const first = await runForcedAgenticCompaction([
+			typed(`Use tabs, NOT spaces ${"y".repeat(600)}`),
+			reply("ok"),
+			typed("Keep the public API stable"),
+			reply("ok"),
+			typed("Add the tests"),
+			reply("added"),
+		]);
+		// 25% of 1,000 tokens fits the three newest, not the oldest.
+		const second = await runForcedAgenticCompaction(
+			[
+				...(first?.messages ?? []),
+				typed(`Rename the helper ${"w".repeat(600)}`),
+				reply("renamed"),
+				typed("latest"),
+				reply("working"),
+			],
+			1_000,
+		);
+
+		const kept = contentTexts(second?.messages[0]).slice(1).join("\n");
+		expect(kept).not.toContain("Use tabs, NOT spaces");
+		expect(kept).toContain("Rename the helper");
+		const createMessage =
+			createHandlerMock.mock.results.at(-1)?.value.createMessage;
+		const request = createMessage.mock.calls.at(-1)?.[1]?.[0]
+			?.content as string;
+		expect(request).toContain(
+			"Earlier user messages (verbatim, oldest first):",
+		);
+		expect(request).toContain("Use tabs, NOT spaces");
+	});
+
+	it("keeps typed user messages verbatim in basic compaction and drops tool output", () => {
+		const result = runForcedBasicCompaction(
+			[
+				typed("Use tabs, NOT spaces"),
+				assistantToolUseMessage("tool-1"),
+				toolResultMessage("tool-1", "z".repeat(3_000)),
+				reply("done"),
+				typed("Keep the public API stable"),
+				reply("ok"),
+				typed("latest"),
+				reply("working"),
+			],
+			600,
+		);
+
+		const texts = result.flatMap((message) => contentTexts(message));
+		expect(texts).toEqual(
+			expect.arrayContaining([
+				"Use tabs, NOT spaces",
+				"Keep the public API stable",
+				"latest",
+			]),
+		);
+		expect(JSON.stringify(result)).not.toContain("z".repeat(100));
 	});
 });

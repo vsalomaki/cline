@@ -15,16 +15,21 @@ import {
 	buildSummaryMessage,
 	buildSummaryRequest,
 	DEFAULT_SUMMARY_BLOCK_CHARS,
+	EARLIER_USER_MESSAGES_TARGET_SHARE,
 	type EstimateMessageTokens,
+	earlierUserMessageBlocks,
 	ensureFilesSection,
 	estimateTokens,
 	extractFileOps,
 	findCutIndex,
 	findLatestSummaryIndex,
+	formatEarlierUserMessage,
 	getCompactionSummaryMetadata,
 	resolveEffectiveMaxInputTokens,
 	resolveSummarizerConfig,
+	selectEarlierUserMessages,
 	serializeConversation,
+	typedUserMessageText,
 } from "./compaction-shared";
 
 const MIN_AGENTIC_SUMMARY_INPUT_TOKENS = 1_024;
@@ -129,9 +134,18 @@ export async function runAgenticCompaction(options: {
 		return undefined;
 	}
 
+	const targetTokens = options.context.budget.messages.targetTokens;
+	const earlierUserMessagesBudget = Math.floor(
+		targetTokens * EARLIER_USER_MESSAGES_TARGET_SHARE,
+	);
+	// The verbatim tail gives up the share the earlier user messages may use,
+	// so tail plus those messages still fit the target.
 	const cutIndex = findCutIndex(
 		messages,
-		options.preserveRecentTokens,
+		Math.min(
+			options.preserveRecentTokens,
+			targetTokens - earlierUserMessagesBudget,
+		),
 		options.estimateMessageTokens,
 	);
 	if (cutIndex <= 0 || cutIndex >= messages.length) {
@@ -140,11 +154,14 @@ export async function runAgenticCompaction(options: {
 
 	const messagesToSummarize = messages.slice(0, cutIndex);
 	const latestSummaryIndex = findLatestSummaryIndex(messagesToSummarize);
-	const previousSummary =
+	const previousSummaryMessage =
 		latestSummaryIndex >= 0
-			? getCompactionSummaryMetadata(messagesToSummarize[latestSummaryIndex])
-					?.summary
+			? messagesToSummarize[latestSummaryIndex]
 			: undefined;
+	const previousSummaryMetadata = previousSummaryMessage
+		? getCompactionSummaryMetadata(previousSummaryMessage)
+		: undefined;
+	const previousSummary = previousSummaryMetadata?.summary;
 	const newMessagesToFold =
 		latestSummaryIndex >= 0
 			? messagesToSummarize.slice(latestSummaryIndex + 1)
@@ -152,6 +169,24 @@ export async function runAgenticCompaction(options: {
 	if (newMessagesToFold.length === 0) {
 		return undefined;
 	}
+
+	const earlierUserMessageCandidates = [
+		...(previousSummaryMessage
+			? earlierUserMessageBlocks(previousSummaryMessage)
+			: []),
+		...newMessagesToFold.flatMap((message) => {
+			const text = typedUserMessageText(message);
+			return text ? [formatEarlierUserMessage(text)] : [];
+		}),
+	];
+	const earlierUserMessages = selectEarlierUserMessages(
+		earlierUserMessageCandidates,
+		earlierUserMessagesBudget,
+	);
+	const droppedUserMessages =
+		(previousSummaryMetadata?.droppedUserMessages ?? 0) +
+		earlierUserMessageCandidates.length -
+		earlierUserMessages.length;
 
 	const preProjectionFileOps = extractFileOps(messagesToSummarize);
 	const summarizerProviderConfig = resolveSummarizerConfig({
@@ -184,9 +219,16 @@ export async function runAgenticCompaction(options: {
 		(canUseActiveContextLimit
 			? activeCompactionInputLimit
 			: MIN_AGENTIC_SUMMARY_INPUT_TOKENS);
+	// The summarizer sees every candidate, including the ones left out of the
+	// verbatim blocks, so it can still quote them under "User instructions".
+	const summarizerUserMessages = selectEarlierUserMessages(
+		earlierUserMessageCandidates,
+		Math.floor(summarizerInputLimit * EARLIER_USER_MESSAGES_TARGET_SHARE),
+	);
 	const summaryRequestOverheadTokens = estimateTokens(
 		buildSummaryRequest({
 			previousSummary,
+			earlierUserMessages: summarizerUserMessages,
 			conversationText: "",
 			fileOps: preProjectionFileOps,
 		}).length,
@@ -239,6 +281,7 @@ export async function runAgenticCompaction(options: {
 	);
 	const summaryRequest = buildSummaryRequest({
 		previousSummary,
+		earlierUserMessages: summarizerUserMessages,
 		conversationText,
 		fileOps,
 	});
@@ -299,6 +342,8 @@ export async function runAgenticCompaction(options: {
 			fileOps,
 			tokensBefore,
 			userRunSpan: countUserRunMessages(messagesToSummarize),
+			earlierUserMessages,
+			droppedUserMessages,
 		}),
 		...messages.slice(cutIndex),
 	];
