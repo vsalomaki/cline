@@ -10,6 +10,7 @@ import {
 	disposeAll,
 	ensureLoopbackProxyBypass,
 	initVcr,
+	isRemoteServicesDisabled,
 	setConnectorCliLaunchSpec,
 } from "@cline/shared";
 import { logCliProcessError } from "./logging/errors";
@@ -38,7 +39,9 @@ if (!isMainThread) {
 	// Inspect the config embedded in this executable without starting a hub,
 	// loading user settings, or initializing telemetry exporters.
 	process.stdout.write(
-		`${JSON.stringify(buildTelemetrySelfcheckReport(createClineTelemetryServiceConfig()))}\n`,
+		isRemoteServicesDisabled()
+			? "Telemetry is disabled in this build.\n"
+			: `${JSON.stringify(buildTelemetrySelfcheckReport(createClineTelemetryServiceConfig()))}\n`,
 	);
 } else if (claimHubDaemonProcess()) {
 	// Claim rather than read: the sentinel is consumed here so the processes a

@@ -38,6 +38,9 @@ function buildInlinedEnvDefines(): Record<string, string> {
 	for (const name of BUILD_TIME_INLINED_ENV_VARS) {
 		defines[`process.env.${name}`] = JSON.stringify(process.env[name] ?? "");
 	}
+	defines["process.env.CLINE_REMOTE_SERVICES"] = JSON.stringify(
+		process.env.CLINE_REMOTE_SERVICES ?? "off",
+	);
 	return defines;
 }
 

@@ -85,6 +85,9 @@ const result = await Bun.build({
 	],
 	define: {
 		"process.env.NODE_ENV": '"production"',
+		"process.env.CLINE_REMOTE_SERVICES": JSON.stringify(
+			process.env.CLINE_REMOTE_SERVICES ?? "off",
+		),
 		...(process.env.TELEMETRY_SERVICE_API_KEY
 			? {
 					"process.env.TELEMETRY_SERVICE_API_KEY": defineProcessEnv(

@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import posthog from "posthog-js"
 import { useEffect, useState } from "react"
 import { useExtensionState } from "../context/ExtensionStateContext"
@@ -11,7 +12,7 @@ import { useExtensionState } from "../context/ExtensionStateContext"
  */
 export const useHasFeatureFlag = (flagName: string): boolean => {
 	const { environment } = useExtensionState()
-	const isSelfHostedOrUnknown = !environment || environment === "selfHosted"
+	const isSelfHostedOrUnknown = isRemoteServicesDisabled() || !environment || environment === "selfHosted"
 	const [flagEnabled, setFlagEnabled] = useState(false)
 
 	useEffect(() => {

@@ -1,3 +1,4 @@
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { VSCodeCheckbox, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useExtensionState } from "@/context/ExtensionStateContext"
@@ -18,7 +19,7 @@ const GeneralSettingsSection = ({ renderSectionHeader }: GeneralSettingsSectionP
 			<Section>
 				<PreferredLanguageSetting />
 
-				<div className="mb-[5px]">
+				<div className="mb-[5px]" hidden={isRemoteServicesDisabled()}>
 					<Tooltip>
 						<TooltipContent hidden={remoteConfigSettings?.telemetrySetting === undefined}>
 							This setting is managed by your organization's remote configuration

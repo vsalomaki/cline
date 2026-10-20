@@ -135,6 +135,10 @@ export default defineConfig({
 		"process.env.IS_DEV": JSON.stringify(process.env.IS_DEV),
 		"process.env.IS_TEST": JSON.stringify(process.env.IS_TEST),
 		"process.env.CI": JSON.stringify(process.env.CI),
+		// Tests keep upstream behaviour unless they turn the flag off themselves.
+		"process.env.CLINE_REMOTE_SERVICES": JSON.stringify(
+			process.env.CLINE_REMOTE_SERVICES ?? (process.env.VITEST ? "on" : "off"),
+		),
 		// PostHog environment variables
 		"process.env.TELEMETRY_SERVICE_API_KEY": JSON.stringify(process.env.TELEMETRY_SERVICE_API_KEY),
 		"process.env.ERROR_SERVICE_API_KEY": JSON.stringify(process.env.ERROR_SERVICE_API_KEY),

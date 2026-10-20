@@ -127,4 +127,9 @@ describe("Cline account beta flags", () => {
 		expect(await isClineAccountFeatureEnabled(flag)).toBe(false);
 		expect(mocks.dispose).toHaveBeenCalledOnce();
 	});
+	it("denies without polling when remote services are disabled", async () => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+		expect(await isClineAccountFeatureEnabled(flag)).toBe(false);
+		expect(mocks.getAllFlagsAndPayloads).not.toHaveBeenCalled();
+	});
 });

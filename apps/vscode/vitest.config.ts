@@ -33,6 +33,8 @@ export default defineConfig({
 			"src/core/controller/models/__tests__/refreshOpenAiModels.test.ts",
 		],
 		environment: "node",
+		// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
+		env: { CLINE_REMOTE_SERVICES: "on" },
 		setupFiles: ["./src/test/vitest-setup.ts"],
 		// Several suites lazily `await import()` their subject inside the first test
 		// (needed so vi.mock factories apply first). That import pulls in heavy

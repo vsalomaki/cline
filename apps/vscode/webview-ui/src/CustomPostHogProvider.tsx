@@ -1,4 +1,5 @@
 import { posthogConfig } from "@shared/services/config/posthog-config"
+import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import posthog from "posthog-js"
 import { PostHogProvider } from "posthog-js/react"
 import { type ReactNode, useEffect, useState } from "react"
@@ -14,7 +15,7 @@ export function CustomPostHogProvider({ children }: { children: ReactNode }) {
 	const [isActive, setIsActive] = useState(false)
 
 	useEffect(() => {
-		if (isSelfHostedOrUnknown || isActive || !posthogConfig.apiKey) {
+		if (isRemoteServicesDisabled() || isSelfHostedOrUnknown || isActive || !posthogConfig.apiKey) {
 			return
 		}
 		// At this point, we know apiKey is defined due to the check above

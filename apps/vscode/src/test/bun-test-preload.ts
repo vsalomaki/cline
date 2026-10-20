@@ -38,6 +38,9 @@ import * as LlmsModels from "@cline/llms"
 import * as clineCoreStub from "./cline-core-vitest-stub"
 import * as vscodeStub from "./vscode-vitest-stub"
 
+// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
+process.env.CLINE_REMOTE_SERVICES = "on"
+
 const clineCoreNamespace: Record<string, unknown> = {}
 for (const name of Object.keys(realClineCore)) {
 	clineCoreNamespace[name] = undefined

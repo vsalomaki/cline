@@ -6,7 +6,10 @@ import type {
 	TelemetryMetadata,
 	TelemetryProperties,
 } from "@cline/shared";
-import { markOtlpTraceRelayProvider } from "@cline/shared";
+import {
+	isRemoteServicesDisabled,
+	markOtlpTraceRelayProvider,
+} from "@cline/shared";
 import { metrics, type Tracer, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter as OTLPLogExporterHttp } from "@opentelemetry/exporter-logs-otlp-http";
@@ -406,7 +409,7 @@ export function createConfiguredTelemetryService(
 	telemetry: ITelemetryService;
 	emitProviderCreated?: () => void;
 } {
-	if (isTelemetryOptedOutGlobally()) {
+	if (isRemoteServicesDisabled() || isTelemetryOptedOutGlobally()) {
 		return {
 			telemetry: new OptedOutTelemetryService(options),
 		};

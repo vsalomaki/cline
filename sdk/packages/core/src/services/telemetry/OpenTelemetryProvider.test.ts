@@ -31,6 +31,7 @@ describe("createOpenTelemetryTelemetryService", () => {
 			tempRoot = undefined;
 		}
 		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
 	});
 
 	it("logs a provider creation event during bootstrap", async () => {
@@ -233,6 +234,33 @@ describe("createOpenTelemetryTelemetryService", () => {
 			member_id: "member-1",
 		});
 		expect(logger.log).not.toHaveBeenCalled();
+	});
+
+	it("does not create configured telemetry when remote services are disabled", () => {
+		vi.stubEnv("CLINE_REMOTE_SERVICES", "off");
+		const providerSpy = vi.spyOn(
+			OpenTelemetryProvider.prototype,
+			"createTelemetryService",
+		);
+
+		const { telemetry, provider } = createConfiguredTelemetryService({
+			metadata: {
+				extension_version: "1.2.3",
+				cline_type: "cli",
+				platform: "terminal",
+				platform_version: process.version,
+				os_type: process.platform,
+				os_version: "unknown",
+			},
+			enabled: true,
+			logsExporter: "otlp",
+			metricsExporter: "otlp",
+			otlpEndpoint: "http://localhost:4318",
+		});
+
+		expect(provider).toBeUndefined();
+		expect(providerSpy).not.toHaveBeenCalled();
+		expect(telemetry.isEnabled()).toBe(false);
 	});
 
 	it("preserves metadata when disabled", () => {

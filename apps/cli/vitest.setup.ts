@@ -13,3 +13,5 @@ process.env.CLINE_DIR = join(isolatedRoot, ".cline");
 process.env.CLINE_DATA_DIR = join(isolatedRoot, "data");
 process.env.CLINE_HUB_DISCOVERY_PATH = join(isolatedRoot, "hub-discovery.json");
 process.env.CLINE_NO_AUTO_UPDATE = "1";
+// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
+process.env.CLINE_REMOTE_SERVICES = "on";

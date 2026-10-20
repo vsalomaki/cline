@@ -1,4 +1,8 @@
-import type { FeatureFlag, FeatureFlagsContext } from "@cline/shared";
+import {
+	type FeatureFlag,
+	type FeatureFlagsContext,
+	isRemoteServicesDisabled,
+} from "@cline/shared";
 import { ProviderSettingsManager } from "../storage/provider-settings-manager";
 import { FeatureFlagsService } from "./FeatureFlagsService";
 
@@ -30,7 +34,7 @@ export async function isClineAccountFeatureEnabled(
 ): Promise<boolean> {
 	const accountId = getAccountId();
 	const apiKey = process.env.TELEMETRY_SERVICE_API_KEY;
-	if (!accountId || !apiKey) {
+	if (isRemoteServicesDisabled() || !accountId || !apiKey) {
 		current = undefined;
 		return false;
 	}

@@ -5,6 +5,7 @@ import {
 	OpenTelemetryClientValidConfig,
 } from "@/shared/services/config/otel-config"
 import { isPostHogConfigValid, posthogConfig } from "@/shared/services/config/posthog-config"
+import { isRemoteServicesDisabled } from "@/shared/services/config/remote-services"
 import { Logger } from "@/shared/services/Logger"
 import type { ITelemetryProvider, TelemetryProperties, TelemetrySettings } from "./providers/ITelemetryProvider"
 import { OpenTelemetryClientProvider } from "./providers/opentelemetry/OpenTelemetryClientProvider"
@@ -106,6 +107,9 @@ export class TelemetryProviderFactory {
 	 * @returns Default configuration using available providers
 	 */
 	public static getDefaultConfigs(): TelemetryProviderConfig[] {
+		if (isRemoteServicesDisabled()) {
+			return [{ type: "no-op" }]
+		}
 		const configs: TelemetryProviderConfig[] = []
 
 		// Skip PostHog in selfHosted mode - enterprise customers should not send telemetry to PostHog
@@ -148,12 +152,21 @@ export class NoOpTelemetryProvider implements ITelemetryProvider {
 	private isOptIn = true
 
 	log(_event: string, _properties?: TelemetryProperties): void {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		Logger.log(`[NoOpTelemetryProvider] ${_event}: ${JSON.stringify(_properties)}`)
 	}
 	logRequired(_event: string, _properties?: TelemetryProperties): void {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		Logger.log(`[NoOpTelemetryProvider] REQUIRED ${_event}: ${JSON.stringify(_properties)}`)
 	}
 	identifyUser(_userInfo: any, _properties?: TelemetryProperties): void {
+		if (isRemoteServicesDisabled()) {
+			return
+		}
 		Logger.info(`[NoOpTelemetryProvider] identifyUser - ${JSON.stringify(_userInfo)} - ${JSON.stringify(_properties)}`)
 	}
 	isEnabled(): boolean {

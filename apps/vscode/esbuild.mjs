@@ -91,6 +91,8 @@ const buildEnvVars = {
 	// Always inline these values so ordinary builds cannot be mislabeled by a
 	// user's runtime environment. Only the combined rollout workflow sets them.
 	"process.env.CLINE_ROLLOUT_VARIANT": JSON.stringify(process.env.CLINE_ROLLOUT_VARIANT || ""),
+	// Telemetry and Cline services stay off unless the build itself opts in.
+	"process.env.CLINE_REMOTE_SERVICES": JSON.stringify(process.env.CLINE_REMOTE_SERVICES ?? "off"),
 }
 
 if (production) {

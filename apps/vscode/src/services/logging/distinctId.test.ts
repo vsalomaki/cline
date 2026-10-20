@@ -136,6 +136,22 @@ describe("distinctId", () => {
 		expect(getDeviceId()).to.equal(MOCK_MACHINE_ID)
 	})
 
+	it("should generate and store UUID without reading the machine ID when remote services are disabled", async () => {
+		process.env.CLINE_REMOTE_SERVICES = "off"
+		try {
+			mockGlobalState.get.withArgs(_GENERATED_MACHINE_ID_KEY).returns(undefined)
+			machineIdStub.resolves(MOCK_MACHINE_ID)
+
+			await initializeDistinctId(mockStorage, mockUuidGenerator)
+
+			expect(getDistinctId()).to.equal(GENERATED_MACHINE_ID)
+			expect(machineIdStub.notCalled).to.be.true
+			expect(mockGlobalState.update.calledOnceWith(_GENERATED_MACHINE_ID_KEY, GENERATED_MACHINE_ID)).to.be.true
+		} finally {
+			process.env.CLINE_REMOTE_SERVICES = "on"
+		}
+	})
+
 	it("should generate and store UUID if node-machine-id returns empty string", async () => {
 		mockGlobalState.get.withArgs(_GENERATED_MACHINE_ID_KEY).returns(undefined)
 		// Mock node-machine-id to return empty string
