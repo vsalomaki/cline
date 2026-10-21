@@ -73,4 +73,20 @@ describe("ContextWindow compact button", () => {
 
 		expect(screen.getByRole("button", { name: /compact task/i })).toBeDisabled()
 	})
+
+	it("shows where auto-compaction starts when the session reports it", () => {
+		render(
+			<ContextWindow
+				compactAtTokens={180_000}
+				compactDisabled={false}
+				compactTask={vi.fn()}
+				contextWindow={200_000}
+				lastApiReqTotalTokens={120_000}
+				useAutoCondense={false}
+			/>,
+		)
+
+		expect(screen.getByText("Auto-compact at")).toBeTruthy()
+		expect(screen.getByText("90%")).toBeTruthy()
+	})
 })

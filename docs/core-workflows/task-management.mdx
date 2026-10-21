@@ -45,6 +45,8 @@ As you work, the context window fills up with:
 - Command outputs and tool results
 - System instructions that guide Cline's behavior (including [Cline Rules](/customization/cline-rules))
 
+In VS Code, the percentage in the task header's top corner shows how much of the window the last request used. Hover over it or click it to see what filled it: system prompt, rules (per file), memory, tools (per MCP server), messages, files and images, and free space, with a marker where auto-compact starts. Right after a compaction the percentage drops to the compacted size, while the rows still describe the last request until the next one updates them. From the keyboard, Tab to the percentage and press Enter or Space.
+
 When the context window approaches its limit, Cline automatically compresses older parts of the conversation to make room. This means very long tasks may lose some earlier details, though Cline preserves the most important context.
 
 This is why task scoping matters: a focused task keeps relevant information in the context window. A sprawling task fills the window with noise, pushing out useful context.

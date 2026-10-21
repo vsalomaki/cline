@@ -1,4 +1,5 @@
-import { ClineMessage } from "./ExtensionMessage"
+import type { ContextUsageSnapshot } from "@cline/shared"
+import { ClineApiReqInfo, ClineMessage } from "./ExtensionMessage"
 
 interface ApiMetrics {
 	totalTokensIn: number
@@ -71,6 +72,64 @@ export function getApiMetrics(messages: ClineMessage[]): ApiMetrics {
 	return result
 }
 
+interface LastRequestScan {
+	info: ClineApiReqInfo
+	/** The request's provider input: uncached, cache reads and cache writes. */
+	inputTokens: number
+	/** Input plus output tokens. */
+	totalTokens: number
+	/** A compaction completed after the request. */
+	compactedAfter: boolean
+	/** Compounded tokensAfter/tokensBefore of the completed compactions that report both; undefined when none does. */
+	shrinkFraction?: number
+}
+
+/**
+ * Finds the newest api_req_started row that carries tokens, and what completed
+ * compactions have happened since. Every "last request" value derives from this
+ * one scan, so they agree on which request and which compactions count.
+ */
+function scanLastRequest(messages: ClineMessage[]): LastRequestScan | undefined {
+	let compactedAfter = false
+	let shrinkFraction: number | undefined
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i]
+		if (msg.type !== "say" || !msg.text) {
+			continue
+		}
+		try {
+			if (msg.say === "compaction") {
+				const { status, tokensBefore, tokensAfter } = JSON.parse(msg.text)
+				if (status === "completed") {
+					compactedAfter = true
+					if (
+						typeof tokensBefore === "number" &&
+						typeof tokensAfter === "number" &&
+						tokensBefore > 0 &&
+						tokensAfter > 0
+					) {
+						shrinkFraction = (shrinkFraction ?? 1) * (tokensAfter / tokensBefore)
+					}
+				}
+			}
+			if (msg.say === "api_req_started") {
+				const info: ClineApiReqInfo = JSON.parse(msg.text)
+				const inputTokens = (info.tokensIn || 0) + (info.cacheReads || 0) + (info.cacheWrites || 0)
+				const totalTokens = inputTokens + (info.tokensOut || 0)
+				if (totalTokens > 0) {
+					return { info, inputTokens, totalTokens, compactedAfter, shrinkFraction }
+				}
+			}
+		} catch {
+			// Ignore JSON parse errors, continue searching
+		}
+	}
+	return undefined
+}
+
+const rescale = (tokens: number, shrinkFraction: number | undefined) =>
+	shrinkFraction === undefined ? tokens : Math.ceil(tokens * shrinkFraction)
+
 /**
  * Gets the total token count from the last API request.
  *
@@ -89,45 +148,45 @@ export function getApiMetrics(messages: ClineMessage[]): ApiMetrics {
  * compound. The ratio is deliberately not clamped to 1: compacting a small
  * conversation can grow the context (the summary outweighs the original
  * messages), and the header must move in the same direction as the divider row
- * (e.g. "1k → 1.3k tokens") rather than silently show the stale value.
+ * (e.g. "1k → 1.3k tokens") rather than silently show the stale value. A
+ * completed compaction without both counters leaves the value unscaled.
  *
  * @param messages - An array of ClineMessage objects to process.
  * @returns The total tokens (tokensIn + tokensOut + cacheWrites + cacheReads) from the last api_req_started message, rescaled by any completed compactions that happened after it, or 0 if none found.
  */
 export function getLastApiReqTotalTokens(messages: ClineMessage[]): number {
-	let shrinkFraction: number | undefined
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i]
-		if (msg.type !== "say" || !msg.text) {
-			continue
-		}
-		if (msg.say === "compaction") {
-			try {
-				const { status, tokensBefore, tokensAfter } = JSON.parse(msg.text)
-				if (
-					status === "completed" &&
-					typeof tokensBefore === "number" &&
-					typeof tokensAfter === "number" &&
-					tokensBefore > 0 &&
-					tokensAfter > 0
-				) {
-					shrinkFraction = (shrinkFraction ?? 1) * (tokensAfter / tokensBefore)
-				}
-			} catch {
-				// Ignore JSON parse errors, continue searching
-			}
-		}
-		if (msg.say === "api_req_started") {
-			try {
-				const { tokensIn, tokensOut, cacheWrites, cacheReads } = JSON.parse(msg.text)
-				const total = (tokensIn || 0) + (tokensOut || 0) + (cacheWrites || 0) + (cacheReads || 0)
-				if (total > 0) {
-					return shrinkFraction === undefined ? total : Math.ceil(total * shrinkFraction)
-				}
-			} catch {
-				// Ignore JSON parse errors, continue searching
-			}
-		}
+	const last = scanLastRequest(messages)
+	return last ? rescale(last.totalTokens, last.shrinkFraction) : 0
+}
+
+export interface LastContextUsage {
+	snapshot: ContextUsageSnapshot
+	/** The request's provider input tokens, cache reads and writes included. */
+	inputTokens: number
+	/** `inputTokens` rescaled by compactions completed since the request; the number the header shows. */
+	usedTokens: number
+	/** A compaction completed after the request, so the breakdown is out of date. */
+	compactedAfter: boolean
+}
+
+/** The latest request's breakdown; undefined when that request carried none. */
+export function getLastContextUsage(messages: ClineMessage[]): LastContextUsage | undefined {
+	const last = scanLastRequest(messages)
+	if (!last?.info.contextUsage || last.inputTokens <= 0) {
+		return undefined
 	}
-	return 0
+	return {
+		snapshot: last.info.contextUsage,
+		inputTokens: last.inputTokens,
+		usedTokens: rescale(last.inputTokens, last.shrinkFraction),
+		compactedAfter: last.compactedAfter,
+	}
+}
+
+/**
+ * The context size the header shows: the latest request's provider input when
+ * it has a breakdown (as the CLI and core report it), else its total with output.
+ */
+export function getContextUsedTokens(messages: ClineMessage[]): number {
+	return getLastContextUsage(messages)?.usedTokens ?? getLastApiReqTotalTokens(messages)
 }
