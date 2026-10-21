@@ -359,6 +359,9 @@ async function projectAgentEvent(
 		return;
 	}
 	if (agentEvent.type === "done") {
+		if (agentEvent.parentAgentId || event.payload.teamRole === "teammate") {
+			return;
+		}
 		ctx.publish(
 			ctx.buildEvent(
 				"agent.done",

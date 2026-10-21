@@ -1441,6 +1441,7 @@ describe("createContextCompactionPrepareTurn", () => {
 			const turn = (
 				prepareTurn: ReturnType<typeof createPrepareTurn>,
 				opts: {
+					agentId?: string;
 					maxInputTokens: number;
 					previousRequestInputTokens?: number;
 					emitStatusNotice?: (
@@ -1451,7 +1452,7 @@ describe("createContextCompactionPrepareTurn", () => {
 			) => {
 				const messages = transcript();
 				return prepareTurn?.({
-					agentId: "agent-1",
+					agentId: opts.agentId ?? "agent-1",
 					conversationId: "conv-1",
 					parentAgentId: null,
 					iteration: 1,
@@ -1495,6 +1496,30 @@ describe("createContextCompactionPrepareTurn", () => {
 						previousRequestInputTokens: Math.floor(estimate() * 0.7),
 					}),
 				).resolves.toBeDefined();
+			});
+
+			it("keeps each agent's ratio apart", async () => {
+				const prepareTurn = createPrepareTurn();
+				const maxInputTokens = Math.ceil(estimate() / 0.95);
+				const roomy = { maxInputTokens: maxInputTokens * 10 };
+				await turn(prepareTurn, roomy);
+				await turn(prepareTurn, { ...roomy, agentId: "sub-1" });
+				await turn(prepareTurn, {
+					maxInputTokens,
+					previousRequestInputTokens: Math.floor(estimate() * 0.7),
+				});
+				// A subagent that counts twice the estimate compacts on its own ratio.
+				await expect(
+					turn(prepareTurn, {
+						maxInputTokens,
+						agentId: "sub-1",
+						previousRequestInputTokens: estimate() * 2,
+					}),
+				).resolves.toBeDefined();
+				// The lead still runs on the ratio of its own count.
+				await expect(
+					turn(prepareTurn, { maxInputTokens }),
+				).resolves.toBeUndefined();
 			});
 
 			it("reports compaction in provider tokens against the model window", async () => {

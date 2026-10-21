@@ -38,11 +38,17 @@ const MemoryToolInputSchema = z.object({
 
 type MemoryToolInput = z.infer<typeof MemoryToolInputSchema>;
 
-const WRITE_DONE = { save: "Saved", update: "Updated", delete: "Deleted" } as const;
+const WRITE_DONE = {
+	save: "Saved",
+	update: "Updated",
+	delete: "Deleted",
+} as const;
 
 /** Whether a memory tool result reports a write; refusals come back as plain text too. */
 export function isMemoryWriteDone(output: string): boolean {
-	return Object.values(WRITE_DONE).some((verb) => output.startsWith(`${verb} `));
+	return Object.values(WRITE_DONE).some((verb) =>
+		output.startsWith(`${verb} `),
+	);
 }
 
 function formatEntry(entry: MemoryEntry): string {

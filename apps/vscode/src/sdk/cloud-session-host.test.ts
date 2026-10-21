@@ -271,4 +271,25 @@ describe("CloudSessionHost status", () => {
 			await host.dispose()
 		}
 	})
+
+	it("ignores a subagent's done and fatal error", async () => {
+		const host = await CloudSessionHost.connect({
+			outerSessionId: "ses-outer",
+			taskId: "inner-session",
+			socketUrl: "ws://127.0.0.1:1",
+			getAuthToken: async () => "token",
+		})
+		const emit = (event: Record<string, unknown>) => {
+			for (const listener of runtime.listeners) {
+				listener({ type: "agent_event", payload: { sessionId: "inner-session", event } })
+			}
+		}
+		emit({ type: "done", reason: "completed", parentAgentId: "lead" })
+		expect(host.status).not.toBe("completed")
+		emit({ type: "error", recoverable: false, parentAgentId: "lead" })
+		expect(host.status).not.toBe("failed")
+		emit({ type: "done", reason: "completed" })
+		expect(host.status).toBe("completed")
+		await host.dispose()
+	})
 })

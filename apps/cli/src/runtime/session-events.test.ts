@@ -215,6 +215,7 @@ describe("subscribeToAgentEvents", () => {
 					type: "agent_event",
 					payload: {
 						teamRole: "teammate",
+						teamAgentId: "investigator",
 						event: teammateUsage,
 					},
 				});
@@ -233,7 +234,10 @@ describe("subscribeToAgentEvents", () => {
 		subscribeToAgentEvents(sessionManager, onAgentEvent);
 
 		expect(onAgentEvent).toHaveBeenCalledTimes(2);
-		expect(onAgentEvent).toHaveBeenNthCalledWith(1, teammateUsage);
+		expect(onAgentEvent).toHaveBeenNthCalledWith(1, {
+			...teammateUsage,
+			parentAgentId: "investigator",
+		});
 		expect(onAgentEvent).toHaveBeenNthCalledWith(2, leadText);
 	});
 });

@@ -1989,6 +1989,39 @@ describe("HubServerTransport boundaries", () => {
 		expect(published).toEqual(["iteration.started", "iteration.finished"]);
 	});
 
+	it("projects the lead's done but not a subagent's", async () => {
+		const transport = createTransport();
+		const published: string[] = [];
+		transport.subscribe("test", (event) => {
+			published.push(event.event);
+		});
+		const ctx = getContext(transport);
+		const done = {
+			type: "done" as const,
+			reason: "completed" as const,
+			text: "ok",
+			iterations: 1,
+		};
+
+		await projectSessionEvent(ctx, {
+			type: "agent_event",
+			payload: {
+				sessionId: "session-1",
+				event: { ...done, agentId: "child", parentAgentId: "lead" },
+			},
+		});
+		expect(published).toEqual([]);
+
+		await projectSessionEvent(ctx, {
+			type: "agent_event",
+			payload: {
+				sessionId: "session-1",
+				event: { ...done, agentId: "lead" },
+			},
+		});
+		expect(published).toEqual(["agent.done"]);
+	});
+
 	it("projects in-flight tool updates onto the hub stream", async () => {
 		const transport = createTransport();
 		const events: HubEventEnvelope[] = [];

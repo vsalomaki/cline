@@ -114,15 +114,21 @@ export function subscribeToAgentEvents(
 		if (typedEvent.type === "agent_event") {
 			hasSeenStructuredAgentEvent = true;
 			const payload = typedEvent.payload as
-				| { event?: AgentEvent; teamRole?: string }
+				| { event?: AgentEvent; teamRole?: string; teamAgentId?: string }
 				| undefined;
+			if (!payload?.event) return;
+			if (payload.teamRole !== "teammate") {
+				emitAgentEvent(payload.event);
+				return;
+			}
 			// Skip teammate output because it would interleave with lead output on
 			// shared stdout, but keep usage events so session totals update live.
-			if (
-				payload?.event &&
-				(payload.teamRole !== "teammate" || payload.event.type === "usage")
-			) {
-				emitAgentEvent(payload.event);
+			// A teammate has no parent id; any parent marks the usage as not the lead's.
+			if (payload.event.type === "usage") {
+				emitAgentEvent({
+					...payload.event,
+					parentAgentId: payload.event.parentAgentId ?? payload.teamAgentId,
+				});
 			}
 			return;
 		}

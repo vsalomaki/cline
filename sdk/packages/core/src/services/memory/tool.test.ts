@@ -50,8 +50,16 @@ describe("memory tool", () => {
 			runMemoryToolAction(store, save),
 			runMemoryToolAction(store, save),
 			runMemoryToolAction(store, { ...save, action: "update" }),
-			runMemoryToolAction(store, { action: "delete", scope: "user", name: "Terse" }),
-			runMemoryToolAction(store, { action: "delete", scope: "user", name: "Terse" }),
+			runMemoryToolAction(store, {
+				action: "delete",
+				scope: "user",
+				name: "Terse",
+			}),
+			runMemoryToolAction(store, {
+				action: "delete",
+				scope: "user",
+				name: "Terse",
+			}),
 		];
 		expect(outputs.map(isMemoryWriteDone)).toEqual([
 			true,

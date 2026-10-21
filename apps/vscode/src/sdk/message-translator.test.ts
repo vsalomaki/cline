@@ -2380,6 +2380,49 @@ describe("translateSessionEvent — agent_event content_update", () => {
 // ---------------------------------------------------------------------------
 
 describe("translateSessionEvent — agent_event usage", () => {
+	it("leaves a subagent's usage out of the chat and the task totals", () => {
+		const result = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "usage",
+						agentId: "child",
+						parentAgentId: "lead",
+						inputTokens: 90_000,
+						outputTokens: 10,
+						totalInputTokens: 90_000,
+						totalOutputTokens: 10,
+					} as AgentEvent,
+				},
+			},
+			new MessageTranslatorState(),
+		)
+		expect(result.messages).toEqual([])
+		expect(result.usage).toBeUndefined()
+	})
+
+	it("counts a configured agent's progress updates as subagent usage", () => {
+		const state = new MessageTranslatorState()
+		const send = (event: object) =>
+			translateSessionEvent({ type: "agent_event", payload: { sessionId: "session-1", event: event as AgentEvent } }, state)
+				.messages
+		const tool = { contentType: "tool", toolName: "subagent_reviewer", toolCallId: "call-1" }
+
+		send({ type: "content_start", ...tool, input: { prompt: "Review the diff" } })
+		send({ type: "content_update", ...tool, update: { toolCalls: 2, inputTokens: 900, outputTokens: 40, totalCost: 0.25 } })
+		send({ type: "usage", agentId: "child", parentAgentId: "lead", inputTokens: 90_000, outputTokens: 10 })
+		const messages = send({
+			type: "content_end",
+			...tool,
+			output: { text: "ok", usage: { inputTokens: 900, outputTokens: 40 } },
+		})
+
+		const usage = messages.find((message) => message.say === "subagent_usage")
+		expect(JSON.parse(usage!.text!)).toMatchObject({ tokensIn: 900, tokensOut: 40, cost: 0.25 })
+	})
+
 	it("splits SDK inclusive input tokens into classic disjoint usage buckets", () => {
 		const state = new MessageTranslatorState()
 		const event: CoreSessionEvent = {

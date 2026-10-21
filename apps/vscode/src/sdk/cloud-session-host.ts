@@ -226,6 +226,12 @@ export class CloudSessionHost implements SdkSessionHost {
 			this.setStatus(mapAgentFinishReason(event.payload.reason))
 		} else if (event.type === "agent_event") {
 			const agentEvent = event.payload.event
+			if (
+				agentEvent.parentAgentId &&
+				(agentEvent.type === "done" || (agentEvent.type === "error" && agentEvent.recoverable === false))
+			) {
+				return
+			}
 			if (agentEvent.type === "done") {
 				this.setStatus(mapAgentFinishReason(agentEvent.reason))
 			} else if (agentEvent.type === "error" && agentEvent.recoverable === false) {
