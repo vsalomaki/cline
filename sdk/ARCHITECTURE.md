@@ -496,6 +496,13 @@ Design implication:
   them when `HubRuntimeHost` reconstructs the event. `task.tokens` telemetry
   likewise reports reasoning separately from `tokensOut`. Provider billing
   still includes reasoning tokens at the output rate.
+- The lead agent's usage events also carry `contextUsage`, a breakdown of the
+  request in estimate units (system prompt, rules, memory, tools, messages)
+  that the `SessionRuntime` `beforeModel` wrapper measures on the final
+  request. The hub copies it as `usage.updated.contextUsage`, and the
+  `afterModel` wrapper stores it on the assistant message's metadata so
+  `getLastContextUsage` can read it back after a resume. Hosts scale it by the
+  same request's `inputTokens`.
 
 ### 4. Settings Mutation Boundary
 

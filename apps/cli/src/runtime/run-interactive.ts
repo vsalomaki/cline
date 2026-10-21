@@ -850,6 +850,7 @@ export async function runInteractive(
 			await sessionRuntime.ensureReady();
 			return await sessionRuntime.compactCurrentSession();
 		},
+		loadContextUsage: () => sessionRuntime.readCurrentContextUsage(),
 		onFork: async () => {
 			await sessionRuntime.ensureReady();
 			return await sessionRuntime.forkCurrentSession();

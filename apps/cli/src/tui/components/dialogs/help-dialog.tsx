@@ -159,6 +159,12 @@ const HELP_ROWS: HelpRow[] = [
 	},
 	{
 		kind: "entry",
+		id: "c-context",
+		key: "/context",
+		desc: "Show what fills the context window",
+	},
+	{
+		kind: "entry",
 		id: "c-clear",
 		key: "/clear",
 		desc: "Start a new session",

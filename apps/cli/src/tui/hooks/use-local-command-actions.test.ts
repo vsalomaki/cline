@@ -17,6 +17,7 @@ function makeActions(
 		openSkills: vi.fn(),
 		openThemePicker: vi.fn(),
 		runCompact: vi.fn(),
+		openContext: vi.fn(async () => {}),
 		runFork: vi.fn(),
 		runUndo: vi.fn(async () => {}),
 		clearConversation: vi.fn(async () => {}),
@@ -29,6 +30,17 @@ function makeActions(
 }
 
 describe("runLocalSlashCommandAction", () => {
+	it("opens the context breakdown with /context", async () => {
+		const openContext = vi.fn(async () => {});
+		const handled = runLocalSlashCommandAction({
+			...makeActions({ openContext }),
+			name: "context",
+		});
+
+		await expect(handled).resolves.toBe(true);
+		expect(openContext).toHaveBeenCalledTimes(1);
+	});
+
 	it("shows memory with /memory", async () => {
 		const showMemory = vi.fn(async () => {});
 		const handled = runLocalSlashCommandAction({

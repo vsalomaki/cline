@@ -1,4 +1,4 @@
-import type { AgentEvent, TeamEvent } from "@cline/core";
+import type { AgentEvent, LastContextUsage, TeamEvent } from "@cline/core";
 import { formatDisplayUserInput } from "@cline/shared";
 import { useCallback, useRef } from "react";
 import type {
@@ -6,6 +6,7 @@ import type {
 	PendingPromptSubmittedEvent,
 } from "../../runtime/session-events";
 import { formatCliErrorMessage } from "../../utils/cline-pass-errors";
+import { contextUsageFromEvent } from "../../utils/context-usage";
 import { resolveNonCompactionStatusLabel } from "../../utils/events";
 import { materializeGeneratedMedia } from "../../utils/generated-media";
 import {
@@ -30,6 +31,8 @@ interface AgentEventDeps {
 		outputTokens?: number;
 		cost?: number;
 	}) => void;
+	setContextUsage: (usage: LastContextUsage) => void;
+	markContextCompacted: () => void;
 	onTurnErrorReported: TuiProps["onTurnErrorReported"];
 	verbose: boolean;
 	modelId?: string;
@@ -46,6 +49,8 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 		setIsRunning,
 		setIsStreaming,
 		addUsageDelta,
+		setContextUsage,
+		markContextCompacted,
 		onTurnErrorReported,
 		verbose,
 		modelId,
@@ -278,6 +283,9 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 							closeInlineStream();
 						}
 						if (compaction) {
+							if (compaction.status === "completed" && !event.parentAgentId) {
+								markContextCompacted();
+							}
 							if (activeInlineStreamRef.current) {
 								// An assistant message is still streaming; appending now
 								// would split it around the divider. Hold the divider (final
@@ -312,9 +320,14 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 						}
 					}
 					break;
-				case "usage":
+				case "usage": {
 					addUsageDelta(usageDeltaFromEvent(event));
+					const contextUsage = contextUsageFromEvent(event);
+					if (contextUsage) {
+						setContextUsage(contextUsage);
+					}
 					break;
+				}
 			}
 		},
 		[
@@ -326,6 +339,8 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 			setIsRunning,
 			setIsStreaming,
 			addUsageDelta,
+			setContextUsage,
+			markContextCompacted,
 			onTurnErrorReported,
 			verbose,
 			modelId,

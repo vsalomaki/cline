@@ -80,7 +80,9 @@ export function ChatView(props: {
 	const placeholder =
 		session.uiMode === "plan" ? "Plan something..." : "Ask anything...";
 	const modelDisplayName = resolveModelDisplayName(config);
-	const maxInputTokens = resolveModelMaxInputTokens(config);
+	const maxInputTokens =
+		session.contextUsage?.snapshot.windowTokens ??
+		resolveModelMaxInputTokens(config);
 	const runtimeInteraction = props.runtimeInteraction ?? null;
 
 	return (
@@ -148,6 +150,7 @@ export function ChatView(props: {
 					totalTokens={session.lastTotalTokens}
 					totalCost={session.lastTotalCost}
 					maxInputTokens={maxInputTokens}
+					compactAtTokens={session.contextUsage?.snapshot.compactAtTokens}
 					uiMode={session.uiMode}
 					autoApproveAll={session.autoApproveAll}
 					workspaceName={

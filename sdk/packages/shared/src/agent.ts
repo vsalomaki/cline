@@ -209,6 +209,8 @@ export interface AgentTool<TInput = unknown, TOutput = unknown>
 	extends AgentToolDefinition {
 	/** Override the runtime execution mode. Adjacent parallel calls may overlap; sequential calls form ordering boundaries. */
 	executionMode?: "sequential" | "parallel";
+	/** The MCP server that provides this tool. */
+	mcpServer?: string;
 	timeoutMs?: number;
 	retryable?: boolean;
 	maxRetries?: number;

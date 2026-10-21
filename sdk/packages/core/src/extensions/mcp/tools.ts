@@ -25,7 +25,7 @@ export async function createMcpTools(
 			toolName: descriptor.name,
 		});
 
-		return createTool({
+		const tool = createTool({
 			name: agentToolName,
 			resultPolicy: "cache-oversized",
 			description: defaultMcpDescription(options.serverName, descriptor),
@@ -44,5 +44,6 @@ export async function createMcpTools(
 					context,
 				}),
 		});
+		return { ...tool, mcpServer: options.serverName };
 	});
 }

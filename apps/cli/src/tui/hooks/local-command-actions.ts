@@ -12,6 +12,7 @@ export interface LocalSlashCommandActionInput {
 	openThemePicker: () => void;
 	invocation?: LocalSlashCommandInvocation;
 	runCompact: () => void;
+	openContext: () => Promise<void>;
 	runFork: () => void;
 	runUndo: () => Promise<void>;
 	clearConversation: () => Promise<void>;
@@ -60,6 +61,9 @@ export function runLocalSlashCommandAction(
 			input.runCompact();
 		}
 		return true;
+	}
+	if (normalized === "context") {
+		return input.openContext().then(() => true);
 	}
 	if (normalized === "fork") {
 		input.runFork();

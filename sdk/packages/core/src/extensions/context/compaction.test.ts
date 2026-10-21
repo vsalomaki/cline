@@ -118,6 +118,20 @@ function assertBasicCompactionResult(
 }
 
 describe("createTokenEstimator", () => {
+	it("measures only what is sent, not message metadata", () => {
+		const bare: MessageWithMetadata = { role: "assistant", content: "short" };
+		const withMetadata: MessageWithMetadata = {
+			...bare,
+			id: "msg-1",
+			ts: 1,
+			metadata: { contextUsage: { note: "x".repeat(2_000) } },
+		};
+
+		expect(createTokenEstimator()(withMetadata)).toBe(
+			createTokenEstimator()(bare),
+		);
+	});
+
 	it("does not treat cumulative request metrics as per-message token counts", () => {
 		const estimateMessageTokens = createTokenEstimator();
 		const message: MessageWithMetadata = {
@@ -131,7 +145,10 @@ describe("createTokenEstimator", () => {
 		};
 
 		expect(estimateMessageTokens(message)).toBe(
-			Math.ceil(JSON.stringify(message).length / 3),
+			Math.ceil(
+				JSON.stringify({ role: message.role, content: message.content })
+					.length / 3,
+			),
 		);
 	});
 
@@ -146,7 +163,10 @@ describe("createTokenEstimator", () => {
 		};
 
 		expect(estimateMessageTokens(message)).toBe(
-			Math.ceil(JSON.stringify(message).length / 3),
+			Math.ceil(
+				JSON.stringify({ role: message.role, content: message.content })
+					.length / 3,
+			),
 		);
 	});
 
@@ -180,7 +200,7 @@ describe("createTokenEstimator", () => {
 	});
 
 	it("does not add a duplicate per-image bonus after JSON.stringify falls back", () => {
-		// A BigInt in the message's metadata makes the primary,
+		// A BigInt in an image block makes the primary,
 		// replacer-driven JSON.stringify throw, so createTokenEstimator
 		// falls back to serializeMessage, which already renders images
 		// without base64 ("[User image]: mediaType"). The images the
@@ -191,12 +211,12 @@ describe("createTokenEstimator", () => {
 			type: "image" as const,
 			data: base64Data,
 			mediaType: "image/png",
+			broken: 1n,
 		};
 		const buildMessage = (imageCount: number): MessageWithMetadata =>
 			({
 				role: "user",
 				content: Array.from({ length: imageCount }, () => imageBlock),
-				metadata: { broken: 1n },
 			}) as unknown as MessageWithMetadata;
 
 		const estimateMessageTokens = createTokenEstimator();

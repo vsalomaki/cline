@@ -343,6 +343,7 @@ async function projectAgentEvent(
 					},
 					usage: usageSummary?.usage,
 					aggregateUsage: usageSummary?.aggregateUsage,
+					contextUsage: agentEvent.contextUsage,
 					agent: {
 						kind:
 							event.payload.teamRole === "teammate"

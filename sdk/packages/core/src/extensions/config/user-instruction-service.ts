@@ -1,5 +1,8 @@
 import type { AgentExtension, AgentTool } from "@cline/shared";
-import { loadRulesForSystemPromptFromRecords } from "../../runtime/safety/rules";
+import {
+	createRulesPromptRule,
+	listEnabledRulesFromRecords,
+} from "../../runtime/safety/rules";
 import { createSkillsTool, type SkillsExecutorWithMetadata } from "../tools";
 import {
 	type AvailableRuntimeCommand,
@@ -219,14 +222,14 @@ export function combineUserInstructionConfigServices(
 			},
 			setup(api) {
 				if (options.includeRules) {
-					api.registerRule({
-						id: "cline-combined-user-instructions:rules",
-						source: "combined-user-instructions",
-						content: () =>
-							loadRulesForSystemPromptFromRecords(
-								listRecords<RuleConfig>("rule"),
-							),
-					});
+					api.registerRule(
+						createRulesPromptRule({
+							id: "cline-combined-user-instructions:rules",
+							source: "combined-user-instructions",
+							listRules: () =>
+								listEnabledRulesFromRecords(listRecords<RuleConfig>("rule")),
+						}),
+					);
 				}
 				if (options.registerSkillsTool) {
 					api.registerTool(

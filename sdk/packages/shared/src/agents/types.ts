@@ -36,6 +36,7 @@ import {
 	type ReasoningEffort,
 	ReasoningEffortSchema,
 } from "../llms/reasoning-options";
+import type { ContextUsageSnapshot } from "./context-usage";
 
 export {
 	REASONING_LEVELS,
@@ -177,6 +178,8 @@ export interface AgentUsageEvent extends AgentEventMetadata {
 	totalCacheWriteTokens?: number;
 	totalOutputTokens: number;
 	totalCost?: number;
+	/** What the lead agent's request was made of; only the lead's events carry it. */
+	contextUsage?: ContextUsageSnapshot;
 }
 
 export interface AgentNoticeEvent extends AgentEventMetadata {

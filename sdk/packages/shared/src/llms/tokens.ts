@@ -27,6 +27,20 @@ export interface TokenEstimatedRequest {
 }
 
 /**
+ * The part of a message that reaches the provider. Storage fields (id,
+ * metadata, metrics, timestamps) are never sent, so estimates skip them.
+ */
+export function toSentMessage(message: unknown): unknown {
+	if (typeof message !== "object" || message === null) {
+		return message;
+	}
+	const { role, content } = message as { role?: unknown; content?: unknown };
+	return role === undefined || content === undefined
+		? message
+		: { role, content };
+}
+
+/**
  * Build a JSON.stringify replacer that blanks an image node's base64
  * payload wherever it's nested in the serialized value, so it's never
  * billed at CHARS_PER_TOKEN. Two image shapes reach this replacer:
@@ -108,7 +122,7 @@ export function estimateRequestInputTokens(
 		serialized = JSON.stringify(
 			{
 				systemPrompt: request.systemPrompt,
-				messages: request.messages,
+				messages: request.messages.map(toSentMessage),
 				tools: request.tools,
 			},
 			replacer,
@@ -117,7 +131,7 @@ export function estimateRequestInputTokens(
 	} catch {
 		serialized = [
 			safeStringify(request.systemPrompt),
-			safeStringify(request.messages),
+			safeStringify(request.messages.map(toSentMessage)),
 			safeStringify(request.tools),
 		].join("\n");
 	}

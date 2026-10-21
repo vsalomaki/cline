@@ -243,6 +243,7 @@ export {
 	estimateRequestInputTokens,
 	estimateTokens,
 	type TokenEstimatedRequest,
+	toSentMessage,
 } from "./llms/tokens";
 export type {
 	ToolApprovalRequest,

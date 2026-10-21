@@ -1,10 +1,11 @@
-import { describeMemory } from "@cline/core";
+import { describeMemory, type LastContextUsage } from "@cline/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ChoiceContext } from "@opentui-ui/dialog";
 import { useDialog } from "@opentui-ui/dialog/react";
 import { useCallback } from "react";
 import type { SlashCommandRegistry } from "../commands/slash-command-registry";
 import { resolveSlashCommand } from "../commands/slash-command-registry";
+import { ContextDialogContent } from "../components/dialogs/context-dialog";
 import { ForkConfirmContent } from "../components/dialogs/fork-confirm";
 import { HelpDialogContent } from "../components/dialogs/help-dialog";
 import { withLoadingDialog } from "../components/dialogs/loading-dialog";
@@ -35,6 +36,7 @@ export function useLocalCommandActions(input: {
 	onExportHistorySession: TuiProps["onExportHistorySession"];
 	onDeleteHistorySession: TuiProps["onDeleteHistorySession"];
 	onCompact: TuiProps["onCompact"];
+	loadContextUsage: () => Promise<LastContextUsage | undefined>;
 	onFork: TuiProps["onFork"];
 	onUndo: () => Promise<void>;
 	onExit: TuiProps["onExit"];
@@ -60,6 +62,7 @@ export function useLocalCommandActions(input: {
 		onExportHistorySession,
 		onDeleteHistorySession,
 		onCompact,
+		loadContextUsage,
 		onFork,
 		onUndo,
 		onExit,
@@ -132,6 +135,20 @@ export function useLocalCommandActions(input: {
 		refocusTextarea();
 	}, [dialog, refocusTextarea, termHeight]);
 
+	// Messages saved before this TUI saw a request still carry the last breakdown.
+	const openContext = useCallback(async () => {
+		const usage =
+			session.contextUsage ?? (await loadContextUsage().catch(() => undefined));
+		await dialog.choice<void>({
+			size: "large",
+			style: { maxHeight: termHeight - 2 },
+			content: (ctx: ChoiceContext<void>) => (
+				<ContextDialogContent {...ctx} usage={usage} />
+			),
+		});
+		refocusTextarea();
+	}, [dialog, loadContextUsage, refocusTextarea, session, termHeight]);
+
 	const runCompact = useCallback(async () => {
 		session.setIsRunning(true);
 		session.appendEntry({
@@ -141,6 +158,9 @@ export function useLocalCommandActions(input: {
 		});
 		try {
 			const result = await onCompact();
+			if (result.compacted) {
+				session.markContextCompacted();
+			}
 			session.updateLastEntry((entry) =>
 				entry.kind === "compaction" && entry.status === "started"
 					? {
@@ -252,6 +272,7 @@ export function useLocalCommandActions(input: {
 				openSkills,
 				openThemePicker,
 				runCompact,
+				openContext,
 				runFork,
 				runUndo: onUndo,
 				clearConversation: onClearConversation,
@@ -267,6 +288,7 @@ export function useLocalCommandActions(input: {
 			onUndo,
 			openAccount,
 			openConfig,
+			openContext,
 			openMcpManager,
 			openHelp,
 			openHistory,

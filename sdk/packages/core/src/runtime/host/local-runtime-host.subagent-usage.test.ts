@@ -236,6 +236,21 @@ describe("subagent usage in a lead session", () => {
 		}
 	});
 
+	it("describes the context of the lead's requests only", async () => {
+		const { leadId, events } = await runLeadWithSubagent();
+		const usage = usageEvents(events);
+		const lead = usage.filter((event) => event.agentId === leadId);
+		const children = usage.filter((event) => event.agentId !== leadId);
+		for (const event of lead) {
+			expect(event.contextUsage?.estimatedTotal).toBeGreaterThan(0);
+			expect(event.contextUsage?.compactAtTokens).toEqual(expect.any(Number));
+		}
+		expect(children.length).toBeGreaterThan(0);
+		for (const event of children) {
+			expect(event.contextUsage).toBeUndefined();
+		}
+	});
+
 	it("counts only the lead's own requests in the session usage", async () => {
 		const { usage, liveUsage } = await runLeadWithSubagent();
 		expect(usage?.usage?.inputTokens).toBe(LEAD_INPUT[0] + LEAD_INPUT[1]);
