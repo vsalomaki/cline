@@ -48,10 +48,25 @@ describe("buildClineSystemPrompt task discipline", () => {
 		);
 	});
 
-	it("asks to inspect what a git restore would discard before running it", () => {
+	it("checks with git diff what a git undo would discard before running it", () => {
 		expect(prompt).toContain(
-			"look at exactly what it would throw away (git status, and git diff for the affected paths)",
+			"check what the command would throw away: git status, then git diff HEAD for the affected paths, which shows staged and unstaged changes together",
 		);
+		expect(prompt).toContain(
+			"nothing but your own edits from this conversation",
+		);
+	});
+
+	it("gives plan mode the same structure as act mode", () => {
+		const planPrompt = buildClineSystemPrompt({
+			...BASE_OPTIONS,
+			mode: "plan",
+		});
+		expect(planPrompt).toContain("## Exploring");
+		expect(planPrompt).toContain("## The plan");
+		expect(planPrompt).toContain("## Revising the plan");
+		expect(planPrompt).toContain("keep what was agreed");
+		expect(planPrompt).toContain("check the code before agreeing");
 	});
 
 	it("ties success claims to verification", () => {
@@ -120,7 +135,7 @@ describe("buildClineSystemPrompt task discipline", () => {
 
 	it("asks for the files and verification in a plan", () => {
 		expect(PLAN_MODE_INSTRUCTIONS).toContain(
-			"the files you expect to change, and how you will verify the result",
+			"the files you expect to change and how, and how the result will be verified",
 		);
 	});
 });

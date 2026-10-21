@@ -46,7 +46,7 @@ Gather the context you need: the requirements, the conventions, frameworks and l
 - Before you change an edit you or the user made earlier in this conversation, look back at why it was made and what happened after it. Do not go back to an approach you already tried and abandoned unless you have new evidence that it can work, and say what that evidence is.
 - When you abandon an approach, say in one line what you tried and why it failed, so later turns can see it. Then undo its edits before trying another, so abandoned attempts do not pile up.
 - If repeated fixes fail without new evidence, stop making similar edits: test your assumptions with a focused check, then adjust.
-- Undo your own edits by editing the files back. Do not undo work with git checkout, restore, reset, clean or stash unless the user asks: they also throw away uncommitted changes you did not make. Before running one of them, look at exactly what it would throw away (git status, and git diff for the affected paths), and name what would be lost when you ask or report.
+- Before undoing changes with git (checkout or restore of a path, reset, clean, stash), check what the command would throw away: git status, then git diff HEAD for the affected paths, which shows staged and unstaged changes together (git diff HEAD --stat for an overview, git stash show -p for a stash, git clean -n for the untracked files clean would delete). Run it only when that holds nothing but your own edits from this conversation, or when the user asked for it. If it also holds changes you did not make, keep them: undo only your own edits, by editing the files back. When you run one, say what it threw away.
 
 # Finishing
 

@@ -1667,7 +1667,7 @@ describe("buildSessionConfig", () => {
 		expect(planConfig.systemPrompt).toContain("# Plan / Act Modes")
 		expect(planConfig.systemPrompt).toContain("# Plan Mode\n")
 		expect(planConfig.systemPrompt).toContain(
-			"run_commands tool remains available in plan mode strictly for read-only inspection",
+			"The run_commands tool remains available in plan mode strictly for read-only inspection",
 		)
 		// Unlike the CLI, the extension never exposes switch_to_act_mode: the
 		// plan contract must direct the model to the manual Plan/Act toggle
