@@ -30,6 +30,7 @@ import {
 	type AgentExtensionRule,
 	type AgentFinishReason,
 	type AgentMessage,
+	type AgentPendingUserMessage,
 	type AgentResult,
 	type AgentRunResult,
 	type AgentRuntimeEvent,
@@ -701,10 +702,6 @@ export class SessionRuntime {
 	// -------------------------------------------------------------------
 	// Abort / shutdown
 	// -------------------------------------------------------------------
-
-	notifyPendingUserMessage(): void {
-		this.activeRuntime?.notifyPendingUserMessage();
-	}
 
 	abort(reason?: unknown): void {
 		const message =
@@ -1590,11 +1587,16 @@ export class SessionRuntime {
 	 * notice reaches the model only as a runtime pending message, which lands
 	 * after the tool results.
 	 */
-	private consumePendingUserMessage(): string | undefined {
+	private async consumePendingUserMessage(): Promise<
+		AgentPendingUserMessage[]
+	> {
 		const notice = this.pendingLoopNotice;
 		this.pendingLoopNotice = undefined;
-		const steer = this.config.consumePendingUserMessage?.();
-		return [notice, steer].filter(Boolean).join("\n\n") || undefined;
+		const pending = await this.config.consumePendingUserMessage?.();
+		const steers = typeof pending === "string" ? [pending] : (pending ?? []);
+		return notice
+			? [{ content: notice, displayRole: "system" }, ...steers]
+			: [...steers];
 	}
 
 	/**

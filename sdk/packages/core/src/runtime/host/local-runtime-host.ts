@@ -5,6 +5,7 @@ import type * as LlmsProviders from "@cline/llms";
 import {
 	type AgentConfig,
 	type AgentEvent,
+	type AgentPendingUserMessage,
 	type AgentResult,
 	type BasicLogger,
 	captureSdkError,
@@ -105,10 +106,15 @@ import {
 } from "../../types/common";
 import type { CoreSessionConfig } from "../../types/config";
 import type { CoreSessionEvent } from "../../types/events";
-import type { ActiveSession, PreparedTurnInput } from "../../types/session";
+import type {
+	ActiveSession,
+	PendingPrompt,
+	PreparedTurnInput,
+} from "../../types/session";
 import type { SessionRecord } from "../../types/sessions";
 import type { RuntimeCapabilities } from "../capabilities";
 import { normalizeRuntimeCapabilities } from "../capabilities";
+import { contentBlockToAgentPart } from "../config/agent-message-codec";
 import { normalizeConnectionUpdate } from "../config/connection-update";
 import { DefaultRuntimeBuilder } from "../orchestration/runtime-builder";
 import {
@@ -121,6 +127,7 @@ import {
 	SessionRuntime,
 	type SessionRuntimeConfig,
 } from "../orchestration/session-runtime-orchestrator";
+import { buildInitialUserContent } from "../orchestration/user-input-builder";
 import { PendingPromptsController } from "../turn-queue/pending-prompt-service";
 import { manifestToSessionRecord } from "./history";
 import { AgentEventBridge } from "./local/agent-event-bridge";
@@ -897,15 +904,11 @@ export class LocalRuntimeHost implements RuntimeHost {
 			onConsecutiveMistakeLimitReached:
 				configWithProvider.onConsecutiveMistakeLimitReached,
 			completionPolicy: runtime.completionPolicy,
-			consumePendingUserMessage: () => {
-				const entry = this.pendingPromptsController.consumeSteer(sessionId);
-				return entry
-					? formatModePrompt(
-							entry.prompt,
-							entry.mode ?? configWithProvider.mode,
-						)
-					: undefined;
-			},
+			consumePendingUserMessage: () =>
+				this.prepareSteerMessages(
+					sessionId,
+					this.pendingPromptsController.consumeSteers(sessionId),
+				),
 			logger: runtime.logger ?? configWithProvider.logger,
 			extensionContext: configWithProvider.extensionContext,
 			onEvent: (event: AgentEvent) =>
@@ -2291,6 +2294,32 @@ export class LocalRuntimeHost implements RuntimeHost {
 			userImages: input.userImages,
 			userFiles: mergedUserFiles.length > 0 ? mergedUserFiles : undefined,
 		};
+	}
+
+	private async prepareSteerMessages(
+		sessionId: string,
+		steers: PendingPrompt[],
+	): Promise<AgentPendingUserMessage[]> {
+		const session = this.sessions.get(sessionId);
+		if (!session) return [];
+		return Promise.all(
+			steers.map(async (steer) => {
+				const prepared = await this.prepareTurnInput(session, steer);
+				const content = await buildInitialUserContent(
+					prepared.prompt,
+					prepared.userImages,
+					prepared.userFiles,
+					loadUserFileContent,
+				);
+				return {
+					content:
+						typeof content === "string"
+							? content
+							: content.map(contentBlockToAgentPart),
+					typedInput: steer.typedInput !== false,
+				};
+			}),
+		);
 	}
 
 	// ── Session lifecycle ───────────────────────────────────────────────

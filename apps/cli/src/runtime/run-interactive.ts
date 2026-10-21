@@ -568,9 +568,20 @@ export async function runInteractive(
 				uiEvents.off("pending-prompt-submitted", onPendingPromptSubmitted);
 			};
 		},
-		onSubmit: async (input, mode, delivery, attachments, onCommandOutput) => {
+		onSubmit: async (
+			input,
+			mode,
+			requestedDelivery,
+			attachments,
+			onCommandOutput,
+		) => {
 			let commandOutput: string | undefined;
 			let zeroTurnCost = false;
+			// A pending Plan/Act switch aborts the run; a queued prompt survives that abort.
+			const delivery =
+				requestedDelivery === "steer" && pendingModeChange.current
+					? "queue"
+					: requestedDelivery;
 			try {
 				await sessionRuntime.ensureReady();
 				await waitForSubmittedMode(mode);

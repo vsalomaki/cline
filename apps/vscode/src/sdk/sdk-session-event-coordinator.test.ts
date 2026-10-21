@@ -157,6 +157,37 @@ describe("SdkSessionEventCoordinator", () => {
 		expect(options.postStateToWebview).toHaveBeenCalledOnce()
 	})
 
+	it("shows a prompt delivered mid-run without starting a new turn", async () => {
+		const message: ClineMessage = { ts: 1, type: "say", say: "user_feedback", text: "steered prompt" }
+		const { coordinator, options } = makeCoordinator({
+			translation: {
+				messages: [message],
+				sessionEnded: false,
+				turnComplete: false,
+			},
+		})
+		const clearTurnOutcome = vi.spyOn(options.messageTranslatorState, "clearTurnOutcome")
+		const event: CoreSessionEvent = {
+			type: "pending_prompt_submitted",
+			payload: {
+				sessionId: "session-123",
+				id: "pending-1",
+				prompt: "steered prompt",
+				delivery: "steer",
+				attachmentCount: 0,
+				midRun: true,
+			},
+		} as CoreSessionEvent
+
+		await coordinator.handleSessionEvent(event)
+
+		expect(clearTurnOutcome).not.toHaveBeenCalled()
+		expect(options.beginProviderFailureTelemetryTurn).not.toHaveBeenCalled()
+		expect(options.sessions.setRunning).not.toHaveBeenCalled()
+		expect(options.setTurnPhase).not.toHaveBeenCalled()
+		expect(options.messages.appendAndEmit).toHaveBeenCalledWith([message], event)
+	})
+
 	it("posts state for queued prompt turn start even when no transcript message is emitted", async () => {
 		const { coordinator, options } = makeCoordinator({
 			translation: {

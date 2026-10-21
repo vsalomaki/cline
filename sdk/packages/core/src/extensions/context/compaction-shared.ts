@@ -320,7 +320,11 @@ export function getCompactionSummaryMetadata(
 export function typedUserMessageText(
 	message: MessageWithMetadata,
 ): string | undefined {
-	if (!isTurnStartMessage(message) || getUserRunSpan(message) === 0) {
+	const typed =
+		message.metadata?.typedInput === true
+			? message.role === "user"
+			: isTurnStartMessage(message) && getUserRunSpan(message) !== 0;
+	if (!typed) {
 		return undefined;
 	}
 	const text =

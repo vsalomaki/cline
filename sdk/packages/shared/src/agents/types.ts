@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type {
+	AgentRuntimeConfig,
 	AgentRuntimeHooks,
 	AgentTool,
 	ProviderErrorClass,
@@ -923,13 +924,12 @@ export interface AgentConfig {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Optional callback invoked at the top of each agent loop iteration
-	 * (after the first). If it returns a non-empty string, that string is
-	 * injected as a user message into the conversation before the next API
+	 * Optional callback invoked before each model request. Each returned
+	 * message is injected as a user message into the conversation before the
 	 * call. This allows the host to feed user input into a running loop
 	 * without waiting for the current run to finish.
 	 */
-	consumePendingUserMessage?: () => string | undefined;
+	consumePendingUserMessage?: AgentRuntimeConfig["consumePendingUserMessage"];
 
 	// -------------------------------------------------------------------------
 	// Cancellation

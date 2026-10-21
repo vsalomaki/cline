@@ -613,14 +613,25 @@ export interface AgentRuntimeConfig {
 		| Promise<AgentRuntimePrepareTurnResult | undefined>
 		| AgentRuntimePrepareTurnResult
 		| undefined;
-	// Optional host callback used by interactive sessions to inject a queued
-	// user steering message between agent loop iterations, before the next
-	// model request.
+	// Optional host callback used by interactive sessions to inject queued
+	// user steering messages between agent loop iterations, before the next
+	// model request. Each list item becomes its own user message.
 	consumePendingUserMessage?: () =>
 		| string
+		| readonly AgentPendingUserMessage[]
 		| undefined
-		| Promise<string | undefined>;
+		| Promise<string | readonly AgentPendingUserMessage[] | undefined>;
 }
+
+export type AgentPendingUserMessage =
+	| string
+	| {
+			content: string | AgentMessagePart[];
+			/** Marks text the user typed, as opposed to a runtime notice. */
+			typedInput?: boolean;
+			/** Hides the message from conversation replays; the model still sees it. */
+			displayRole?: "system";
+	  };
 
 // =============================================================================
 // Runtime event union

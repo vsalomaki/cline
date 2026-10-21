@@ -5422,6 +5422,40 @@ describe("earlier user messages across compaction", () => {
 		expect(request).toContain("Keep the public API stable");
 	});
 
+	it("keeps messages typed mid-run as user messages", async () => {
+		const messages: MessageWithMetadata[] = [
+			typed("Refactor the parser"),
+			assistantToolUseMessage("tool-1"),
+			toolResultMessage("tool-1", "parser output"),
+			{
+				role: "user",
+				content: [
+					{
+						type: "text",
+						text: '<user_input mode="act">Skip the lexer</user_input>',
+					},
+				],
+				metadata: { userRunSpan: 0, typedInput: true },
+			},
+			{
+				role: "user",
+				content: [{ type: "text", text: "Injected hook context" }],
+				metadata: { userRunSpan: 0 },
+			},
+			reply("Skipping the lexer"),
+			typed("Now add the tests"),
+			reply("Working on tests"),
+		];
+
+		const result = await runForcedAgenticCompaction(messages);
+
+		const [, ...earlier] = contentTexts(result?.messages[0]);
+		expect(earlier).toEqual([
+			"<user_message>\nRefactor the parser\n</user_message>",
+			'<user_message>\n<user_input mode="act">Skip the lexer</user_input>\n</user_message>',
+		]);
+	});
+
 	it("caps each earlier user message", async () => {
 		const long = `start ${"x".repeat(4_994)}`;
 		const result = await runForcedAgenticCompaction([

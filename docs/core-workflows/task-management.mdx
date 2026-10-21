@@ -68,6 +68,12 @@ Knowing when to start fresh versus continue can feel unclear at first. As you wo
 
 To start a new task, click the **+** button in the Cline sidebar or use the `/newtask` command. Your file changes are preserved through [checkpoints](/core-workflows/checkpoints), and you can reference previous tasks from history anytime.
 
+### Messages while Cline works
+
+You can send a message while Cline is working. Cline reads it at its next step, after the tool calls in progress finish, so you can correct course without stopping the task. A response that is streaming is not cut off. Several messages sent this way arrive together, in the order you sent them.
+
+Until Cline reads them, waiting messages are listed above the chat input. Each row shows **Next step** or **After run**; click it to switch. An **After run** message is sent as a new message once the current run ends. The **×** button removes a message.
+
 ## Understanding Task Costs
 
 Every cloud-based AI model charges for usage based on tokens, the units of text the model processes. Cline tracks these costs automatically and displays them in the task header so you can monitor spending as you work.

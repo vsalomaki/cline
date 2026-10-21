@@ -1203,6 +1203,14 @@ intent through the sidecar and Hub without fetching a prompt ID first; explicit
 per-prompt steering continues to update by ID. Concurrent clients therefore
 cannot make Enter promote an entry from a stale queue snapshot.
 
+A steer does not interrupt a streaming response. At the next model request the
+runtime consumes every pending steer, in typed order, each as its own user
+message after the tool results. Steers go through the same input preparation as
+a new turn (mentions, attachments) and carry `metadata.typedInput`, so
+compaction and memory extraction treat them as typed input. The host emits
+`pending_prompt_submitted` with `midRun: true` for each. Queued prompts (delivery
+`"queue"`) still run as new turns after the run ends.
+
 ### SSH environments
 
 `core/src/remote` owns the reusable SSH environment service and standalone remote

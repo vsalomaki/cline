@@ -73,6 +73,8 @@ export type PendingPrompt = {
 	prompt: string;
 	mode?: CoreAgentMode;
 	delivery: "queue" | "steer";
+	/** False for prompts a plugin enqueued; they are not user-typed. */
+	typedInput?: boolean;
 	userImages?: string[];
 	userFiles?: string[];
 };

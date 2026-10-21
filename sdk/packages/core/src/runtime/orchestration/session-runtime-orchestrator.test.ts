@@ -3167,11 +3167,18 @@ describe("SessionRuntime.run — tracker wiring (P1 #3)", () => {
 		await session.run("loop-me");
 
 		const pending = await runtimeConfig?.consumePendingUserMessage?.();
-		expect(pending).toMatch(
-			/^Detected 2 consecutive identical calls to `same`/,
-		);
-		expect(pending).toMatch(/\n\nsteer$/);
-		expect(await runtimeConfig?.consumePendingUserMessage?.()).toBe("steer");
+		expect(pending).toEqual([
+			{
+				content: expect.stringMatching(
+					/^Detected 2 consecutive identical calls to `same`/,
+				),
+				displayRole: "system",
+			},
+			"steer",
+		]);
+		expect(await runtimeConfig?.consumePendingUserMessage?.()).toEqual([
+			"steer",
+		]);
 	});
 
 	it("resets loop detection when run() starts a fresh conversation", async () => {

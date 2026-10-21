@@ -1,5 +1,6 @@
 import type { QueuedPrompt } from "@shared/ExtensionMessage"
 import { StringRequest } from "@shared/proto/cline/common"
+import { UpdateQueuedPromptRequest } from "@shared/proto/cline/task"
 import { useState } from "react"
 import { TaskServiceClient } from "@/services/grpc-client"
 
@@ -18,13 +19,13 @@ function attachmentLabel(count: number): string | undefined {
 function queueSummary(items: QueuedPrompt[]): string {
 	const steerCount = items.filter((item) => item.delivery === "steer").length
 	const queueCount = items.length - steerCount
-	if (steerCount === 0) {
-		return items.length === 1 ? "Queued message" : `${items.length} queued messages`
-	}
 	if (queueCount === 0) {
-		return items.length === 1 ? "Steering message" : `${items.length} steering messages`
+		return items.length === 1 ? "Message for the next step" : `${items.length} messages for the next step`
 	}
-	return `${queueCount} queued, ${steerCount} steering`
+	if (steerCount === 0) {
+		return items.length === 1 ? "Message for after the run" : `${items.length} messages for after the run`
+	}
+	return `${steerCount} for the next step, ${queueCount} after the run`
 }
 
 interface QueuedPromptsProps {
@@ -32,26 +33,46 @@ interface QueuedPromptsProps {
 }
 
 export function QueuedPrompts({ items = [] }: QueuedPromptsProps) {
-	const [cancellingIds, setCancellingIds] = useState<Set<string>>(() => new Set())
+	const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set())
 
 	if (items.length === 0) {
 		return null
 	}
 
-	const cancelQueuedPrompt = (promptId: string) => {
-		setCancellingIds((current) => new Set(current).add(promptId))
-		TaskServiceClient.cancelQueuedPrompt(StringRequest.create({ value: promptId }))
+	const runRowAction = (promptId: string, action: () => Promise<unknown>, failure: string) => {
+		setBusyIds((current) => new Set(current).add(promptId))
+		action()
 			.catch((error) => {
-				console.error("Failed to cancel queued prompt:", error)
+				console.error(failure, error)
 			})
 			.finally(() => {
-				setCancellingIds((current) => {
+				setBusyIds((current) => {
 					const next = new Set(current)
 					next.delete(promptId)
 					return next
 				})
 			})
 	}
+
+	const cancelQueuedPrompt = (promptId: string) =>
+		runRowAction(
+			promptId,
+			() => TaskServiceClient.cancelQueuedPrompt(StringRequest.create({ value: promptId })),
+			"Failed to cancel queued prompt:",
+		)
+
+	const toggleDelivery = (item: QueuedPrompt) =>
+		runRowAction(
+			item.id,
+			() =>
+				TaskServiceClient.updateQueuedPrompt(
+					UpdateQueuedPromptRequest.create({
+						promptId: item.id,
+						delivery: item.delivery === "steer" ? "queue" : "steer",
+					}),
+				),
+			"Failed to update queued prompt:",
+		)
 
 	return (
 		<div className="mx-3 mt-2.5 mb-2.5 rounded-xs border border-editor-group-border bg-code/70 px-2.5 py-2 shadow-xs">
@@ -63,7 +84,7 @@ export function QueuedPrompts({ items = [] }: QueuedPromptsProps) {
 				{items.map((item) => {
 					const attachments = attachmentLabel(item.attachmentCount)
 					const isSteer = item.delivery === "steer"
-					const isCancelling = cancellingIds.has(item.id)
+					const isBusy = busyIds.has(item.id)
 					// The prompt text renders in spans whose line boxes are 5 spacing units tall
 					// (the global `span { @apply leading-5 }` base style), so every control in the
 					// row is sized/offset against that same 5-unit first line to stay vertically
@@ -75,11 +96,19 @@ export function QueuedPrompts({ items = [] }: QueuedPromptsProps) {
 							key={item.id}>
 							<span aria-hidden="true" className="mt-1.75 size-1.5 shrink-0 rounded-full bg-description/70" />
 							<span className="min-w-0 flex-1 break-words text-foreground">{truncatePrompt(item.prompt)}</span>
-							{isSteer && (
-								<span className="flex h-5 shrink-0 items-center rounded-[3px] border border-editor-group-border px-1.5 text-[10px] leading-none text-description">
-									Steer
-								</span>
-							)}
+							<button
+								aria-label={isSteer ? "Send after the run instead" : "Send at the next step instead"}
+								className="flex h-5 shrink-0 items-center rounded-[3px] border border-editor-group-border px-1.5 text-[10px] leading-none text-description hover:bg-toolbar-hover-background hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+								disabled={isBusy}
+								onClick={() => toggleDelivery(item)}
+								title={
+									isSteer
+										? "Reaches the agent at its next step. Click to send it after the run instead."
+										: "Sent as a new message after the run. Click to send it at the next step instead."
+								}
+								type="button">
+								{isSteer ? "Next step" : "After run"}
+							</button>
 							{attachments && (
 								<span className="flex h-5 shrink-0 items-center rounded-[3px] border border-editor-group-border px-1.5 text-[10px] leading-none text-description">
 									{attachments}
@@ -88,7 +117,7 @@ export function QueuedPrompts({ items = [] }: QueuedPromptsProps) {
 							<button
 								aria-label="Cancel queued message"
 								className="-my-1.5 flex size-5 shrink-0 items-center justify-center rounded-[3px] text-description hover:bg-toolbar-hover-background hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-								disabled={isCancelling}
+								disabled={isBusy}
 								onClick={() => cancelQueuedPrompt(item.id)}
 								title="Cancel queued message"
 								type="button">

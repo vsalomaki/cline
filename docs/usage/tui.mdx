@@ -38,6 +38,14 @@ cline -i
 
 The status area shows the active model, context usage, cost, workspace/branch, git diff stats, Plan/Act state, and whether auto-approve all is enabled.
 
+## Messages While the Agent Works
+
+Type a message and press `Enter` while the agent is working: the agent reads it at its next step, after the tool calls in progress finish. A response that is streaming is not cut off. Several messages sent this way arrive together, in the order you typed them.
+
+- `Ctrl+S` sends the message after the run instead, as a new turn.
+- Waiting messages are listed above the input. Press `↑` to select one, then `Enter` to move it to the next step or `Tab` to edit it. With an empty input, `Enter` moves the first one.
+- After a Plan/Act switch, the switch stops the running turn, so messages you send before it takes effect wait and run as a new turn afterwards.
+
 ## When to Use TUI vs Headless
 
 - Use **TUI** when you want collaboration and approvals.

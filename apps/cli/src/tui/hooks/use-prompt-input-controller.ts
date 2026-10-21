@@ -435,7 +435,7 @@ export function usePromptInputController(input: {
 				return;
 			}
 		}
-		submitRef.current(session.isRunning ? "queue" : undefined);
+		submitRef.current(session.isRunning ? "steer" : undefined);
 	}, [autocomplete, session.isRunning]);
 
 	const handleContentChange = useCallback(

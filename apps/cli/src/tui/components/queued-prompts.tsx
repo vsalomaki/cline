@@ -33,10 +33,12 @@ export function QueuedPrompts(props: {
 			? "Enter confirm, Esc cancel"
 			: selected.steer
 				? session.isRunning
-					? "Waiting. ↑/↓ navigate, Tab edit, Esc cancels turn"
-					: `Steered next. ↑/↓ navigate, Tab edit, ${escapeHint}`
-				: `↑/↓ navigate, Enter steer, Tab edit, ${escapeHint}`
-		: "Enter with empty input to steer first · ↑ select or edit";
+					? "At the next step. ↑/↓ navigate, Tab edit, Esc cancels turn"
+					: `Runs next. ↑/↓ navigate, Tab edit, ${escapeHint}`
+				: `After the run. ↑/↓ navigate, Enter next step, Tab edit, ${escapeHint}`
+		: props.items[0]?.steer
+			? "↑ select or edit"
+			: "Enter with empty input sends the first at the next step · ↑ select or edit";
 
 	return (
 		<box
@@ -47,7 +49,7 @@ export function QueuedPrompts(props: {
 			paddingX={1}
 		>
 			<text fg="gray">
-				<em>Queued messages:</em>
+				<em>Waiting messages:</em>
 			</text>
 			{props.items.map((item) => {
 				const isSelected = item.id === props.selectedId;

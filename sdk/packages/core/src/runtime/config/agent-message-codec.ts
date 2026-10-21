@@ -178,7 +178,7 @@ function normalizeContentBlocks(content: Message["content"]): ContentBlock[] {
 	return [...content];
 }
 
-function contentBlockToAgentPart(block: ContentBlock): AgentMessagePart {
+export function contentBlockToAgentPart(block: ContentBlock): AgentMessagePart {
 	switch (block.type) {
 		case "text":
 			return { type: "text", text: block.text };

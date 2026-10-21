@@ -374,6 +374,16 @@ function createMessage(
 	};
 }
 
+function pendingMessageParts(
+	content: string | AgentMessagePart[],
+): AgentMessagePart[] {
+	if (typeof content !== "string") {
+		return content;
+	}
+	const text = content.trim();
+	return text ? [{ type: "text", text }] : [];
+}
+
 function cloneUsage(usage: AgentUsage): AgentUsage {
 	return { ...usage };
 }
@@ -1689,11 +1699,11 @@ export class AgentRuntime {
 
 		// Read queued input at every request boundary, including retries and
 		// continuations within the first iteration.
-		const pendingUserMessage = await this.consumePendingUserMessage();
-		if (pendingUserMessage) {
+		const pendingUserMessages = await this.consumePendingUserMessages();
+		if (pendingUserMessages.length > 0) {
 			request = {
 				...request,
-				messages: [...request.messages, ...cloneMessages([pendingUserMessage])],
+				messages: [...request.messages, ...cloneMessages(pendingUserMessages)],
 			};
 		}
 
@@ -2294,25 +2304,35 @@ export class AgentRuntime {
 		return next;
 	}
 
-	private async consumePendingUserMessage(): Promise<AgentMessage | undefined> {
+	private async consumePendingUserMessages(): Promise<AgentMessage[]> {
 		const consumePendingUserMessage = this.config.consumePendingUserMessage;
 		if (!consumePendingUserMessage) {
-			return undefined;
+			return [];
 		}
-		const pending = (await consumePendingUserMessage())?.trim();
-		if (!pending) {
-			return undefined;
+		const pending = await consumePendingUserMessage();
+		const items = typeof pending === "string" ? [pending] : (pending ?? []);
+		const messages: AgentMessage[] = [];
+		for (const item of items) {
+			const { content, typedInput, displayRole } =
+				typeof item === "string" ? { content: item } : item;
+			const parts = pendingMessageParts(content);
+			if (parts.length === 0) {
+				continue;
+			}
+			const message = createMessage("user", parts, {
+				userRunSpan: 0,
+				...(typedInput ? { typedInput: true } : {}),
+				...(displayRole ? { displayRole } : {}),
+			});
+			this.state.messages.push(message);
+			await this.emit({
+				type: "message-added",
+				snapshot: this.snapshot(),
+				message,
+			});
+			messages.push(message);
 		}
-		const message = createMessage("user", [{ type: "text", text: pending }], {
-			userRunSpan: 0,
-		});
-		this.state.messages.push(message);
-		await this.emit({
-			type: "message-added",
-			snapshot: this.snapshot(),
-			message,
-		});
-		return message;
+		return messages;
 	}
 
 	private async updateUsage(usage: Partial<AgentUsage>): Promise<void> {

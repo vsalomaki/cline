@@ -239,7 +239,7 @@ agent waits, and in how long the helpers live.
 | | Subagents (`spawn_agent`) | Agent teams (`team_*` tools) |
 |---|---|---|
 | Main agent while they work | Waits for the result. Several subagents started in one response run in parallel | Keeps going. A task given with `runMode: "async"` runs in the background, and its result arrives as a new turn for the main agent |
-| You while they work | The main agent's turn is busy, so messages queue | You can keep talking to the main agent; a queued message is answered while teammates continue |
+| You while they work | Your messages reach the main agent at its next step, after the subagents report | You can keep talking to the main agent; a message is answered while teammates continue |
 | Lifetime | One task. A subagent starts fresh and ends when it reports | A teammate is created once with a role and keeps its conversation across the tasks it is given |
 | Communication | Task in, final answer out | The main agent can message one teammate or all of them, check status, wait for runs or cancel them, and track tasks on a shared task list |
 | Saved state | Each subagent's messages, under the session | The team (teammates, tasks, runs, messages), restored when the session resumes |

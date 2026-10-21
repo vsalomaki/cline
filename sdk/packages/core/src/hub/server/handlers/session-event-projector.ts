@@ -88,7 +88,11 @@ export async function projectSessionEvent(
 			ctx.publish(
 				ctx.buildEvent(
 					"session.pending_prompt_submitted",
-					{ sessionId: event.payload.sessionId, prompt },
+					{
+						sessionId: event.payload.sessionId,
+						prompt,
+						...(event.payload.midRun ? { midRun: true } : {}),
+					},
 					event.payload.sessionId,
 				),
 			);

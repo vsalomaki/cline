@@ -14,7 +14,7 @@ const HELP_ROWS: HelpRow[] = [
 		kind: "entry",
 		id: "k-enter",
 		key: "Enter",
-		desc: "Submit prompt (or select autocomplete)",
+		desc: "Submit prompt; while running, the agent reads it at its next step",
 	},
 	{
 		kind: "entry",
@@ -56,7 +56,7 @@ const HELP_ROWS: HelpRow[] = [
 		kind: "entry",
 		id: "k-ctrl-s",
 		key: "Ctrl+S",
-		desc: "Steer (send while agent is running)",
+		desc: "Send after the run (while agent is running)",
 	},
 	{
 		kind: "entry",
