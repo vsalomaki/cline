@@ -21,6 +21,7 @@ import {
 	createCompactionStateAwarePrepareTurn,
 	createContextCompactionPrepareTurn,
 	createImportedHistoryCompactionPrepareTurn,
+	resolveCompactionTriggerRatio,
 } from "../../extensions/context/compaction";
 import { formatSessionPluginIssue } from "../../extensions/plugin/plugin-registry";
 import type { ToolExecutors } from "../../extensions/tools";
@@ -866,6 +867,14 @@ export class LocalRuntimeHost implements RuntimeHost {
 			execution: configWithProvider.execution,
 			contextLimits: configWithProvider.contextLimits,
 			prepareTurn,
+			contextUsage: {
+				compactionTriggerRatio:
+					configWithProvider.compaction?.enabled === true
+						? resolveCompactionTriggerRatio(
+								configWithProvider.compaction.triggerRatio,
+							)
+						: undefined,
+			},
 			tools,
 			modelTools: runtime.modelTools,
 			hooks: bootstrap.hooks,

@@ -54,7 +54,10 @@ import type {
 	LocalRuntimeStartOptions,
 	RuntimeSessionConfig,
 } from "../../runtime/host/runtime-host";
-import { loadRulesForSystemPromptFromRecords } from "../../runtime/safety/rules";
+import {
+	createRulesPromptRule,
+	listEnabledRulesFromRecords,
+} from "../../runtime/safety/rules";
 import type { CoreSessionConfig } from "../../types/config";
 
 type RequestCapability = (
@@ -135,6 +138,9 @@ function parseToolContribution(
 		inputSchema,
 		...(cloneRecord(record.lifecycle)
 			? { lifecycle: cloneRecord(record.lifecycle) }
+			: {}),
+		...(typeof record.mcpServer === "string" && record.mcpServer
+			? { mcpServer: record.mcpServer }
 			: {}),
 	};
 }
@@ -398,12 +404,14 @@ function createUserInstructionServiceProxy(
 			},
 			setup(api) {
 				if (options.includeRules) {
-					api.registerRule({
-						id: "cline-hub-user-instructions:rules",
-						source: "hub-user-instructions",
-						content: () =>
-							loadRulesForSystemPromptFromRecords(snapshot.records.rule),
-					});
+					api.registerRule(
+						createRulesPromptRule({
+							id: "cline-hub-user-instructions:rules",
+							source: "hub-user-instructions",
+							listRules: () =>
+								listEnabledRulesFromRecords(snapshot.records.rule),
+						}),
+					);
 				}
 				if (options.registerSkillsTool) {
 					api.registerTool(
@@ -479,6 +487,7 @@ function createToolProxies(
 		description: contribution.description,
 		inputSchema: contribution.inputSchema,
 		lifecycle: contribution.lifecycle as AgentTool["lifecycle"],
+		mcpServer: contribution.mcpServer,
 		async execute(input, context) {
 			const response = await requestCapability(
 				sessionId,

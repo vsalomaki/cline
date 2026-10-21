@@ -71,7 +71,9 @@ export function HomeView(props: {
 	const placeholder =
 		session.uiMode === "plan" ? "Plan something..." : "What can I do for you?";
 	const modelDisplayName = resolveModelDisplayName(config);
-	const maxInputTokens = resolveModelMaxInputTokens(config);
+	const maxInputTokens =
+		session.contextUsage?.snapshot.windowTokens ??
+		resolveModelMaxInputTokens(config);
 	const hasAutocomplete =
 		props.autocomplete?.mode && props.autocomplete.options.length > 0;
 	const contentWidth = Math.min(width, HOME_VIEW_MAX_WIDTH);
@@ -142,6 +144,7 @@ export function HomeView(props: {
 								totalTokens={session.lastTotalTokens}
 								totalCost={session.lastTotalCost}
 								maxInputTokens={maxInputTokens}
+								compactAtTokens={session.contextUsage?.snapshot.compactAtTokens}
 								uiMode={session.uiMode}
 								autoApproveAll={session.autoApproveAll}
 								workspaceName={

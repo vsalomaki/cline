@@ -29,6 +29,8 @@ export interface AgentExtensionRule {
 	 * global-settings, and per-session policy filtering.
 	 */
 	whenToolAvailable?: string;
+	/** Sizes of the rule files the content is built from, for context usage. */
+	files?: () => ReadonlyArray<{ name: string; chars: number }>;
 }
 
 export interface AgentExtensionMessageBuilder<TMessage = unknown> {

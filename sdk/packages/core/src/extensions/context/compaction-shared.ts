@@ -5,6 +5,7 @@ import {
 	ESTIMATED_TOKENS_PER_IMAGE,
 	estimateTokens,
 	type MessageWithMetadata,
+	toSentMessage,
 } from "@cline/shared";
 
 export { CHARS_PER_TOKEN, estimateTokens };
@@ -246,7 +247,7 @@ export function createTokenEstimator(): EstimateMessageTokens {
 		// finished; see the matching comment in estimateRequestInputTokens.
 		let images = 0;
 		try {
-			serialized = JSON.stringify(message, replacer);
+			serialized = JSON.stringify(toSentMessage(message), replacer);
 			images = imageCount();
 		} catch {
 			serialized = serializeMessage(message);

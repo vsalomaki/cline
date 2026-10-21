@@ -1261,6 +1261,110 @@ describe("HubRuntimeHost", () => {
 		expect(submitted?.payload.midRun).toBe(midRun);
 	});
 
+	it("round-trips the lead's context usage on a usage event", async () => {
+		let onEvent: ((event: HubEventEnvelope) => void) | undefined;
+		subscribeMock.mockImplementation((listener) => {
+			onEvent = listener;
+			return () => {};
+		});
+		commandMock.mockResolvedValue({
+			payload: {
+				session: {
+					sessionId: "sess-1",
+					status: "running",
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+					workspaceRoot: "/tmp/project",
+					cwd: "/tmp/project",
+				},
+			},
+		});
+		const events: unknown[] = [];
+		const { HubRuntimeHost } = await import("./hub-runtime-host");
+		const host = new HubRuntimeHost({ url: "ws://127.0.0.1:25463/hub" });
+		host.subscribe((event) => events.push(event));
+		await host.startSession({
+			config: createConfig(),
+			source: SessionSource.CLI,
+			prompt: "Hey",
+		});
+		const ctx = {
+			sessionHost: {
+				getAccumulatedUsage: vi.fn().mockResolvedValue(undefined),
+			},
+			buildEvent: vi.fn<HubTransportContext["buildEvent"]>(
+				(event, payload, sessionId) => ({
+					version: "v1",
+					event,
+					payload,
+					sessionId,
+				}),
+			),
+			publish: (event: HubEventEnvelope) => {
+				onEvent?.(JSON.parse(JSON.stringify(event)));
+			},
+		} as unknown as HubTransportContext;
+		const contextUsage = {
+			estimatedTotal: 60,
+			categories: {
+				systemPrompt: 10,
+				rules: [
+					{
+						id: "rules",
+						source: "combined-user-instructions",
+						tokens: 5,
+						files: [{ name: "style", tokens: 4 }],
+					},
+				],
+				memory: 2,
+				tools: {
+					builtin: 20,
+					extension: 3,
+					mcp: [{ server: "docs", tokens: 4 }],
+				},
+				messages: {
+					conversation: 8,
+					toolCalls: 2,
+					toolResults: 4,
+					filesAndImages: 1,
+					summary: 1,
+				},
+			},
+			windowTokens: 200_000,
+			compactAtTokens: 180_000,
+		};
+
+		await projectSessionEvent(ctx, {
+			type: "agent_event",
+			payload: {
+				sessionId: "sess-1",
+				event: {
+					type: "usage",
+					agentId: "agent-lead",
+					conversationId: "conv-lead",
+					inputTokens: 120,
+					outputTokens: 5,
+					totalInputTokens: 120,
+					totalOutputTokens: 5,
+					contextUsage,
+				},
+			},
+		});
+
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				type: "agent_event",
+				payload: expect.objectContaining({
+					event: expect.objectContaining({
+						type: "usage",
+						inputTokens: 120,
+						contextUsage,
+					}),
+				}),
+			}),
+		);
+	});
+
 	it("synthesizes done from run.completed when no agent.done was observed", async () => {
 		let onEvent:
 			| ((event: {

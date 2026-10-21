@@ -918,6 +918,8 @@ export interface HubClientToolContribution extends HubClientContributionBase {
 	description: string;
 	inputSchema: Record<string, JsonValue | undefined>;
 	lifecycle?: Record<string, JsonValue | undefined>;
+	/** The MCP server the tool comes from, for context usage. */
+	mcpServer?: string;
 }
 
 export interface HubClientHookContribution extends HubClientContributionBase {

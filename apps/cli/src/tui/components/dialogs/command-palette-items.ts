@@ -9,6 +9,7 @@ export type CommandPaletteAction =
 	| "mcp"
 	| "plugins"
 	| "compact"
+	| "context"
 	| "skills"
 	| "memory"
 	| "fork"
@@ -95,6 +96,13 @@ const ACTION_ITEMS: Array<{
 		shortcut: "Opt+X",
 		description: "Compact context",
 		keywords: ["compact", "context", "compress"],
+	},
+	{
+		action: "context",
+		label: "Show Context Usage",
+		shortcut: "Opt+I",
+		description: "Show what fills the context window",
+		keywords: ["context", "tokens", "usage", "window"],
 	},
 	{
 		action: "skills",

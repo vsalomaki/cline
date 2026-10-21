@@ -54,6 +54,7 @@ export type {
 	ClineAccountActionRequest,
 	ConnectorHookEvent,
 	ContentBlock,
+	ContextUsageSnapshot,
 	FeatureFlagPayload,
 	FeatureFlagsAndPayloads,
 	FeatureFlagsContext,
@@ -118,6 +119,7 @@ export {
 	parseUserCommandEnvelope,
 	registerDisposable,
 	SDK_ERROR_TELEMETRY_EVENT,
+	scaleContextUsage,
 	stripUtf8Bom,
 } from "@cline/shared";
 export * from "@cline/shared/storage";
@@ -855,6 +857,8 @@ export {
 	accumulateUsageTotals,
 	createInitialAccumulatedUsage,
 	getCurrentContextSize,
+	getLastContextUsage,
+	type LastContextUsage,
 	summarizeUsageFromMessages,
 } from "./services/usage";
 export type {
@@ -1018,6 +1022,10 @@ export {
 	createCompactionStateAwarePrepareTurn,
 	createContextCompactionPrepareTurn,
 } from "./extensions/context/compaction";
+export {
+	DEFAULT_MAX_INPUT_TOKENS,
+	resolveCompactionWindowTokens,
+} from "./extensions/context/compaction-shared";
 export {
 	ALL_DEFAULT_TOOL_NAMES,
 	type ApplyPatchExecutor,

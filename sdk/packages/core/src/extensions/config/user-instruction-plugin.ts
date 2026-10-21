@@ -1,5 +1,8 @@
 import type { AgentExtension, AgentTool } from "@cline/shared";
-import { loadRulesForSystemPromptFromWatcher } from "../../runtime/safety/rules";
+import {
+	createRulesPromptRule,
+	listEnabledRulesFromWatcher,
+} from "../../runtime/safety/rules";
 import {
 	createSkillsTool,
 	type SkillsExecutor,
@@ -253,11 +256,13 @@ export function createUserInstructionPlugin(
 			await watcherReady;
 
 			if (options.includeRules) {
-				api.registerRule({
-					id: "cline-user-instructions:rules",
-					source: "user-instruction-watcher",
-					content: () => loadRulesForSystemPromptFromWatcher(options.watcher),
-				});
+				api.registerRule(
+					createRulesPromptRule({
+						id: "cline-user-instructions:rules",
+						source: "user-instruction-watcher",
+						listRules: () => listEnabledRulesFromWatcher(options.watcher),
+					}),
+				);
 			}
 
 			if (options.registerSkillsTool) {

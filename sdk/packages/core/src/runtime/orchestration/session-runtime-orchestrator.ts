@@ -38,6 +38,7 @@ import {
 	type AgentRuntimePrepareTurnContext,
 	type AgentTool,
 	type BasicLogger,
+	type ContextUsageSnapshot,
 	type ContributionRegistry,
 	createContributionRegistry,
 	type ITelemetryService,
@@ -53,11 +54,21 @@ import {
 	type ToolCallRecord,
 	usesImageGenerationOperation,
 } from "@cline/shared";
+import {
+	DEFAULT_MAX_INPUT_TOKENS,
+	resolveCompactionWindowTokens,
+} from "../../extensions/context/compaction-shared";
 import { createCodeIntelligenceMetadata } from "../../extensions/tools/code-intelligence/problems-after-edit";
 import type {
 	CodeIntelligenceProvider,
 	ProblemsAfterEditLevel,
 } from "../../extensions/tools/code-intelligence/types";
+import {
+	type ComposedPromptRule,
+	type ComposedSystemPrompt,
+	type ContextUsageRequest,
+	createContextUsageMeter,
+} from "../../services/context-usage/context-usage";
 import { filterDisabledTools } from "../../services/global-settings";
 import {
 	createAgentModelFromConfig,
@@ -366,7 +377,17 @@ export interface SessionRuntimeConfig extends AgentConfig {
 	codeIntelligence?: CodeIntelligenceProvider;
 	problemsAfterEdit?: ProblemsAfterEditLevel;
 	problemsTimeoutMs?: number;
+	/**
+	 * Set for the lead agent: each request's usage event then says what the
+	 * request was made of. The ratio is present when auto-compaction is on.
+	 */
+	contextUsage?: { compactionTriggerRatio?: number };
 }
+
+type RunContextUsage = Omit<
+	ContextUsageRequest,
+	"systemPrompt" | "messages" | "tools"
+>;
 
 /**
  * Per-session orchestrator. Construct once per agent session; call
@@ -435,7 +456,13 @@ export class SessionRuntime {
 	/** Promise returned from the current run so shutdown can await its drain. */
 	private activeRunPromise: Promise<AgentResult> | null = null;
 	/** Per-run `Agent → AgentEvent` adapter; `reset()` each run. */
-	private readonly eventAdapter = new RuntimeEventAdapter();
+	private readonly eventAdapter = new RuntimeEventAdapter(
+		() => this.pendingContextUsage,
+	);
+	private readonly measureContextUsage = createContextUsageMeter();
+	private runContextUsage: RunContextUsage | undefined;
+	/** The snapshot of the request in flight, until its response arrives. */
+	private pendingContextUsage: ContextUsageSnapshot | undefined;
 	/** Session-shutdown gate — rejects late runs. */
 	private shutdownCalled = false;
 	/** Running tally of tool-call records for `AgentResult.toolCalls`. */
@@ -824,8 +851,9 @@ export class SessionRuntime {
 
 	private async composeSystemPrompt(
 		availableToolNames: ReadonlySet<string>,
-	): Promise<string> {
-		const rules: string[] = [];
+	): Promise<ComposedSystemPrompt> {
+		const contents: string[] = [];
+		const rules: ComposedPromptRule[] = [];
 		for (const rule of this.contributionRegistry.getRegisteredRules()) {
 			if (
 				rule.whenToolAvailable &&
@@ -835,10 +863,19 @@ export class SessionRuntime {
 			}
 			const content = await resolveRuleContent(rule);
 			if (content) {
-				rules.push(content);
+				contents.push(content);
+				rules.push({
+					id: rule.id,
+					source: rule.source,
+					chars: content.length,
+					files: rule.files?.(),
+				});
 			}
 		}
-		return mergeSystemPromptRules(this.config.systemPrompt, rules);
+		return {
+			text: mergeSystemPromptRules(this.config.systemPrompt, contents),
+			rules,
+		};
 	}
 
 	private getRunAdmissionError(): Error | undefined {
@@ -1058,9 +1095,29 @@ export class SessionRuntime {
 			this.config.toolPolicies,
 		);
 		const tools = toolCallingDisabled ? [] : availableTools;
-		const systemPrompt = await this.composeSystemPrompt(
+		const composedPrompt = await this.composeSystemPrompt(
 			new Set(tools.map((tool) => tool.name)),
 		);
+		this.runContextUsage = this.config.contextUsage
+			? {
+					composedPrompt,
+					toolOrigins: new Map(
+						tools.map((tool) => [
+							tool.name,
+							tool.mcpServer
+								? { mcp: tool.mcpServer }
+								: extensionToolsByName.get(tool.name) === tool
+									? "extension"
+									: "builtin",
+						]),
+					),
+					windowTokens:
+						resolveCompactionWindowTokens(modelInfo ?? {}) ??
+						DEFAULT_MAX_INPUT_TOKENS,
+					compactionTriggerRatio:
+						this.config.contextUsage.compactionTriggerRatio,
+				}
+			: undefined;
 		// Seed initialMessages with the full prior transcript (including
 		// the user message we just appended) so multi-turn history is
 		// preserved across runs. Fixes P1 #1: prior turns were silently
@@ -1102,7 +1159,7 @@ export class SessionRuntime {
 			prepareTurn: this.createRuntimePrepareTurn(modelInfo, tools),
 			initialMessages,
 			completionPolicy: toolCallingDisabled ? null : undefined,
-			systemPrompt,
+			systemPrompt: composedPrompt.text,
 		});
 		const runtime = this.createAgentRuntimeImpl(runtimeConfig);
 		this.activeRuntime = runtime;
@@ -1263,10 +1320,29 @@ export class SessionRuntime {
 				const messages = control?.messages ?? ctx.request.messages;
 				const preparedMessages =
 					await this.prepareMessagesForModelRequest(messages);
+				if (this.runContextUsage) {
+					this.pendingContextUsage = this.measureContextUsage({
+						...this.runContextUsage,
+						systemPrompt: ctx.request.systemPrompt,
+						messages: preparedMessages,
+						tools: control?.tools ?? ctx.request.tools,
+					});
+				}
 				return {
 					...control,
 					messages: preparedMessages,
 				};
+			},
+			afterModel: async (ctx) => {
+				// Message metadata is persisted but never sent, so a resumed
+				// session can still show the last request's breakdown.
+				if (this.pendingContextUsage) {
+					ctx.assistantMessage.metadata = {
+						...ctx.assistantMessage.metadata,
+						contextUsage: this.pendingContextUsage,
+					};
+				}
+				return hooks.afterModel?.(ctx);
 			},
 		};
 	}

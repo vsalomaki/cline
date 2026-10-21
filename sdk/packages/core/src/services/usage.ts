@@ -1,4 +1,6 @@
 import type * as LlmsProviders from "@cline/llms";
+import type { ContextUsageSnapshot } from "@cline/shared";
+import { isCompactionSummaryMessage } from "../extensions/context/compaction-shared";
 import type { SessionAccumulatedUsage } from "../runtime/host/runtime-host";
 
 export function createInitialAccumulatedUsage(): SessionAccumulatedUsage {
@@ -82,6 +84,49 @@ export function getCurrentContextSize(
 		if (message?.role !== "assistant") continue;
 		const inputTokens = asNumber(message.metrics?.inputTokens);
 		return inputTokens > 0 ? inputTokens : undefined;
+	}
+	return undefined;
+}
+
+export interface LastContextUsage {
+	snapshot: ContextUsageSnapshot;
+	/** The provider's input count for the same request. */
+	inputTokens: number;
+	/** A compaction summary came after the request, so the context has shrunk since. */
+	compactedAfter: boolean;
+}
+
+/**
+ * The breakdown stored on the latest assistant message, if it has one.
+ * `compactedThrough` is the message count a saved compaction covers; a request
+ * inside it came before that compaction.
+ */
+export function getLastContextUsage(
+	messages: readonly LlmsProviders.Message[],
+	compactedThrough = 0,
+): LastContextUsage | undefined {
+	const canonical = (
+		messages as readonly LlmsProviders.MessageWithMetadata[]
+	).filter((message) => message.metadata?.displayOnly !== true);
+	let compactedAfter = false;
+	for (let i = canonical.length - 1; i >= 0; i -= 1) {
+		const message = canonical[i];
+		if (isCompactionSummaryMessage(message)) {
+			compactedAfter = true;
+			continue;
+		}
+		if (message.role !== "assistant") continue;
+		const snapshot = message.metadata?.contextUsage as
+			| ContextUsageSnapshot
+			| undefined;
+		const inputTokens = asNumber(message.metrics?.inputTokens);
+		return snapshot && inputTokens > 0
+			? {
+					snapshot,
+					inputTokens,
+					compactedAfter: compactedAfter || i < compactedThrough,
+				}
+			: undefined;
 	}
 	return undefined;
 }

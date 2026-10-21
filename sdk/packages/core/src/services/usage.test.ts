@@ -1,6 +1,10 @@
 import type { MessageWithMetadata } from "@cline/llms";
 import { describe, expect, it } from "vitest";
-import { getCurrentContextSize, summarizeUsageFromMessages } from "./usage";
+import {
+	getCurrentContextSize,
+	getLastContextUsage,
+	summarizeUsageFromMessages,
+} from "./usage";
 
 function assistant(
 	metrics?: MessageWithMetadata["metrics"],
@@ -71,5 +75,61 @@ describe("summarizeUsageFromMessages", () => {
 				assistant({ inputTokens: 200, outputTokens: 20, cost: 0.02 }),
 			]).totalCost,
 		).toBe(0.03);
+	});
+});
+
+describe("getLastContextUsage", () => {
+	const snapshot = {
+		estimatedTotal: 100,
+		windowTokens: 1_000,
+		categories: {},
+	};
+	function measured(): MessageWithMetadata {
+		return {
+			...assistant({ inputTokens: 150 }),
+			metadata: { contextUsage: snapshot },
+		};
+	}
+
+	it("reads the latest assistant message's breakdown", () => {
+		expect(getLastContextUsage([user(), measured(), user()])).toEqual({
+			snapshot,
+			inputTokens: 150,
+			compactedAfter: false,
+		});
+	});
+
+	it("is undefined without a breakdown", () => {
+		expect(getLastContextUsage([user(), assistant({ inputTokens: 5 })])).toBe(
+			undefined,
+		);
+	});
+
+	it("marks a compaction summary that came after the request", () => {
+		const summary: MessageWithMetadata = {
+			role: "user",
+			content: "summary",
+			metadata: { kind: "compaction_summary" },
+		};
+		expect(
+			getLastContextUsage([user(), measured(), summary])?.compactedAfter,
+		).toBe(true);
+	});
+
+	it("marks a request a saved compaction covers", () => {
+		const messages = [user(), measured(), user()];
+		expect(getLastContextUsage(messages, 2)?.compactedAfter).toBe(true);
+		expect(getLastContextUsage(messages, 1)?.compactedAfter).toBe(false);
+	});
+
+	it("leaves display-only messages out of the compaction count", () => {
+		const notice: MessageWithMetadata = {
+			role: "user",
+			content: "notice",
+			metadata: { displayOnly: true },
+		};
+		const messages = [user(), notice, measured()];
+		expect(getLastContextUsage(messages, 2)?.compactedAfter).toBe(true);
+		expect(getLastContextUsage(messages, 1)?.compactedAfter).toBe(false);
 	});
 });

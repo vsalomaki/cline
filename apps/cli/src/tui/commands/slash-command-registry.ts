@@ -22,6 +22,7 @@ export type LocalSlashCommandName =
 	| "model"
 	| "theme"
 	| "compact"
+	| "context"
 	| "skills"
 	| "memory"
 	| "fork"
@@ -89,6 +90,10 @@ const TUI_LOCAL_COMMANDS: Array<{
 		description: "Compact context",
 	},
 	{
+		name: "context",
+		description: "Show what fills the context window",
+	},
+	{
 		name: "skills",
 		description: "Browse skills and workflows",
 		preserveInput: true,
@@ -131,6 +136,7 @@ const SYSTEM_COMMAND_ORDER = [
 	"mcp",
 	"plugins",
 	"compact",
+	"context",
 	"skills",
 	"memory",
 	"fork",

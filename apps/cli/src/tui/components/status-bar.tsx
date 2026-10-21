@@ -1,5 +1,6 @@
 import type { AgentMode } from "@cline/core";
 import { useTerminalDimensions } from "@opentui/react";
+import { formatContextPercent } from "../../utils/context-usage";
 import {
 	shouldShowCliUsageCost,
 	shouldShowCliUsageCoveredBySubscription,
@@ -32,6 +33,18 @@ export function createContextBar(
 		filled: "\u2588".repeat(filledCount),
 		empty: "\u2588".repeat(emptyCount),
 	};
+}
+
+/** The bar cell where auto-compaction starts, while the fill is short of it. */
+export function resolveCompactionMarker(
+	filledCells: number,
+	total: number,
+	compactAt?: number,
+	width = 6,
+): number | undefined {
+	if (!compactAt || total <= 0) return undefined;
+	const index = Math.min(width - 1, Math.floor((compactAt / total) * width));
+	return index >= filledCells ? index : undefined;
 }
 
 export function resolveContextBarFilledForeground(
@@ -131,6 +144,7 @@ export interface StatusBarProps {
 	totalTokens: number;
 	totalCost: number;
 	maxInputTokens?: number;
+	compactAtTokens?: number;
 	uiMode: AgentMode;
 	autoApproveAll: boolean;
 	workspaceName: string;
@@ -150,6 +164,7 @@ export function StatusBar(props: StatusBarProps) {
 		totalTokens,
 		totalCost,
 		maxInputTokens,
+		compactAtTokens,
 		uiMode,
 		autoApproveAll,
 		workspaceName,
@@ -164,6 +179,7 @@ export function StatusBar(props: StatusBarProps) {
 	const contextBarFilledFg = resolveContextBarFilledForeground(defaultFg);
 	const actAccent = theme.accents.act;
 	const planAccent = theme.accents.plan;
+	const compactionMarkerFg = theme.accents.plan;
 	const successColor = theme.accents.success;
 	const hasMaxInputTokens =
 		typeof maxInputTokens === "number" &&
@@ -172,6 +188,14 @@ export function StatusBar(props: StatusBarProps) {
 	const bar = hasMaxInputTokens
 		? createContextBar(totalTokens, maxInputTokens)
 		: undefined;
+	const filledCells = bar?.filled.length ?? 0;
+	const marker = hasMaxInputTokens
+		? resolveCompactionMarker(filledCells, maxInputTokens, compactAtTokens)
+		: undefined;
+	const markerOffset = marker === undefined ? undefined : marker - filledCells;
+	const percentText = hasMaxInputTokens
+		? `${formatContextPercent(totalTokens, maxInputTokens)} `
+		: "";
 
 	// Available content width after accounting for padding.
 	// Home view: parent box is capped at 60 wide, status bar adds paddingX=1 (-2).
@@ -191,7 +215,7 @@ export function StatusBar(props: StatusBarProps) {
 		providerId: props.providerId,
 	});
 	const contextText = bar
-		? ` ${bar.filled}${bar.empty} ${usageText}`
+		? ` ${bar.filled}${bar.empty} ${percentText}${usageText}`
 		: ` ${usageText}`;
 	const firstRowFits =
 		modelId.length + contextText.length + toggleWidth + 1 <= avail;
@@ -201,9 +225,20 @@ export function StatusBar(props: StatusBarProps) {
 			{bar && (
 				<>
 					<span fg={contextBarFilledFg}>{bar.filled}</span>
-					<span fg="gray">{bar.empty}</span>{" "}
+					{markerOffset === undefined ? (
+						<span fg="gray">{bar.empty}</span>
+					) : (
+						<>
+							<span fg="gray">{bar.empty.slice(0, markerOffset)}</span>
+							<span fg={compactionMarkerFg}>
+								{bar.empty.slice(markerOffset, markerOffset + 1)}
+							</span>
+							<span fg="gray">{bar.empty.slice(markerOffset + 1)}</span>
+						</>
+					)}{" "}
 				</>
 			)}
+			{percentText}
 			{usageText}
 		</>
 	);

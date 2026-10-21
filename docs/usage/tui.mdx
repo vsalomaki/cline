@@ -33,10 +33,18 @@ cline -i
 - `Ctrl+C` to abort a running turn; press again to exit
 - `Ctrl+D` to exit when the prompt is empty and idle
 - `Ctrl+L` to clear the chat view or current conversation
-- `/settings`, `/model`, `/account`, `/mcp`, `/compact`, `/undo`, `/clear`, `/history`, `/help`, `/quit`
+- `/settings`, `/model`, `/account`, `/mcp`, `/compact`, `/context`, `/undo`, `/clear`, `/history`, `/help`, `/quit`
 - `@file` mentions for workspace context
 
-The status area shows the active model, context usage, cost, workspace/branch, git diff stats, Plan/Act state, and whether auto-approve all is enabled.
+The status area shows the active model, context usage, cost, workspace/branch, git diff stats, Plan/Act state, and whether auto-approve all is enabled. Context usage is the size of the agent's last request as a share of the model's context window; when auto-compaction is on, a yellow cell in the bar marks where it starts.
+
+## Context Usage
+
+`/context` (or `Opt+I`) shows what the agent's last request was made of: the system prompt, rules (per rule file), memory, tools (built-in, extension, and each MCP server), and messages (conversation, tool calls, tool results, files and images, compaction summary), with the free space left and the point where auto-compaction starts. Cline estimates the split and scales it to the provider's reported input tokens, so the parts add up to the request's real size.
+
+After a compaction the breakdown still describes the request before it until the agent sends the next one. A resumed session shows the breakdown saved with its last request.
+
+With `--verbose`, headless runs end with the same number: `context 12,345 of 200,000 (6%)`.
 
 ## Messages While the Agent Works
 

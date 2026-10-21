@@ -7,7 +7,7 @@ import {
 	type ToolApprovalRequest,
 	type ToolApprovalResult,
 } from "@cline/core";
-import type { AgentTool, Message } from "@cline/shared";
+import type { AgentTool, Message, MessageWithMetadata } from "@cline/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatCommandState } from "../../utils/chat-commands";
 import type { Config } from "../../utils/types";
@@ -857,6 +857,42 @@ describe("createInteractiveSessionRuntime", () => {
 				}),
 				initialMessages: messages,
 			}),
+		);
+	});
+
+	it("marks the saved breakdown when a manual compaction came after it", async () => {
+		const manager = makeManager();
+		const messages: MessageWithMetadata[] = [
+			{ role: "user", content: "hello" },
+			{
+				role: "assistant",
+				content: "world",
+				metrics: { inputTokens: 150 },
+				metadata: {
+					contextUsage: {
+						estimatedTotal: 100,
+						windowTokens: 1_000,
+						categories: {},
+					},
+				},
+			},
+		];
+		manager.readMessages.mockResolvedValue(messages);
+		const runtime = await makeRuntime(manager);
+		await runtime.ensureReady();
+
+		expect((await runtime.readCurrentContextUsage())?.compactedAfter).toBe(
+			false,
+		);
+
+		manager.readSessionCompactionState.mockResolvedValue(
+			createSessionCompactionState({
+				sourceMessages: messages,
+				compactedMessages: [{ role: "user", content: "summary" }],
+			}),
+		);
+		expect((await runtime.readCurrentContextUsage())?.compactedAfter).toBe(
+			true,
 		);
 	});
 

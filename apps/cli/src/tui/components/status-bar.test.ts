@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createContextBar,
 	formatStatusBarUsageText,
+	resolveCompactionMarker,
 	resolveContextBarFilledForeground,
 	resolveModelDisplayName,
 } from "./status-bar";
@@ -128,5 +129,17 @@ describe("resolveModelDisplayName", () => {
 				},
 			}),
 		).toBe("GLM 5.2");
+	});
+});
+
+describe("resolveCompactionMarker", () => {
+	it("places the compaction point while the fill is short of it", () => {
+		expect(resolveCompactionMarker(1, 200_000, 180_000)).toBe(5);
+		expect(resolveCompactionMarker(1, 200_000, 120_000)).toBe(3);
+	});
+
+	it("drops the marker once the fill reaches it or compaction is off", () => {
+		expect(resolveCompactionMarker(6, 200_000, 180_000)).toBeUndefined();
+		expect(resolveCompactionMarker(1, 200_000, undefined)).toBeUndefined();
 	});
 });

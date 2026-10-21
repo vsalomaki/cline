@@ -1,6 +1,7 @@
 import {
 	type AgentEvent,
 	type AgentResult,
+	type LastContextUsage,
 	type ProviderSettings,
 	prewarmFileIndex,
 	SessionSource,
@@ -17,6 +18,10 @@ import {
 	submitAndExitInTerminal,
 } from "../utils/approval";
 import { formatCliErrorMessage } from "../utils/cline-pass-errors";
+import {
+	contextUsageFromEvent,
+	formatContextUsageStat,
+} from "../utils/context-usage";
 import { handleEvent, handleTeamEvent } from "../utils/events";
 import {
 	shouldZeroClineFreeModelCost,
@@ -93,6 +98,7 @@ function printRunStats(
 	config: Config,
 	result: AgentResult,
 	usage: AgentResult["usage"],
+	contextUsage: LastContextUsage | undefined,
 	startTime: number,
 	reasoningChunkCount: number,
 	redactedReasoningChunkCount: number,
@@ -123,6 +129,9 @@ function printRunStats(
 		}
 		if (result.iterations > 1) {
 			parts.push(`${result.iterations} iterations`);
+		}
+		if (contextUsage) {
+			parts.push(formatContextUsageStat(contextUsage));
 		}
 		writeln(`${c.dim}[${parts.join(" | ")}]${c.reset}`);
 		if (config.thinking) {
@@ -193,8 +202,12 @@ export async function runAgent(
 	const displayedErrorMessages = new Set<string>();
 	const shouldZeroCost = await shouldZeroClineFreeModelCost(config);
 
+	let lastContextUsage: LastContextUsage | undefined;
 	const onAgentEvent = (rawEvent: AgentEvent): void => {
 		const event = zeroCliAgentEventCost(rawEvent, shouldZeroCost);
+		if (event.type === "usage") {
+			lastContextUsage = contextUsageFromEvent(event) ?? lastContextUsage;
+		}
 		if (event.type === "content_start" && event.contentType === "reasoning") {
 			reasoningChunkCount += 1;
 			if (event.redacted) {
@@ -416,6 +429,7 @@ export async function runAgent(
 			config,
 			result,
 			usage,
+			lastContextUsage,
 			startTime,
 			reasoningChunkCount,
 			redactedReasoningChunkCount,

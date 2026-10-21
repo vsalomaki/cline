@@ -5,6 +5,7 @@ import type {
 	AgentResult,
 	AgentToolContext,
 	AgentUsage,
+	ContextUsageSnapshot,
 	HubClientContribution,
 	HubEventEnvelope,
 	SessionRecord as HubSessionRecord,
@@ -287,6 +288,7 @@ function buildClientContributionRegistration(
 							),
 						}
 					: {}),
+				...(tool.mcpServer ? { mcpServer: tool.mcpServer } : {}),
 				capabilityName: `${HUB_CUSTOM_TOOL_CAPABILITY_PREFIX}${tool.name}`,
 			},
 			async ({ payload, abortSignal, progress }) => {
@@ -536,6 +538,10 @@ function usageEventFromPayload(payload: Record<string, unknown> | undefined): {
 			totalCacheReadTokens: usageMetric(totals, "cacheReadTokens"),
 			totalCacheWriteTokens: usageMetric(totals, "cacheWriteTokens"),
 			totalCost: finiteNumber(totals?.totalCost),
+			contextUsage:
+				payload?.contextUsage && typeof payload.contextUsage === "object"
+					? (payload.contextUsage as ContextUsageSnapshot)
+					: undefined,
 		},
 		teamAgentId:
 			typeof agent?.teamAgentId === "string" ? agent.teamAgentId : undefined,

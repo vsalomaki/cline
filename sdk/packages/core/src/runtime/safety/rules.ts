@@ -1,3 +1,4 @@
+import type { AgentExtensionRule } from "@cline/shared";
 import type {
 	RuleConfig,
 	UserInstructionConfigWatcher,
@@ -14,10 +15,30 @@ export function formatRulesForSystemPrompt(
 		return "";
 	}
 
-	const renderedRules = rules
-		.map((rule) => `## ${rule.name}\n${rule.instructions}`)
-		.join("\n\n");
+	const renderedRules = rules.map(formatRuleSection).join("\n\n");
 	return `\n\n# Rules\n${renderedRules}`;
+}
+
+function formatRuleSection(rule: RuleConfig): string {
+	return `## ${rule.name}\n${rule.instructions}`;
+}
+
+/** The system prompt rule for a set of rule files, with each file's size. */
+export function createRulesPromptRule(input: {
+	id: string;
+	source: string;
+	listRules: () => RuleConfig[];
+}): AgentExtensionRule {
+	return {
+		id: input.id,
+		source: input.source,
+		content: () => formatRulesForSystemPrompt(input.listRules()),
+		files: () =>
+			input.listRules().map((rule) => ({
+				name: rule.name,
+				chars: formatRuleSection(rule).length,
+			})),
+	};
 }
 
 export function mergeRulesForSystemPrompt(
@@ -61,10 +82,4 @@ export function listEnabledRulesFromWatcher(
 			item: record.item as RuleConfig,
 		})),
 	);
-}
-
-export function loadRulesForSystemPromptFromWatcher(
-	watcher: UserInstructionConfigWatcher,
-): string {
-	return formatRulesForSystemPrompt(listEnabledRulesFromWatcher(watcher));
 }

@@ -3,6 +3,7 @@ import type {
 	AgentMode,
 	CheckpointEntry,
 	ClineSubscriptionPlan,
+	LastContextUsage,
 	TeamEvent,
 } from "@cline/core";
 import type {
@@ -213,6 +214,8 @@ export interface TuiProps {
 	) => Promise<string>;
 	onDeleteHistorySession: (sessionId: string) => Promise<boolean>;
 	onCompact: () => Promise<InteractiveCompactionResult>;
+	/** The breakdown saved with the session's latest request. */
+	loadContextUsage: () => Promise<LastContextUsage | undefined>;
 	onFork: () => Promise<
 		| {
 				forkedFromSessionId: string;

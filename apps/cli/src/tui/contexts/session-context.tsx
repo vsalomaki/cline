@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentMode } from "@cline/core";
+import type { AgentEvent, AgentMode, LastContextUsage } from "@cline/core";
 import type React from "react";
 import {
 	createContext,
@@ -23,6 +23,8 @@ interface SessionContextValue {
 	compactionMode: CliCompactionMode;
 	lastTotalTokens: number;
 	lastTotalCost: number;
+	/** The lead's latest request breakdown seen in this TUI. */
+	contextUsage: LastContextUsage | undefined;
 	isExitRequested: boolean;
 
 	appendEntry: (entry: ChatEntry) => void;
@@ -38,6 +40,8 @@ interface SessionContextValue {
 	setLastTotalTokens: (v: number) => void;
 	setLastTotalCost: (v: number) => void;
 	addUsageDelta: (usage: UsageDelta) => void;
+	setContextUsage: (usage: LastContextUsage | undefined) => void;
+	markContextCompacted: () => void;
 	setUiMode: (mode: AgentMode) => void;
 	toggleMode: () => void;
 	toggleAutoApprove: () => void;
@@ -136,6 +140,12 @@ export function SessionProvider(props: {
 	const [lastTotalCost, setLastTotalCost] = useState(
 		() => initialUsage?.totalCost ?? 0,
 	);
+	const [contextUsage, setContextUsage] = useState<
+		LastContextUsage | undefined
+	>(undefined);
+	const markContextCompacted = useCallback(() => {
+		setContextUsage((prev) => prev && { ...prev, compactedAfter: true });
+	}, []);
 	const [isExitRequested, setIsExitRequested] = useState(false);
 
 	const activeInlineStreamRef = useRef<InlineStream>(undefined);
@@ -234,6 +244,7 @@ export function SessionProvider(props: {
 		setEntries([]);
 		setLastTotalTokens(0);
 		setLastTotalCost(0);
+		setContextUsage(undefined);
 	}, []);
 
 	const addUsageDelta = useCallback((usage: UsageDelta) => {
@@ -270,6 +281,7 @@ export function SessionProvider(props: {
 		compactionMode,
 		lastTotalTokens,
 		lastTotalCost,
+		contextUsage,
 		isExitRequested,
 		appendEntry,
 		updateLastEntry,
@@ -283,6 +295,8 @@ export function SessionProvider(props: {
 		setLastTotalTokens,
 		setLastTotalCost,
 		addUsageDelta,
+		setContextUsage,
+		markContextCompacted,
 		setUiMode,
 		toggleMode,
 		toggleAutoApprove,

@@ -7,6 +7,19 @@ import {
 } from "./tokens";
 
 describe("estimateRequestInputTokens", () => {
+	it("ignores message fields that are never sent", () => {
+		const bare = { role: "assistant", content: "short" };
+		const stored = {
+			...bare,
+			id: "msg-1",
+			metadata: { contextUsage: "x".repeat(2_000) },
+		};
+
+		expect(estimateRequestInputTokens({ messages: [stored] })).toBe(
+			estimateRequestInputTokens({ messages: [bare] }),
+		);
+	});
+
 	it("estimates text-only messages by char count", () => {
 		const message = { role: "user", content: "hello world" };
 		const tokens = estimateRequestInputTokens({ messages: [message] });

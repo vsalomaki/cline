@@ -61,6 +61,7 @@ import type {
 	AgentTextPart,
 	AgentToolResultPart,
 	AgentUsage,
+	ContextUsageSnapshot,
 	LegacyAgentUsage,
 } from "@cline/shared";
 
@@ -172,6 +173,12 @@ function deriveToolError(
  * `run-started`, `message-added`).
  */
 export class RuntimeEventAdapter {
+	constructor(
+		private readonly getContextUsage: () =>
+			| ContextUsageSnapshot
+			| undefined = () => undefined,
+	) {}
+
 	private lastUsage: AgentUsage = {
 		inputTokens: 0,
 		outputTokens: 0,
@@ -368,6 +375,7 @@ export class RuntimeEventAdapter {
 		const prevReasoning = this.lastUsage.reasoningTokenCount ?? 0;
 		const nextReasoning = next.reasoningTokenCount ?? 0;
 		const deltaReasoning = nextReasoning - prevReasoning;
+		const contextUsage = this.getContextUsage();
 		this.lastUsage = {
 			inputTokens: next.inputTokens,
 			outputTokens: next.outputTokens,
@@ -395,6 +403,7 @@ export class RuntimeEventAdapter {
 				totalCacheWriteTokens:
 					next.cacheWriteTokens === 0 ? undefined : next.cacheWriteTokens,
 				totalCost: next.totalCost,
+				...(contextUsage ? { contextUsage } : {}),
 			},
 		];
 	}

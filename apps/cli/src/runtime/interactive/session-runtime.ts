@@ -7,7 +7,9 @@ import {
 	type CoreSettingsSnapshot,
 	type CoreSettingsToggleInput,
 	createSessionCompactionState,
+	getLastContextUsage,
 	isSessionNotFoundError,
+	type LastContextUsage,
 	type PendingPromptMutationResult,
 	type ProviderSettingsManager,
 	projectSessionCompactionState,
@@ -417,6 +419,16 @@ export function createInteractiveSessionRuntime(input: {
 			return undefined;
 		}
 		return await readCompactionState(activeSessionId);
+	};
+
+	const readCurrentContextUsage = async (): Promise<
+		LastContextUsage | undefined
+	> => {
+		const [{ messages }, compactionState] = await Promise.all([
+			readCurrentMessages(),
+			readCurrentCompactionState(),
+		]);
+		return getLastContextUsage(messages, compactionState?.source_message_count);
 	};
 
 	const stopCurrentSession = async (): Promise<void> => {
@@ -922,6 +934,7 @@ export function createInteractiveSessionRuntime(input: {
 		updatePendingPrompt,
 		getAccumulatedUsage,
 		readCurrentMessages,
+		readCurrentContextUsage,
 		restartEmpty,
 		resetForNewSession,
 		restartWithMessages,

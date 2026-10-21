@@ -4,6 +4,7 @@ import type { HubTransportContext } from "./handlers/context";
 import {
 	createHubClientContributionRuntime,
 	HUB_USER_INSTRUCTIONS_SNAPSHOT_CAPABILITY,
+	parseHubClientContributions,
 } from "./hub-client-contributions";
 
 type ClientContributionRequest = Parameters<
@@ -71,6 +72,27 @@ describe("hub capability custom tools", () => {
 			"client-1",
 			expect.any(Function),
 		);
+	});
+
+	it("keeps the MCP server on proxied tools", () => {
+		const contributions = parseHubClientContributions([
+			{
+				kind: "tool",
+				name: "search__query",
+				description: "Query.",
+				inputSchema: { type: "object" },
+				capabilityName: "custom_tool.search__query",
+				mcpServer: "search",
+			},
+		]);
+		const runtime = createHubClientContributionRuntime({
+			sessionId: "session-1",
+			targetClientId: "client-1",
+			contributions,
+			requestCapability: vi.fn(),
+		});
+
+		expect(runtime.localRuntime.extraTools?.[0]?.mcpServer).toBe("search");
 	});
 
 	it("forwards progress from client-contributed tool executors", async () => {

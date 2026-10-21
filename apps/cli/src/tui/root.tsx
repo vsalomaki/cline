@@ -224,9 +224,11 @@ function App(props: TuiProps) {
 		void props.onModeChange(newMode);
 	}, [props, session]);
 
+	const { setContextUsage } = session;
 	const handleModelChange = useCallback(async () => {
+		setContextUsage(undefined);
 		await props.onModelChange();
-	}, [props]);
+	}, [props, setContextUsage]);
 
 	const openModelSelector = useModelSelector({
 		dialog,
@@ -777,6 +779,7 @@ function App(props: TuiProps) {
 		onExportHistorySession: props.onExportHistorySession,
 		onDeleteHistorySession: props.onDeleteHistorySession,
 		onCompact: props.onCompact,
+		loadContextUsage: props.loadContextUsage,
 		onFork: props.onFork,
 		onUndo: openCheckpointRestore,
 		onExit: exitCline,
@@ -862,6 +865,8 @@ function App(props: TuiProps) {
 		setIsRunning: session.setIsRunning,
 		setIsStreaming: session.setIsStreaming,
 		addUsageDelta: session.addUsageDelta,
+		setContextUsage: session.setContextUsage,
+		markContextCompacted: session.markContextCompacted,
 		onTurnErrorReported: props.onTurnErrorReported,
 		verbose: props.config.verbose ?? false,
 		modelId: props.config.modelId,
