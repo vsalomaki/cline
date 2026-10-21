@@ -86,3 +86,35 @@ describe("empty-input queue steering", () => {
 		}
 	});
 });
+
+describe("sending while the agent works", () => {
+	it("sends Ctrl+S input after the run", () => {
+		const submit = vi.fn();
+		useRootKeyboard({
+			isDialogOpen: false,
+			appView: "chat",
+			autocomplete: { mode: false },
+			transcriptScrollRef: { current: null },
+			getCurrentInputText: () => "after this",
+			inputValueRef: { current: "after this" },
+			submitRef: { current: submit },
+			syncInputFromTextarea: vi.fn(),
+			onCommandPaletteShortcut: () => false,
+			queuedPromptSelection: {
+				items: [],
+				selectedId: null,
+				editingId: null,
+				promote: vi.fn(),
+			},
+		} as unknown as Parameters<typeof useRootKeyboard>[0]);
+		keyboard.handle({
+			name: "s",
+			ctrl: true,
+			meta: false,
+			shift: false,
+			repeated: false,
+			preventDefault: vi.fn(),
+		} as unknown as KeyEvent);
+		expect(submit).toHaveBeenCalledWith("queue");
+	});
+});

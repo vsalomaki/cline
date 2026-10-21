@@ -296,7 +296,7 @@ export function useRootKeyboard(input: {
 
 		if (key.ctrl && key.name === "s") {
 			if (session.isRunning && input.inputValueRef.current.trim()) {
-				input.submitRef.current("steer");
+				input.submitRef.current("queue");
 			}
 			return;
 		}

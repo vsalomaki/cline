@@ -4,15 +4,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { QueuedPrompts } from "./QueuedPrompts"
 
 const cancelQueuedPromptMock = vi.hoisted(() => vi.fn())
+const updateQueuedPromptMock = vi.hoisted(() => vi.fn())
 
 vi.mock("@/services/grpc-client", () => ({
 	TaskServiceClient: {
 		cancelQueuedPrompt: (request: unknown) => cancelQueuedPromptMock(request),
+		updateQueuedPrompt: (request: unknown) => updateQueuedPromptMock(request),
 	},
 }))
 
 vi.mock("@shared/proto/cline/common", () => ({
 	StringRequest: {
+		create: (request: unknown) => request,
+	},
+}))
+
+vi.mock("@shared/proto/cline/task", () => ({
+	UpdateQueuedPromptRequest: {
 		create: (request: unknown) => request,
 	},
 }))
@@ -36,6 +44,22 @@ describe("QueuedPrompts", () => {
 	beforeEach(() => {
 		cancelQueuedPromptMock.mockReset()
 		cancelQueuedPromptMock.mockResolvedValue({})
+		updateQueuedPromptMock.mockReset()
+		updateQueuedPromptMock.mockResolvedValue({})
+	})
+
+	it("shows when each message is delivered and switches it per row", async () => {
+		render(<QueuedPrompts items={queuedPrompts} />)
+
+		expect(screen.getByText("1 for the next step, 1 after the run")).toBeInTheDocument()
+		fireEvent.click(screen.getByRole("button", { name: "Send at the next step instead" }))
+		expect(updateQueuedPromptMock).toHaveBeenCalledWith({ promptId: "prompt-1", delivery: "steer" })
+
+		const afterRun = screen.getByRole("button", { name: "Send after the run instead" })
+		expect(afterRun).toHaveTextContent("Next step")
+		fireEvent.click(afterRun)
+		expect(updateQueuedPromptMock).toHaveBeenLastCalledWith({ promptId: "prompt-2", delivery: "queue" })
+		await waitFor(() => expect(afterRun).not.toBeDisabled())
 	})
 
 	it("cancels a queued prompt from the row action", async () => {

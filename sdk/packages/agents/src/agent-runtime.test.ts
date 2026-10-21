@@ -2362,6 +2362,72 @@ describe("AgentRuntime", () => {
 		expect(result.outputText).toBe("done");
 	});
 
+	it("injects every pending message as its own user message, in order", async () => {
+		const consumePendingUserMessage = vi
+			.fn()
+			.mockReturnValueOnce(undefined)
+			.mockResolvedValueOnce([
+				{ content: "runtime notice", displayRole: "system" },
+				{ content: "first", typedInput: true },
+				{ content: "   " },
+				{
+					content: [
+						{ type: "text", text: "second" },
+						{ type: "image", image: "AAAA", mediaType: "image/png" },
+					],
+					typedInput: true,
+				},
+			]);
+		const model = new ScriptedModel([
+			() => [
+				{
+					type: "tool-call-delta",
+					toolCallId: "call_1",
+					toolName: "echo",
+					inputText: '{"text":"hi"}',
+				},
+				{ type: "finish", reason: "tool-calls" },
+			],
+			() => [
+				{ type: "text-delta", text: "done" },
+				{ type: "finish", reason: "stop" },
+			],
+		]);
+		const runtime = new AgentRuntime({
+			model,
+			tools: [createEchoTool()],
+			consumePendingUserMessage,
+		});
+
+		await runtime.run("Start");
+
+		const tail = model.requests[1]?.messages.slice(-4);
+		expect(tail?.map((message) => message.role)).toEqual([
+			"tool",
+			"user",
+			"user",
+			"user",
+		]);
+		expect(tail?.slice(1)).toMatchObject([
+			{
+				content: [{ type: "text", text: "runtime notice" }],
+				metadata: { userRunSpan: 0, displayRole: "system" },
+			},
+			{
+				content: [{ type: "text", text: "first" }],
+				metadata: { userRunSpan: 0, typedInput: true },
+			},
+			{
+				content: [
+					{ type: "text", text: "second" },
+					{ type: "image", image: "AAAA", mediaType: "image/png" },
+				],
+				metadata: { userRunSpan: 0, typedInput: true },
+			},
+		]);
+		expect(tail?.[1]?.metadata?.typedInput).toBeUndefined();
+	});
+
 	it("injects a pending user message after tool results and before the next model request", async () => {
 		const consumePendingUserMessage = vi
 			.fn()

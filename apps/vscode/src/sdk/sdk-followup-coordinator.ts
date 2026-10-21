@@ -125,7 +125,10 @@ export class SdkFollowupCoordinator {
 		})
 	}
 
-	/** Queue a follow-up onto a session whose turn is still running. */
+	/**
+	 * Hand a follow-up to a session whose turn is still running; it reaches the
+	 * model at the next step.
+	 */
 	private async queueToActiveSession(
 		activeSession: NonNullable<ReturnType<SdkSessionLifecycle["getActiveSession"]>>,
 		displayedTaskId: string | undefined,
@@ -134,7 +137,7 @@ export class SdkFollowupCoordinator {
 		files?: string[],
 	): Promise<void> {
 		const { sessionId } = activeSession
-		Logger.log(`[SdkController] Session is running - queuing follow-up message for session: ${sessionId}`)
+		Logger.log(`[SdkController] Session is running - steering follow-up message into session: ${sessionId}`)
 
 		// The submitted turn phase is authoritative when the lifecycle flag is
 		// briefly stale. Keep passive rebuilds behind the active turn while mention
@@ -158,7 +161,7 @@ export class SdkFollowupCoordinator {
 			resolvedPrompt,
 			images,
 			files,
-			"queue",
+			"steer",
 		)
 	}
 

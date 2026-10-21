@@ -1669,6 +1669,24 @@ export class Controller {
 		await this.postStateToWebview()
 	}
 
+	async updateQueuedPrompt(promptId: string, delivery: "queue" | "steer"): Promise<void> {
+		const activeSession = this.sessions.getActiveSession()
+		if (!activeSession) {
+			Logger.warn("[SdkController] updateQueuedPrompt: No active session")
+			return
+		}
+
+		const result = await activeSession.sdkHost.pendingPrompts("update", {
+			sessionId: activeSession.sessionId,
+			promptId: promptId.trim(),
+			delivery,
+		})
+		if (!result.updated) {
+			Logger.warn(`[SdkController] updateQueuedPrompt: Prompt not found: ${promptId}`)
+		}
+		await this.postStateToWebview()
+	}
+
 	/**
 	 * Manually compact (condense) the active task's conversation. Triggered by
 	 * the compact button and the `/compact` (alias `/smol`) slash command.

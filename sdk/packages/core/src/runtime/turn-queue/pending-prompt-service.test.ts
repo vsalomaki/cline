@@ -61,20 +61,69 @@ describe("PendingPromptService", () => {
 		]);
 	});
 
-	it("consumes steer prompts before queued turns", () => {
+	it("consumes every steer prompt in typed order, before queued turns", () => {
 		const service = new PendingPromptService();
 		const state = createState();
 
 		service.enqueue(state, { prompt: "queued", delivery: "queue" });
-		service.enqueue(state, { prompt: "steered", delivery: "steer" });
+		service.enqueue(state, { prompt: "first steer", delivery: "steer" });
+		service.enqueue(state, { prompt: "second steer", delivery: "steer" });
 
-		const steered = service.consumeSteer(state);
-		expect(steered.entry?.prompt).toBe("steered");
-		expect(steered.prompts.map((prompt) => prompt.prompt)).toEqual(["queued"]);
+		const steers = service.consumeSteers(state);
+		expect(steers.map((entry) => entry.prompt)).toEqual([
+			"first steer",
+			"second steer",
+		]);
+		expect(service.list(state).map((prompt) => prompt.prompt)).toEqual([
+			"queued",
+		]);
+		expect(service.consumeSteers(state)).toEqual([]);
 
 		const queued = service.shiftNext(state);
 		expect(queued.entry?.prompt).toBe("queued");
 		expect(queued.prompts).toEqual([]);
+	});
+
+	it("keeps identical steer texts as separate messages", () => {
+		const service = new PendingPromptService();
+		const state = createState();
+
+		service.enqueue(state, { prompt: "again", delivery: "steer" });
+		service.enqueue(state, { prompt: "again", delivery: "steer" });
+
+		expect(service.consumeSteers(state).map((entry) => entry.prompt)).toEqual([
+			"again",
+			"again",
+		]);
+	});
+
+	it("keeps an edited steer in place and puts a promoted prompt after the last steer", () => {
+		const service = new PendingPromptService();
+		const state = createState();
+
+		service.enqueue(state, { prompt: "queued", delivery: "queue" });
+		service.enqueue(state, { prompt: "steer one", delivery: "steer" });
+		service.enqueue(state, { prompt: "steer two", delivery: "steer" });
+		const [first, , queued] = service.list(state);
+
+		service.update(state, {
+			sessionId: "sess-1",
+			promptId: first?.id ?? "",
+			prompt: "steer one, edited",
+		});
+		const promoted = service.update(state, {
+			sessionId: "sess-1",
+			promptId: queued?.id ?? "",
+			delivery: "steer",
+		});
+
+		expect(
+			promoted.prompts.map(({ prompt, delivery }) => ({ prompt, delivery })),
+		).toEqual([
+			{ prompt: "steer one, edited", delivery: "steer" },
+			{ prompt: "steer two", delivery: "steer" },
+			{ prompt: "queued", delivery: "steer" },
+		]);
 	});
 
 	it("deletes prompts and reports missing prompts without mutation", () => {
@@ -120,7 +169,7 @@ describe("PendingPromptService", () => {
 		).toThrow("prompt cannot be empty");
 	});
 
-	it("wakes the running model when a queued prompt is promoted and preserves the remaining queue", () => {
+	it("lets the streaming response finish when a queued prompt is promoted and preserves the remaining queue", () => {
 		const notifyPendingUserMessage = vi.fn();
 		const session = {
 			sessionId: "session",
@@ -143,8 +192,10 @@ describe("PendingPromptService", () => {
 			promptId: first.id,
 			delivery: "steer",
 		});
-		expect(notifyPendingUserMessage).toHaveBeenCalledOnce();
-		expect(controller.consumeSteer("session")?.prompt).toBe("first");
+		expect(notifyPendingUserMessage).not.toHaveBeenCalled();
+		expect(controller.consumeSteers("session").map((p) => p.prompt)).toEqual([
+			"first",
+		]);
 		expect(controller.list("session").map((prompt) => prompt.prompt)).toEqual([
 			"second",
 		]);
@@ -187,9 +238,39 @@ describe("PendingPromptService", () => {
 		});
 		expect(result.prompts[0]?.id).not.toBe(staleHead.id);
 		expect(result.updated).toBe(mutation !== "insert");
-		expect(notifyPendingUserMessage).toHaveBeenCalledTimes(
-			mutation === "insert" ? 0 : 1,
-		);
+		expect(notifyPendingUserMessage).not.toHaveBeenCalled();
+	});
+
+	it("announces consumed steers as mid-run submissions", () => {
+		const session = {
+			sessionId: "session",
+			pendingPrompts: [],
+			teamRunWaiters: [],
+			aborting: false,
+			agent: { canStartRun: () => false },
+		} as unknown as ActiveSession;
+		const events: CoreSessionEvent[] = [];
+		const controller = new PendingPromptsController({
+			getSession: () => session,
+			emit: (event) => events.push(event),
+			send: vi.fn(),
+		});
+		controller.enqueue("session", { prompt: "one", delivery: "steer" });
+		controller.enqueue("session", { prompt: "two", delivery: "steer" });
+		events.length = 0;
+
+		controller.consumeSteers("session");
+
+		expect(
+			events.flatMap((event) =>
+				event.type === "pending_prompt_submitted"
+					? [{ prompt: event.payload.prompt, midRun: event.payload.midRun }]
+					: [],
+			),
+		).toEqual([
+			{ prompt: "one", midRun: true },
+			{ prompt: "two", midRun: true },
+		]);
 	});
 
 	it("does nothing when steering an empty or missing session queue", () => {

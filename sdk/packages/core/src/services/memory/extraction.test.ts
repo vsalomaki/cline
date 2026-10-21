@@ -176,6 +176,22 @@ describe("findHardWonSignal", () => {
 		expect(found([...run, user("No, use bun")], run.length + 1)).toBe(false);
 	});
 
+	it("counts a correction typed while the agent was working", () => {
+		const midRun = (text: string, metadata: Record<string, unknown>) => ({
+			role: "user" as const,
+			content: [{ type: "text" as const, text }],
+			metadata: { userRunSpan: 0, ...metadata },
+		});
+		const run = [
+			user("add a test"),
+			...call("c1", "editor", { path: "a.test.ts" }, "ok"),
+		];
+		expect(
+			found([...run, midRun("No, use bun not npm", { typedInput: true })]),
+		).toBe(true);
+		expect(found([...run, midRun("No, use bun not npm", {})])).toBe(false);
+	});
+
 	it("needs a failure and a later success on the same target", () => {
 		expect(
 			found([

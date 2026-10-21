@@ -2946,7 +2946,7 @@ describe("LocalRuntimeHost", () => {
 		]);
 	});
 
-	it("wraps consumed steer prompts as mode-scoped user input", async () => {
+	it("prepares consumed steer prompts like a new turn, without interrupting the response", async () => {
 		const sessionId = "sess-steer-format";
 		const manifest = createManifest(sessionId);
 		const sessionService = {
@@ -3012,13 +3012,50 @@ describe("LocalRuntimeHost", () => {
 				delivery: "steer",
 			}),
 		).resolves.toBeUndefined();
+		await manager.runTurn({
+			sessionId,
+			prompt: "and look",
+			delivery: "steer",
+			userImages: ["data:image/png;base64,AAAA"],
+		});
 
-		expect(agent.notifyPendingUserMessage).toHaveBeenCalledOnce();
+		expect(agent.notifyPendingUserMessage).not.toHaveBeenCalled();
 
 		const consumed = await Promise.resolve(
 			agentConfig?.consumePendingUserMessage?.(),
 		);
-		expect(consumed).toBe('<user_input mode="plan">steer this</user_input>');
+		expect(consumed).toEqual([
+			{
+				content: '<user_input mode="plan">steer this</user_input>',
+				typedInput: true,
+			},
+			{
+				content: [
+					{
+						type: "text",
+						text: '<user_input mode="act">and look</user_input>',
+					},
+					{ type: "image", image: "AAAA", mediaType: "image/png" },
+				],
+				typedInput: true,
+			},
+		]);
+		expect(
+			await Promise.resolve(agentConfig?.consumePendingUserMessage?.()),
+		).toEqual([]);
+
+		await createPluginEventHarness(manager).handlePluginEvent(sessionId, {
+			name: "steer_message",
+			payload: { prompt: "from a plugin" },
+		});
+		expect(
+			await Promise.resolve(agentConfig?.consumePendingUserMessage?.()),
+		).toEqual([
+			{
+				content: '<user_input mode="act">from a plugin</user_input>',
+				typedInput: false,
+			},
+		]);
 		// The agent receives a session-scoped view over the host telemetry.
 		const capture = vi.spyOn(telemetry, "capture");
 		agentConfig?.telemetry?.capture({

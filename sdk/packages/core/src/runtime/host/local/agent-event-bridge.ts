@@ -32,7 +32,11 @@ export interface AgentEventBridgeDeps {
 	persistMessages: AgentEventContext["persistMessages"];
 	enqueuePendingPrompt(
 		sessionId: string,
-		entry: { prompt: string; delivery: "queue" | "steer" },
+		entry: {
+			prompt: string;
+			delivery: "queue" | "steer";
+			typedInput: false;
+		},
 	): void;
 	invokeBackendOptional(method: string, ...args: unknown[]): Promise<void>;
 }
@@ -237,7 +241,11 @@ export class AgentEventBridge {
 					: payload?.delivery === "steer"
 						? "steer"
 						: "queue";
-		this.deps.enqueuePendingPrompt(targetSessionId, { prompt, delivery });
+		this.deps.enqueuePendingPrompt(targetSessionId, {
+			prompt,
+			delivery,
+			typedInput: false,
+		});
 	}
 
 	/**

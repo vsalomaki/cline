@@ -76,7 +76,7 @@ export class SdkSessionEventCoordinator {
 				failurePhase: PROVIDER_FAILURE_PHASE.STREAMING,
 			})
 		}
-		if (event.type === "pending_prompt_submitted") {
+		if (event.type === "pending_prompt_submitted" && !event.payload.midRun) {
 			this.options.beginProviderFailureTelemetryTurn?.()
 			this.options.messageTranslatorState.clearTurnOutcome()
 			this.options.sessions.setRunning(true)

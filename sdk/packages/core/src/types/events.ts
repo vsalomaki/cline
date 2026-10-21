@@ -60,6 +60,8 @@ export interface SessionPendingPromptSubmittedEvent {
 	attachmentCount: number;
 	userImages?: string[];
 	userFiles?: string[];
+	/** Delivered into the running turn at a model request boundary. */
+	midRun?: boolean;
 }
 
 export interface SessionSnapshotEvent {

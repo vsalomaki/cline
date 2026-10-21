@@ -1200,6 +1200,67 @@ describe("HubRuntimeHost", () => {
 		);
 	});
 
+	it.each([
+		true,
+		undefined,
+	])("round-trips a submitted prompt with midRun=%s", async (midRun) => {
+		let onEvent: ((event: HubEventEnvelope) => void) | undefined;
+		subscribeMock.mockImplementation((listener) => {
+			onEvent = listener;
+			return () => {};
+		});
+		commandMock.mockResolvedValue({
+			payload: {
+				session: {
+					sessionId: "sess-1",
+					status: "running",
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+					workspaceRoot: "/tmp/project",
+					cwd: "/tmp/project",
+				},
+			},
+		});
+		const events: unknown[] = [];
+		const { HubRuntimeHost } = await import("./hub-runtime-host");
+		const host = new HubRuntimeHost({ url: "ws://127.0.0.1:25463/hub" });
+		host.subscribe((event) => events.push(event));
+		await host.startSession({
+			config: createConfig(),
+			source: SessionSource.CLI,
+			prompt: "Hey",
+		});
+		const ctx = {
+			buildEvent: (
+				event: string,
+				payload: Record<string, unknown>,
+				sessionId: string,
+			) => ({ version: "v1", event, payload, sessionId }),
+			publish: (event: HubEventEnvelope) => {
+				onEvent?.(JSON.parse(JSON.stringify(event)));
+			},
+		} as unknown as HubTransportContext;
+
+		await projectSessionEvent(ctx, {
+			type: "pending_prompt_submitted",
+			payload: {
+				sessionId: "sess-1",
+				id: "pending-1",
+				prompt: "Skip the slow suite",
+				delivery: "steer",
+				attachmentCount: 0,
+				...(midRun ? { midRun } : {}),
+			},
+		});
+
+		const submitted = events.find(
+			(event) =>
+				(event as { type?: string }).type === "pending_prompt_submitted",
+		) as { payload: { prompt: string; midRun?: boolean } } | undefined;
+		expect(submitted?.payload.prompt).toBe("Skip the slow suite");
+		expect(submitted?.payload.midRun).toBe(midRun);
+	});
+
 	it("synthesizes done from run.completed when no agent.done was observed", async () => {
 		let onEvent:
 			| ((event: {

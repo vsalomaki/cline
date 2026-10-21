@@ -19,6 +19,7 @@ export interface PendingPromptEntry {
 	prompt: string;
 	mode?: AgentMode;
 	delivery: PendingPromptDelivery;
+	typedInput?: boolean;
 	userImages?: string[];
 	userFiles?: string[];
 }
@@ -43,6 +44,7 @@ export interface PendingPromptEnqueueInput {
 	prompt: string;
 	mode?: AgentMode;
 	delivery: PendingPromptDelivery;
+	typedInput?: boolean;
 	userImages?: string[];
 	userFiles?: string[];
 }
@@ -139,51 +141,44 @@ export class PendingPromptService {
 		state: PendingPromptQueueState,
 		input: PendingPromptEnqueueInput,
 	): SessionPendingPrompt[] {
-		const { prompt, mode, delivery, userImages, userFiles } = input;
+		const { prompt, mode, delivery, typedInput, userImages, userFiles } = input;
 		const existingIndex = state.pendingPrompts.findIndex(
-			(queued) => queued.prompt === prompt,
+			(queued) => queued.delivery === "queue" && queued.prompt === prompt,
 		);
 		if (existingIndex >= 0) {
 			const [existing] = state.pendingPrompts.splice(existingIndex, 1);
-			const next: PendingPromptEntry = {
+			insertPrompt(state, {
 				...existing,
 				prompt,
 				mode: mode ?? existing.mode,
+				delivery,
+				typedInput,
 				userImages: userImages ?? existing.userImages,
 				userFiles: userFiles ?? existing.userFiles,
-			};
-			if (delivery === "steer" || existing.delivery === "steer") {
-				state.pendingPrompts.unshift({ ...next, delivery: "steer" });
-			} else {
-				state.pendingPrompts.push(next);
-			}
+			});
 		} else {
-			const newEntry: PendingPromptEntry = {
+			insertPrompt(state, {
 				id: `pending_${Date.now()}_${nanoid(5)}`,
 				prompt,
 				mode,
 				delivery,
+				typedInput,
 				userImages,
 				userFiles,
-			};
-			if (delivery === "steer") {
-				state.pendingPrompts.unshift(newEntry);
-			} else {
-				state.pendingPrompts.push(newEntry);
-			}
+			});
 		}
 		return snapshotPrompts(state);
 	}
 
-	consumeSteer(state: PendingPromptQueueState): PendingPromptConsumeResult {
-		const steerIndex = state.pendingPrompts.findIndex(
+	consumeSteers(state: PendingPromptQueueState): PendingPromptEntry[] {
+		const steers = state.pendingPrompts.filter(
 			(entry) => entry.delivery === "steer",
 		);
-		if (steerIndex < 0) {
-			return { prompts: snapshotPrompts(state) };
-		}
-		const [entry] = state.pendingPrompts.splice(steerIndex, 1);
-		return { entry, prompts: snapshotPrompts(state) };
+		const queued = state.pendingPrompts.filter(
+			(entry) => entry.delivery !== "steer",
+		);
+		state.pendingPrompts.splice(0, state.pendingPrompts.length, ...queued);
+		return steers;
 	}
 
 	shiftNext(state: PendingPromptQueueState): PendingPromptConsumeResult {
@@ -232,13 +227,6 @@ export class PendingPromptsController {
 		}
 		const result = this.service.update(session, input);
 		this.emitPrompts(session);
-		if (
-			result.updated &&
-			result.prompt?.delivery === "steer" &&
-			!session.aborting
-		) {
-			session.agent.notifyPendingUserMessage();
-		}
 		this.scheduleDrain(input.sessionId, session);
 		return result;
 	}
@@ -260,6 +248,7 @@ export class PendingPromptsController {
 			prompt: string;
 			mode?: AgentMode;
 			delivery: "queue" | "steer";
+			typedInput?: boolean;
 			userImages?: string[];
 			userFiles?: string[];
 		},
@@ -274,20 +263,19 @@ export class PendingPromptsController {
 		// abort is settling.
 		this.service.enqueue(session, entry);
 		this.emitPrompts(session);
-		if (entry.delivery === "steer" && !session.aborting) {
-			session.agent.notifyPendingUserMessage();
-		}
 		this.scheduleDrain(sessionId, session);
 	}
 
-	consumeSteer(sessionId: string): PendingPromptEntry | undefined {
+	consumeSteers(sessionId: string): PendingPromptEntry[] {
 		const session = this.deps.getSession(sessionId);
-		if (!session) return undefined;
-		const { entry: steer } = this.service.consumeSteer(session);
-		if (!steer) return undefined;
+		if (!session) return [];
+		const steers = this.service.consumeSteers(session);
+		if (steers.length === 0) return [];
 		this.emitPrompts(session);
-		this.emitSubmitted(session, steer);
-		return steer;
+		for (const steer of steers) {
+			this.emitSubmitted(session, steer, { midRun: true });
+		}
+		return steers;
 	}
 
 	/**
@@ -381,7 +369,11 @@ export class PendingPromptsController {
 		}
 	}
 
-	private emitSubmitted(session: ActiveSession, entry: PendingPrompt): void {
+	private emitSubmitted(
+		session: ActiveSession,
+		entry: PendingPrompt,
+		options?: { midRun: true },
+	): void {
 		const prompt = snapshotPrompt(entry);
 		this.deps.emit({
 			type: "pending_prompt_submitted",
@@ -393,6 +385,7 @@ export class PendingPromptsController {
 				attachmentCount: prompt.attachmentCount,
 				userImages: prompt.userImages,
 				userFiles: prompt.userFiles,
+				...options,
 			},
 		});
 	}
@@ -431,11 +424,25 @@ function insertUpdatedPrompt(
 	previousIndex: number,
 	previousDelivery: PendingPromptDelivery,
 ): void {
-	if (next.delivery === "steer") {
-		state.pendingPrompts.unshift(next);
-	} else if (previousDelivery === "steer") {
-		state.pendingPrompts.push(next);
-	} else {
+	if (next.delivery === previousDelivery) {
 		state.pendingPrompts.splice(previousIndex, 0, next);
+	} else {
+		insertPrompt(state, next);
 	}
+}
+
+/** A steer goes after the last steer, ahead of queued prompts; a queued prompt goes last. */
+function insertPrompt(
+	state: PendingPromptQueueState,
+	entry: PendingPromptEntry,
+): void {
+	if (entry.delivery === "queue") {
+		state.pendingPrompts.push(entry);
+		return;
+	}
+	let afterLastSteer = 0;
+	state.pendingPrompts.forEach((queued, index) => {
+		if (queued.delivery === "steer") afterLastSteer = index + 1;
+	});
+	state.pendingPrompts.splice(afterLastSteer, 0, entry);
 }
