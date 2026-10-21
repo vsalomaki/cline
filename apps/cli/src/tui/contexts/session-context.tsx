@@ -1,4 +1,4 @@
-import type { AgentMode } from "@cline/core";
+import type { AgentEvent, AgentMode } from "@cline/core";
 import type React from "react";
 import {
 	createContext,
@@ -59,6 +59,17 @@ export function useSession(): SessionContextValue {
 	const ctx = useContext(SessionContext);
 	if (!ctx) throw new Error("useSession must be within SessionProvider");
 	return ctx;
+}
+
+/** Cost counts every agent's requests; the context size only the lead's. */
+export function usageDeltaFromEvent(
+	event: Extract<AgentEvent, { type: "usage" }>,
+): UsageDelta {
+	return {
+		inputTokens: event.parentAgentId ? undefined : event.inputTokens,
+		outputTokens: event.outputTokens,
+		cost: event.cost,
+	};
 }
 
 export function nextUsageTokenDisplay(

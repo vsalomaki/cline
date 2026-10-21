@@ -17,11 +17,13 @@ import {
 	type DelegatedAgentConfigProvider,
 	type DelegatedAgentRuntimeConfig,
 } from "./delegated-agent";
-import type {
-	SpawnAgentOutput,
-	SubAgentEndContext,
-	SubAgentStartContext,
-	SubAgentTurnContext,
+import {
+	resolveSubAgentContextWindow,
+	type SpawnAgentOutput,
+	type SubAgentEndContext,
+	SubAgentProgress,
+	type SubAgentStartContext,
+	type SubAgentTurnContext,
 } from "./spawn-agent-tool";
 
 const CONFIGURED_AGENT_TOOL_NAME_PREFIX = "subagent_";
@@ -173,6 +175,9 @@ export function createConfiguredAgentTools(
 					const tools = options.createSubAgentTools
 						? await options.createSubAgentTools(config, input, context)
 						: [];
+					const progress = new SubAgentProgress(
+						resolveSubAgentContextWindow(configProvider),
+					);
 					// The parent approves delegation; child tools run autonomously,
 					// matching generic subagents and teammates. Do not inherit approval policy.
 					const subAgent = createDelegatedAgent({
@@ -190,6 +195,10 @@ export function createConfiguredAgentTools(
 									subAgentId: subAgent.getAgentId(),
 									messages: subAgent.getMessages(),
 								});
+							}
+							const update = progress.apply(event);
+							if (update) {
+								context.emitUpdate?.(update);
 							}
 						},
 						hookErrorMode: options.hookErrorMode,

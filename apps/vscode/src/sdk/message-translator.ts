@@ -1684,9 +1684,9 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// Emit say:"use_subagents" with prompts list, then say:"subagent"
 					// with running status. Multiple parallel spawn_agent calls in the
 					// same iteration are aggregated into a single status message.
-					if (toolName === "spawn_agent") {
+					if (isSubagentTool(toolName)) {
 						const parsedInput = parseToolInput(input)
-						const taskPrompt = getStringField(parsedInput, "task") ?? ""
+						const taskPrompt = getStringField(parsedInput, "task") ?? getStringField(parsedInput, "prompt") ?? ""
 						const callId = event.toolCallId ?? `spawn-${state.nextTs()}`
 						state.addSpawnAgent(callId, taskPrompt)
 						if (approvedToolMessageTs !== undefined) {
@@ -1778,7 +1778,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 			// The SDK's spawn_agent tool may emit content_update events with
 			// sub-agent progress (iterations, tool calls, usage). We translate
 			// these into the ClineSaySubagentStatus format for the rich UI.
-			if (updateToolName === "spawn_agent" && state.hasSpawnAgents()) {
+			if (updateToolName && isSubagentTool(updateToolName) && state.hasSpawnAgents()) {
 				const callId = event.toolCallId ?? ""
 				const entry = callId ? state.getSpawnAgent(callId) : undefined
 				if (entry) {
@@ -1887,7 +1887,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 					// say:"subagent" (completed/failed) + say:"subagent_usage".
 					// When all spawn_agent calls in this iteration finish, the
 					// final say:"subagent" has partial=false.
-					if (toolName === "spawn_agent") {
+					if (isSubagentTool(toolName)) {
 						const callId = event.toolCallId ?? ""
 						const entry = callId ? state.getSpawnAgent(callId) : undefined
 						if (entry) {
@@ -2347,7 +2347,10 @@ export function translateSessionEvent(event: CoreSessionEvent, state: MessageTra
 			const isToolLifecycleEvent =
 				agentEvent.type === "content_start" || agentEvent.type === "content_update" || agentEvent.type === "content_end"
 			const isSpawnAgentToolEvent =
-				isToolLifecycleEvent && agentEvent.contentType === "tool" && agentEvent.toolName === "spawn_agent"
+				isToolLifecycleEvent &&
+				agentEvent.contentType === "tool" &&
+				!!agentEvent.toolName &&
+				isSubagentTool(agentEvent.toolName)
 
 			// Newer SDK events carry parentAgentId on sub-agent events. Older/local
 			// RuntimeEventAdapter output does not, so while spawn_agent calls are in

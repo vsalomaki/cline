@@ -13,6 +13,7 @@ import {
 	formatToolOutput,
 	truncate,
 } from "../../utils/helpers";
+import { usageDeltaFromEvent } from "../contexts/session-context";
 import type { ChatEntry, InlineStream, TuiProps } from "../types";
 import { parseCompactionNoticeMetadata } from "../utils/compaction-status";
 
@@ -125,6 +126,13 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 
 	const handleAgentEvent = useCallback(
 		(event: AgentEvent) => {
+			if (
+				event.parentAgentId &&
+				(event.type === "done" ||
+					(event.type === "error" && !event.recoverable))
+			) {
+				return;
+			}
 			switch (event.type) {
 				case "iteration_start":
 					setIsRunning(true);
@@ -305,11 +313,7 @@ export function useAgentEventHandlers(deps: AgentEventDeps) {
 					}
 					break;
 				case "usage":
-					addUsageDelta({
-						inputTokens: event.inputTokens,
-						outputTokens: event.outputTokens,
-						cost: event.cost,
-					});
+					addUsageDelta(usageDeltaFromEvent(event));
 					break;
 			}
 		},
