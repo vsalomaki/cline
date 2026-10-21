@@ -2463,6 +2463,52 @@ describe("translateSessionEvent — agent_event usage", () => {
 			totalCost: 0.0112674,
 		})
 	})
+
+	it("carries the request's context breakdown on the usage row, live and on reopen", () => {
+		const contextUsage = {
+			estimatedTotal: 1000,
+			categories: {
+				systemPrompt: 400,
+				rules: [{ id: "workspace-rules", tokens: 100 }],
+				memory: 0,
+				tools: { builtin: 300, extension: 0, mcp: [] },
+				messages: { conversation: 200, toolCalls: 0, toolResults: 0, filesAndImages: 0, summary: 0 },
+			},
+			windowTokens: 200_000,
+			compactAtTokens: 180_000,
+		}
+
+		const live = translateSessionEvent(
+			{
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "usage",
+						inputTokens: 2000,
+						outputTokens: 50,
+						totalInputTokens: 2000,
+						totalOutputTokens: 50,
+						contextUsage,
+					} as AgentEvent,
+				},
+			},
+			new MessageTranslatorState(),
+		)
+		expect(JSON.parse(live.messages[0].text ?? "{}").contextUsage).toEqual(contextUsage)
+
+		const reopened = sdkMessagesToClineMessages([
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: [{ type: "text", text: "Hello." }],
+				metrics: { inputTokens: 2000, outputTokens: 50 },
+				metadata: { contextUsage },
+			} as MessageWithMetadata,
+		])
+		const usageRow = reopened.find((message) => message.say === "api_req_started")
+		expect(JSON.parse(usageRow?.text ?? "{}").contextUsage).toEqual(contextUsage)
+	})
 })
 
 // ---------------------------------------------------------------------------

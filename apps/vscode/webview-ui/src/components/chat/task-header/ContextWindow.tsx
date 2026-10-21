@@ -20,6 +20,8 @@ interface ContextWindowProgressProps extends ContextWindowInfoProps {
 	useAutoCondense: boolean
 	lastApiReqTotalTokens?: number
 	contextWindow?: number
+	/** Where auto-compaction starts, in tokens of `contextWindow`. */
+	compactAtTokens?: number
 	compactDisabled: boolean
 	compactTask: () => Promise<boolean>
 	onSendMessage?: (command: string, files: string[], images: string[]) => void
@@ -59,6 +61,7 @@ ConfirmationDialog.displayName = "ConfirmationDialog"
 
 const ContextWindow: React.FC<ContextWindowProgressProps> = ({
 	contextWindow = 0,
+	compactAtTokens,
 	compactDisabled,
 	compactTask,
 	lastApiReqTotalTokens = 0,
@@ -156,6 +159,7 @@ const ContextWindow: React.FC<ContextWindowProgressProps> = ({
 						<HoverCard>
 							<HoverCardContent className="bg-menu rounded-xs shadow-sm">
 								<ContextWindowSummary
+									autoCompactThreshold={compactAtTokens ? compactAtTokens / tokenData.max : undefined}
 									cacheReads={cacheReads}
 									cacheWrites={cacheWrites}
 									contextWindow={tokenData.max}

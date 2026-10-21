@@ -35,7 +35,7 @@ import {
 	truncateCommandOutput,
 } from "@cline/core"
 import type { MessageWithMetadata as SdkMessage } from "@cline/llms"
-import { type AgentEvent, formatDisplayUserInput, type ProviderErrorClass } from "@cline/shared"
+import { type AgentEvent, type ContextUsageSnapshot, formatDisplayUserInput, type ProviderErrorClass } from "@cline/shared"
 import { COMMAND_OUTPUT_STRING } from "@shared/combineCommandSequences"
 import type {
 	ClineApiReqInfo,
@@ -2205,6 +2205,7 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 				cacheWrites: usageEvent.cacheWrites,
 				cacheReads: usageEvent.cacheReads,
 				cost: usageEvent.totalCost,
+				...(event.contextUsage ? { contextUsage: event.contextUsage } : {}),
 			}
 			messages.push({
 				ts: state.nextTs(),
@@ -2585,6 +2586,7 @@ function appendPersistedMetricsMessage(
 		return
 	}
 
+	const contextUsage = message.metadata?.contextUsage as ContextUsageSnapshot | undefined
 	clineMessages.push({
 		ts: state.nextTs(),
 		type: "say",
@@ -2595,6 +2597,7 @@ function appendPersistedMetricsMessage(
 			cacheWrites: usage.cacheWrites,
 			cacheReads: usage.cacheReads,
 			cost: usage.totalCost,
+			...(contextUsage ? { contextUsage } : {}),
 		} satisfies ClineApiReqInfo),
 		partial: false,
 	})

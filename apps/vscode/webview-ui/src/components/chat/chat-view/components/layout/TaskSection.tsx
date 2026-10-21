@@ -1,4 +1,5 @@
 import { ClineMessage } from "@shared/ExtensionMessage"
+import type { LastContextUsage } from "@shared/getApiMetrics"
 import React from "react"
 import TaskHeader from "@/components/chat/task-header/TaskHeader"
 import { MessageHandlers } from "../../types/chatTypes"
@@ -13,6 +14,7 @@ interface TaskSectionProps {
 		totalCost: number
 	}
 	lastApiReqTotalTokens?: number
+	lastContextUsage?: LastContextUsage
 	selectedModelInfo: {
 		supportsPromptCache: boolean
 		supportsImages: boolean
@@ -28,6 +30,7 @@ export const TaskSection: React.FC<TaskSectionProps> = ({
 	task,
 	apiMetrics,
 	lastApiReqTotalTokens,
+	lastContextUsage,
 	selectedModelInfo,
 	messageHandlers,
 }) => {
@@ -39,6 +42,7 @@ export const TaskSection: React.FC<TaskSectionProps> = ({
 			compactTask={messageHandlers.compactTask}
 			doesModelSupportPromptCache={selectedModelInfo.supportsPromptCache}
 			lastApiReqTotalTokens={lastApiReqTotalTokens}
+			lastContextUsage={lastContextUsage}
 			onClose={messageHandlers.handleTaskCloseButtonClick}
 			onSendMessage={messageHandlers.handleSendMessage}
 			task={task}

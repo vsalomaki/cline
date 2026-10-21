@@ -1,4 +1,5 @@
 import { ClineMessage } from "@shared/ExtensionMessage"
+import type { LastContextUsage } from "@shared/getApiMetrics"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import React, { useCallback, useLayoutEffect, useMemo, useState } from "react"
 import { CloudTaskBadge } from "@/components/cloud/CloudTaskBadge"
@@ -13,6 +14,7 @@ import CopyTaskButton from "./buttons/CopyTaskButton"
 import DeleteTaskButton from "./buttons/DeleteTaskButton"
 import NewTaskButton from "./buttons/NewTaskButton"
 import OpenDiskConversationHistoryButton from "./buttons/OpenDiskConversationHistoryButton"
+import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import ContextWindow from "./ContextWindow"
 import { highlightText } from "./Highlights"
 import TaskWorkingDirectoryBadge from "./TaskWorkingDirectoryBadge"
@@ -27,6 +29,7 @@ interface TaskHeaderProps {
 	cacheReads?: number
 	totalCost: number
 	lastApiReqTotalTokens?: number
+	lastContextUsage?: LastContextUsage
 	compactDisabled: boolean
 	compactTask: () => Promise<boolean>
 	onClose: () => void
@@ -60,6 +63,7 @@ const TaskHeader: React.FC<TaskHeaderProps> = ({
 	cacheReads,
 	totalCost,
 	lastApiReqTotalTokens,
+	lastContextUsage,
 	compactDisabled,
 	compactTask,
 	onClose,
@@ -111,6 +115,7 @@ const TaskHeader: React.FC<TaskHeaderProps> = ({
 	// Simplified computed values
 	const { selectedModelInfo } = useNormalizedApiConfiguration(mode)
 	const modeFields = getModeSpecificFields(apiConfiguration, mode)
+	const contextWindow = lastContextUsage?.snapshot.windowTokens ?? selectedModelInfo?.contextWindow
 
 	// Local providers report no cost; the openai-compatible provider can
 	// report cost only when the user has supplied both prices. For every
@@ -204,6 +209,11 @@ const TaskHeader: React.FC<TaskHeaderProps> = ({
 								workspaceRoots={workspaceRoots}
 							/>
 						)}
+						<ContextUsageIndicator
+							contextWindow={selectedModelInfo?.contextWindow}
+							lastApiReqTotalTokens={lastApiReqTotalTokens}
+							usage={lastContextUsage}
+						/>
 						{isCostAvailable && (
 							<div
 								className="mx-1 px-1 py-0.25 rounded-full inline-flex shrink-0 text-badge-background bg-badge-foreground/80 items-center"
@@ -247,9 +257,10 @@ const TaskHeader: React.FC<TaskHeaderProps> = ({
 						<ContextWindow
 							cacheReads={cacheReads}
 							cacheWrites={cacheWrites}
+							compactAtTokens={lastContextUsage?.snapshot.compactAtTokens}
 							compactDisabled={compactDisabled}
 							compactTask={compactTask}
-							contextWindow={selectedModelInfo?.contextWindow}
+							contextWindow={contextWindow}
 							lastApiReqTotalTokens={lastApiReqTotalTokens}
 							onSendMessage={onSendMessage}
 							tokensIn={tokensIn}
