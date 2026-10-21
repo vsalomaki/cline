@@ -38,6 +38,13 @@ const MemoryToolInputSchema = z.object({
 
 type MemoryToolInput = z.infer<typeof MemoryToolInputSchema>;
 
+const WRITE_DONE = { save: "Saved", update: "Updated", delete: "Deleted" } as const;
+
+/** Whether a memory tool result reports a write; refusals come back as plain text too. */
+export function isMemoryWriteDone(output: string): boolean {
+	return Object.values(WRITE_DONE).some((verb) => output.startsWith(`${verb} `));
+}
+
 function formatEntry(entry: MemoryEntry): string {
 	return `# ${entry.name}\n${entry.description}\n\n${entry.content}`;
 }
@@ -63,7 +70,7 @@ export function runMemoryToolAction(
 	if (action === "delete") {
 		const result = store.delete(scope, name);
 		return result.ok
-			? `Deleted ${scope} memory "${result.slug}".`
+			? `${WRITE_DONE.delete} ${scope} memory "${result.slug}".`
 			: result.error;
 	}
 	const result = store.write(
@@ -76,7 +83,7 @@ export function runMemoryToolAction(
 		action,
 	);
 	if (!result.ok) return result.error;
-	return `${action === "save" ? "Saved" : "Updated"} ${scope} memory "${result.entry.slug}".`;
+	return `${WRITE_DONE[action]} ${scope} memory "${result.entry.slug}".`;
 }
 
 export function createMemoryTool(

@@ -10,6 +10,7 @@
 
 import { BlockList, isIP } from "node:net"
 import {
+	applyMemoryEnv,
 	buildWorkspaceMetadata,
 	type ClineCoreStartInput,
 	type CoreSessionConfig,
@@ -1202,6 +1203,10 @@ export async function buildSessionConfig(input: SessionConfigInput): Promise<Cor
 		},
 		enableSpawnAgent: delegation !== "off",
 		enableAgentTeams: delegation === "teams",
+		memory: applyMemoryEnv({
+			enabled: stateManager.getGlobalSettingsKey("memoryEnabled") ?? false,
+			extractAfterRun: stateManager.getGlobalSettingsKey("memoryExtractAfterRun") ?? true,
+		}),
 		...(useAutoCondense
 			? {
 					compaction: {

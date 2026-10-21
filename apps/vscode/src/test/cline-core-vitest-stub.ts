@@ -17,6 +17,15 @@ export {
 	MAX_COMMAND_OUTPUT_CHARS,
 	truncateCommandOutput,
 } from "../../../../sdk/packages/core/src/extensions/tools/executors/output-limits"
+export {
+	MEMORY_INDEX_FILE,
+	type MemoryEntry,
+	type MemoryScope,
+	MemoryStore,
+	resolveMemoryLocation,
+} from "../../../../sdk/packages/core/src/services/memory/store"
+export { isMemoryWriteDone } from "../../../../sdk/packages/core/src/services/memory/tool"
+export { applyMemoryEnv } from "../../../../sdk/packages/core/src/settings/memory"
 
 export const DEFAULT_CONTEXT_LIMITS = {
 	message: {

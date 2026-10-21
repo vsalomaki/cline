@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package cline;
+
+import "cline/common.proto";
+
+option go_package = "github.com/cline/grpc-go/cline";
+option java_multiple_files = true;
+option java_package = "bot.cline.proto";
+
+// Project and user memory for the workspace the active task runs on
+service MemoryService {
+  // Lists the project and user memories
+  rpc listMemories(EmptyRequest) returns (MemoryList);
+
+  // Deletes one memory and returns the refreshed list
+  rpc deleteMemory(MemoryRequest) returns (MemoryList);
+
+  // Opens one memory file in the editor
+  rpc openMemory(MemoryRequest) returns (Empty);
+
+  // Opens a scope's MEMORY.md index in the editor
+  rpc openMemoryIndex(MemoryRequest) returns (Empty);
+}
+
+message MemoryRequest {
+  Metadata metadata = 1;
+  string scope = 2; // "project" or "user"
+  string name = 3; // The memory's name or file name; unused by openMemoryIndex
+}
+
+message MemoryItem {
+  string scope = 1;
+  string slug = 2;
+  string name = 3;
+  string description = 4;
+}
+
+message MemoryList {
+  repeated MemoryItem project = 1;
+  repeated MemoryItem user = 2;
+  string project_key = 3; // The git common dir or folder the project memory belongs to
+}

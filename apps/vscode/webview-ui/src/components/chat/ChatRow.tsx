@@ -56,6 +56,7 @@ import ErrorRow from "./ErrorRow"
 import { FeatureTip } from "./FeatureTip"
 import HookMessage from "./HookMessage"
 import { MarkdownRow } from "./MarkdownRow"
+import MemoryActionRow from "./MemoryActionRow"
 import NewTaskPreview from "./NewTaskPreview"
 import PlanCompletionOutputRow from "./PlanCompletionOutputRow"
 import QuoteButton from "./QuoteButton"
@@ -727,6 +728,8 @@ export const ChatRowContent = memo(
 							)}
 						</div>
 					)
+				case "memoryAction":
+					return tool.memory ? <MemoryActionRow canOpen={!currentCloudTask} memory={tool.memory} /> : null
 				default:
 					return <InvisibleSpacer />
 			}

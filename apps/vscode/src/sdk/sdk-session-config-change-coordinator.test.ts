@@ -20,6 +20,10 @@ describe("SdkSessionConfigChangeCoordinator", () => {
 		coordinator.handleTerminalExecutionModeChanged("vscodeTerminal", "vscodeTerminal")
 		coordinator.handleCheckpointsSettingChanged(true, true)
 		coordinator.handleDelegationSettingChanged("off", "off")
+		coordinator.handleMemorySettingChanged(
+			{ enabled: true, extractAfterRun: false },
+			{ enabled: true, extractAfterRun: false },
+		)
 
 		expect(options.rebuilds.request).not.toHaveBeenCalled()
 	})
@@ -47,6 +51,22 @@ describe("SdkSessionConfigChangeCoordinator", () => {
 		coordinator.handleDelegationSettingChanged("off", "subagents")
 
 		expect(options.rebuilds.request).toHaveBeenCalledWith("subagents", expect.any(Function))
+	})
+
+	it("rebuilds the session when either memory setting changes", () => {
+		const { coordinator, options } = makeCoordinator({ activeSession: makeActiveSession() })
+
+		coordinator.handleMemorySettingChanged(
+			{ enabled: false, extractAfterRun: true },
+			{ enabled: true, extractAfterRun: true },
+		)
+		coordinator.handleMemorySettingChanged(
+			{ enabled: true, extractAfterRun: true },
+			{ enabled: true, extractAfterRun: false },
+		)
+
+		expect(options.rebuilds.request).toHaveBeenCalledTimes(2)
+		expect(options.rebuilds.request).toHaveBeenCalledWith("memory", expect.any(Function))
 	})
 
 	it("does not replace a newer session that reused the same session ID", async () => {

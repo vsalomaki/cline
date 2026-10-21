@@ -288,6 +288,8 @@ const USER_SETTINGS_FIELDS = {
 	useAutoCondense: { default: true as boolean },
 	subagentsEnabled: { default: false as boolean },
 	agentTeamsEnabled: { default: false as boolean },
+	memoryEnabled: { default: false as boolean },
+	memoryExtractAfterRun: { default: true as boolean },
 	worktreesEnabled: { default: false as boolean },
 	cloudSessionsEnabled: { default: false as boolean },
 	preferredLanguage: { default: "English" as string },

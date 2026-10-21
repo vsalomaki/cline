@@ -15,7 +15,11 @@ import {
 	MEMORY_INDEX_PROMPT_CAP_CHARS,
 } from "./recall";
 import { MemoryStore } from "./store";
-import { createMemoryExtension, runMemoryToolAction } from "./tool";
+import {
+	createMemoryExtension,
+	isMemoryWriteDone,
+	runMemoryToolAction,
+} from "./tool";
 
 let root: string;
 let store: MemoryStore;
@@ -34,6 +38,30 @@ afterEach(() => {
 });
 
 describe("memory tool", () => {
+	it("tells a done write from a refusal", () => {
+		const save = {
+			action: "save",
+			scope: "user",
+			name: "Terse",
+			description: "Short answers",
+			content: "Keep replies short.",
+		} as const;
+		const outputs = [
+			runMemoryToolAction(store, save),
+			runMemoryToolAction(store, save),
+			runMemoryToolAction(store, { ...save, action: "update" }),
+			runMemoryToolAction(store, { action: "delete", scope: "user", name: "Terse" }),
+			runMemoryToolAction(store, { action: "delete", scope: "user", name: "Terse" }),
+		];
+		expect(outputs.map(isMemoryWriteDone)).toEqual([
+			true,
+			false,
+			true,
+			true,
+			false,
+		]);
+	});
+
 	it("saves, views, updates and deletes", () => {
 		const save = {
 			action: "save",

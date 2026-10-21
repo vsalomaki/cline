@@ -49,6 +49,8 @@ export async function getStateToPostToWebview(controller: {
 	const webSearchEnabled = isModelToolEnabledGlobally("web_search")
 	const subagentsEnabled = stateManager.getGlobalSettingsKey("subagentsEnabled")
 	const agentTeamsEnabled = stateManager.getGlobalSettingsKey("agentTeamsEnabled")
+	const memoryEnabled = stateManager.getGlobalSettingsKey("memoryEnabled")
+	const memoryExtractAfterRun = stateManager.getGlobalSettingsKey("memoryExtractAfterRun")
 	const userInfo = stateManager.getGlobalStateKey("userInfo")
 	const mcpMarketplaceEnabled = stateManager.getGlobalStateKey("mcpMarketplaceEnabled")
 	const mcpDisplayMode = stateManager.getGlobalStateKey("mcpDisplayMode")
@@ -136,6 +138,8 @@ export async function getStateToPostToWebview(controller: {
 		webSearchEnabled,
 		subagentsEnabled,
 		agentTeamsEnabled,
+		memoryEnabled: memoryEnabled ?? false,
+		memoryExtractAfterRun: memoryExtractAfterRun ?? true,
 		userInfo,
 		mcpMarketplaceEnabled,
 		mcpDisplayMode,

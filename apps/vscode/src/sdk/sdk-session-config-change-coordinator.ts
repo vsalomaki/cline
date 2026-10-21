@@ -1,3 +1,4 @@
+import type { MemorySettings } from "@cline/core"
 import type { DelegationMode } from "@shared/Delegation"
 import type { ClineMessage } from "@shared/ExtensionMessage"
 import type { Mode } from "@shared/storage/types"
@@ -92,6 +93,19 @@ export class SdkSessionConfigChangeCoordinator {
 			description: `delegation ${previous} -> ${next}`,
 			disposeReason: "subagentsSettingChange",
 			failureMessage: "Failed to reload subagent settings. The change may not apply until the next task.",
+		})
+	}
+
+	/** The memory tool, the recalled index and the idle extractor are set up when a session is built. */
+	handleMemorySettingChanged(previous: MemorySettings, next: MemorySettings): void {
+		if (previous.enabled === next.enabled && previous.extractAfterRun === next.extractAfterRun) {
+			return
+		}
+		this.requestRebuild({
+			reason: "memory",
+			description: `memory ${JSON.stringify(previous)} -> ${JSON.stringify(next)}`,
+			disposeReason: "memorySettingChange",
+			failureMessage: "Failed to reload memory settings. The change may not apply until the next task.",
 		})
 	}
 

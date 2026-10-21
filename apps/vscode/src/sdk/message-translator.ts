@@ -27,7 +27,13 @@
 // - SDK "ended" event → finalizes the session
 
 import type { CoreSessionEvent } from "@cline/core"
-import { PATCH_MARKERS, projectSessionMessagesForDisplay, resolveMessageDisplayRole, truncateCommandOutput } from "@cline/core"
+import {
+	isMemoryWriteDone,
+	PATCH_MARKERS,
+	projectSessionMessagesForDisplay,
+	resolveMessageDisplayRole,
+	truncateCommandOutput,
+} from "@cline/core"
 import type { MessageWithMetadata as SdkMessage } from "@cline/llms"
 import { type AgentEvent, formatDisplayUserInput, type ProviderErrorClass } from "@cline/shared"
 import { COMMAND_OUTPUT_STRING } from "@shared/combineCommandSequences"
@@ -38,6 +44,7 @@ import type {
 	ClineCompactionInfo,
 	ClineMessage,
 	ClineSay,
+	ClineSayMemory,
 	ClineSaySubagentStatus,
 	ClineSayTool,
 	ClineSubagentUsageInfo,
@@ -825,6 +832,7 @@ function relativizePatchPaths(patch: string | undefined, cwd: string): string | 
  *   fetch_web_content/web_fetch        → webFetch
  *   web_search                         → webSearch
  *   skills/use_skill                   → useSkill
+ *   memory                             → memoryAction
  *   ask_question/ask_followup_question → (not a visual tool — handled by askQuestion executor in SdkController)
  *   MCP tools (serverName__toolName)   → (handled before reaching sdkToolToClineSayTool — emitted as say="use_mcp_server")
  */
@@ -1014,6 +1022,9 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 			}
 		}
 
+		case "memory":
+			return describeMemoryTool(parsedInput)
+
 		default: {
 			if (toolName.startsWith("team_")) {
 				return describeTeamTool(toolName, parsedInput)
@@ -1048,6 +1059,50 @@ function describeTeamTool(toolName: string, input: Record<string, unknown> | und
 		path: action.charAt(0).toUpperCase() + action.slice(1),
 		...(details.length > 0 ? { content: details.join("\n") } : {}),
 	}
+}
+
+/** The memory tool refuses a write by returning text, so `output` decides whether a write happened. */
+function describeMemoryTool(input: Record<string, unknown> | undefined, output?: string, failed = false): ClineSayTool {
+	const action = getStringField(input, "action")
+	const memory: ClineSayMemory = {
+		action: action === "update" || action === "delete" || action === "view" ? action : "save",
+		scope: getStringField(input, "scope") === "user" ? "user" : "project",
+		name: getStringField(input, "name")?.trim() || undefined,
+		description: getStringField(input, "description")?.trim() || undefined,
+	}
+	if (output !== undefined && (failed || (memory.action !== "view" && !isMemoryWriteDone(output)))) {
+		memory.error = output || "The memory tool did not finish."
+	}
+	return { tool: "memoryAction", memory }
+}
+
+/** One row per memory in a "Memory saved" status notice. */
+function memoryNoticeRows(metadata: Record<string, unknown> | undefined): ClineSayTool[] | undefined {
+	const entries = metadata?.memory
+	if (!Array.isArray(entries)) {
+		return undefined
+	}
+	const rows = entries.flatMap((entry): ClineSayTool[] => {
+		const record = parseToolInput(entry)
+		const scope = getStringField(record, "scope")
+		const name = getStringField(record, "name")
+		if ((scope !== "project" && scope !== "user") || !name) {
+			return []
+		}
+		return [
+			{
+				tool: "memoryAction" as const,
+				memory: {
+					action: "save" as const,
+					scope,
+					name,
+					description: getStringField(record, "description"),
+					automatic: true,
+				},
+			},
+		]
+	})
+	return rows.length > 0 ? rows : undefined
 }
 
 /**
@@ -2030,9 +2085,16 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 						}
 					}
 
-					const sayTool = toDisplaySayTool(sdkToolToClineSayTool(toolName, storedInput), state.currentCwd())
-					// If there's an error, include it in the tool message
-					if (event.error) {
+					const sayTool =
+						toolName === "memory"
+							? describeMemoryTool(
+									parseToolInput(storedInput),
+									event.error ?? extractToolOutputText(event.output),
+									!!event.error,
+								)
+							: toDisplaySayTool(sdkToolToClineSayTool(toolName, storedInput), state.currentCwd())
+					// If there's an error, include it in the tool message; a memory row shows its own.
+					if (event.error && toolName !== "memory") {
 						messages.push({
 							ts,
 							type: "say",
@@ -2094,6 +2156,19 @@ function translateAgentEvent(event: AgentEvent, state: MessageTranslatorState): 
 			// falls through to the info row below so a future one surfaces (as its
 			// raw slug) instead of silently vanishing.
 			if (event.noticeType === "status") {
+				const memoryRows = memoryNoticeRows(event.metadata)
+				if (memoryRows) {
+					for (const sayTool of memoryRows) {
+						messages.push({
+							ts: state.nextTs(),
+							type: "say",
+							say: "tool",
+							text: JSON.stringify(sayTool),
+							partial: false,
+						})
+					}
+					break
+				}
 				const compaction = parseCompactionNoticeMetadata(event.metadata)
 				if (compaction) {
 					const ts =
