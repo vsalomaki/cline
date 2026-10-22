@@ -3,7 +3,7 @@ import type { MemoryStore } from "./store";
 export const MEMORY_INDEX_PROMPT_CAP_CHARS = 8 * 1024;
 
 export const MEMORY_SAVE_BAR =
-	"Save only what took real effort to find out and would be costly to find again: a non-obvious cause found after investigation, a setup quirk, a constraint the user stated, a correction the user had to make. Do not save what a quick read of the code, docs or git log, or a single command, reveals; routine facts; task progress; or anything already in the index. Prefer updating an existing memory over adding one. When unsure, do not save.";
+	"Save what a later session would otherwise have to find out again: a correction or preference the user gave, a decision or constraint the user stated, a cause found after investigation, a setup or environment quirk, a command or workflow that turned out to work. Do not save what a quick read of the code, docs or git log, or a single command, reveals; routine facts; task progress; or anything already in the index. Prefer updating an existing memory over adding one.";
 
 export function capMemoryIndex(
 	index: string,

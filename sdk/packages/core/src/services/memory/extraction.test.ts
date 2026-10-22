@@ -7,7 +7,7 @@ import {
 	applyMemoryCandidates,
 	buildIdleExtractionRequest,
 	buildMemoryCandidatesSection,
-	findHardWonSignal,
+	findFailedThenSucceededCalls,
 	type MemoryCandidate,
 	MemoryIdleExtractor,
 	type MemoryIdleExtractorOptions,
@@ -115,7 +115,7 @@ Read: a.ts`;
 		const section = buildMemoryCandidatesSection(store);
 		expect(section).toMatch(/^## Memory candidates\n/);
 		expect(section).toContain("- [Tone](tone.md) — Short answers");
-		expect(section).toContain("[] is the expected answer");
+		expect(section).toContain("or [] when nothing qualifies");
 	});
 });
 
@@ -146,51 +146,9 @@ describe("applyMemoryCandidates", () => {
 	});
 });
 
-describe("findHardWonSignal", () => {
-	const found = (messages: MessageWithMetadata[], start = 0) =>
-		findHardWonSignal(messages, start).found;
-
-	it("ignores corrections before the agent has used tools", () => {
-		expect(found([user("use bun instead of npm"), assistant("ok")])).toBe(
-			false,
-		);
-		expect(
-			found([user("add a test"), assistant("done"), user("No, use bun")]),
-		).toBe(false);
-	});
-
-	it("counts a correction after the agent used tools", () => {
-		const run = [
-			user("add a test"),
-			...call("c1", "editor", { path: "a.test.ts" }, "ok"),
-			assistant("done"),
-		];
-		expect(found([...run, user("thanks, now docs")])).toBe(false);
-		expect(found([...run, user("No, use bun not npm")])).toBe(true);
-		expect(
-			found([
-				...run,
-				user('<user_input mode="act">No, use bun not npm</user_input>'),
-			]),
-		).toBe(true);
-		expect(found([...run, user("No, use bun")], run.length + 1)).toBe(false);
-	});
-
-	it("counts a correction typed while the agent was working", () => {
-		const midRun = (text: string, metadata: Record<string, unknown>) => ({
-			role: "user" as const,
-			content: [{ type: "text" as const, text }],
-			metadata: { userRunSpan: 0, ...metadata },
-		});
-		const run = [
-			user("add a test"),
-			...call("c1", "editor", { path: "a.test.ts" }, "ok"),
-		];
-		expect(
-			found([...run, midRun("No, use bun not npm", { typedInput: true })]),
-		).toBe(true);
-		expect(found([...run, midRun("No, use bun not npm", {})])).toBe(false);
-	});
+describe("findFailedThenSucceededCalls", () => {
+	const found = (messages: MessageWithMetadata[]) =>
+		findFailedThenSucceededCalls(messages).length > 0;
 
 	it("needs a failure and a later success on the same target", () => {
 		expect(
@@ -220,7 +178,7 @@ describe("findHardWonSignal", () => {
 	});
 
 	it("returns the failed call as evidence", () => {
-		const signal = findHardWonSignal([
+		const failedCalls = findFailedThenSucceededCalls([
 			user("build it"),
 			...call(
 				"b1",
@@ -231,15 +189,13 @@ describe("findHardWonSignal", () => {
 			),
 			...call("b2", "run_commands", { commands: ["bun test"] }, "ok"),
 		]);
-		expect(signal.failedCalls).toHaveLength(1);
-		expect(signal.failedCalls[0]).toContain(
-			'<failed_call tool="run_commands">',
-		);
-		expect(signal.failedCalls[0]).toContain('input: {"commands":["bun test"]}');
-		expect(signal.failedCalls[0]).toContain("result: boom");
-		expect(signal.failedCalls[0].length).toBeLessThan(2_000);
+		expect(failedCalls).toHaveLength(1);
+		expect(failedCalls[0]).toContain('<failed_call tool="run_commands">');
+		expect(failedCalls[0]).toContain('input: {"commands":["bun test"]}');
+		expect(failedCalls[0]).toContain("result: boom");
+		expect(failedCalls[0].length).toBeLessThan(2_000);
 		expect(
-			buildIdleExtractionRequest(store, [user("build it")], signal.failedCalls),
+			buildIdleExtractionRequest(store, [user("build it")], failedCalls),
 		).toContain(
 			"Tool calls that failed before a later call on the same target succeeded:\n<failed_call",
 		);
@@ -355,7 +311,9 @@ describe("MemoryIdleExtractor", () => {
 
 	it("checks only messages after those a resumed session started with", async () => {
 		vi.useFakeTimers();
-		const request = vi.fn(async () => []);
+		const request = vi.fn(
+			async (_options: { request: string }): Promise<MemoryCandidate[]> => [],
+		);
 		const extractor = new MemoryIdleExtractor({
 			store,
 			getProviderConfig: () => ({ providerId: "p", modelId: "m" }),
@@ -365,7 +323,10 @@ describe("MemoryIdleExtractor", () => {
 		});
 		extractor.schedule([...correctedRun, user("thanks"), assistant("ok")]);
 		await vi.advanceTimersByTimeAsync(60_000);
-		expect(request).not.toHaveBeenCalled();
+		expect(request).toHaveBeenCalledTimes(1);
+		const sent = request.mock.calls[0]?.[0].request;
+		expect(sent).toContain("<user>\nthanks\n</user>");
+		expect(sent).not.toContain("add a test");
 	});
 
 	it("checks the whole transcript once compaction has replaced it", async () => {
@@ -403,15 +364,49 @@ describe("MemoryIdleExtractor", () => {
 
 		extractor.schedule([...compacted, withId(user("thanks"), "n7")]);
 		await vi.advanceTimersByTimeAsync(30_000);
+		expect(request).toHaveBeenCalledTimes(2);
+		expect(request.mock.calls[1]?.[0].request).toContain("thanks");
+		expect(request.mock.calls[1]?.[0].request).not.toContain("use pnpm");
+	});
+
+	it("checks any typed message, in any language", async () => {
+		vi.useFakeTimers();
+		const { extractor, request } = makeExtractor();
+		extractor.schedule([user("käytä aina pnpm:ää tässä"), assistant("ok")]);
+		await vi.advanceTimersByTimeAsync(30_000);
 		expect(request).toHaveBeenCalledTimes(1);
 	});
 
-	it("skips runs without a hard-won finding", async () => {
+	it("skips when nothing new was typed", async () => {
 		vi.useFakeTimers();
 		const { extractor, request } = makeExtractor();
-		extractor.schedule([user("add a test"), assistant("done")]);
+		extractor.schedule([assistant("hello")]);
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(request).not.toHaveBeenCalled();
+	});
+
+	it("runs a waiting check at once when flushed, and logs the result", async () => {
+		vi.useFakeTimers();
+		const request = vi.fn(async () => [candidate("Test dir")]);
+		const logger = { debug: vi.fn(), log: vi.fn() };
+		const extractor = new MemoryIdleExtractor({
+			store,
+			getProviderConfig: () => ({ providerId: "p", modelId: "m" }),
+			onSaved: vi.fn(),
+			logger,
+			request,
+		});
+		extractor.flush();
+		expect(request).not.toHaveBeenCalled();
+		extractor.schedule(correctedRun);
+		extractor.flush();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(request).toHaveBeenCalledTimes(1);
+		expect(logger.log).toHaveBeenCalledWith(
+			"Memory extraction: 1 candidate(s), 1 saved",
+		);
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(request).toHaveBeenCalledTimes(1);
 	});
 
 	it("logs a failed request and does not retry the same messages", async () => {
@@ -423,7 +418,7 @@ describe("MemoryIdleExtractor", () => {
 		extractor.schedule(correctedRun);
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(onSaved).not.toHaveBeenCalled();
-		extractor.schedule([...correctedRun, user("thanks"), assistant("ok")]);
+		extractor.schedule(correctedRun);
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(failing).toHaveBeenCalledTimes(1);
 	});

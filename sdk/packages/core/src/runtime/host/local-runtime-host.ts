@@ -2485,7 +2485,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 			endReason: string;
 		},
 	): Promise<void> {
-		session.memoryExtractor?.cancel();
+		session.memoryExtractor?.flush();
 		// Fallback `task.completed` emission for completed sessions that did
 		// not observe an explicit `submit_and_exit` tool call, routed through
 		// the shared teardown choke point so it can neither double-fire nor
@@ -2583,7 +2583,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 		// this is the branch that silently dropped `task.completed` when
 		// truthful status reporting re-routed interactive stops onto it.
 		this.emitTaskCompletedOnTeardown(session);
-		session.memoryExtractor?.cancel();
+		session.memoryExtractor?.flush();
 		const cleanupErrors: unknown[] = [];
 		const recordCleanupError = (stage: string, error: unknown) => {
 			cleanupErrors.push(error);
