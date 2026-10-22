@@ -126,7 +126,9 @@ describe("memory prompt section", () => {
 			"## Project memory (/repo/.git)\n- [a](a.md) — one",
 		);
 		expect(section).toContain("## User memory\n(none)\n</memory>");
-		expect(section).toContain("When unsure, do not save.");
+		expect(section).toContain(
+			"Prefer updating an existing memory over adding one.",
+		);
 	});
 
 	it("caps each index and escapes the closing tag", () => {

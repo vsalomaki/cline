@@ -380,8 +380,9 @@ The last three apply to the agentic strategy, the default. In the SDK they are t
 With memory on, the agent keeps short notes that last across sessions. It is off by
 default.
 
-- **Project memory** holds what was hard to find out about one repository: a cause found
-  after investigation, a setup quirk, a constraint or correction you gave. Every
+- **Project memory** holds what a later session would otherwise have to find out again
+  about one repository: a correction or decision you gave, a cause found after
+  investigation, a setup quirk, a command that turned out to work. Every
   worktree of a git repository shares it. Outside git, the project is the workspace
   folder. A repository at your home folder (dotfiles) counts only when the home folder
   itself is open; folders below it are keyed by their own path.
@@ -413,14 +414,15 @@ Memories are also picked up without the agent asking:
 
 - **At compaction**, the summary request also asks for memory candidates, so this costs
   no extra request.
-- **After a request**, when it finished normally and the conversation shows something
-  hard-won (you corrected the agent, or a tool call failed and a later one succeeded),
-  one request goes to the summarizer model (the session's model when none is set)
-  about 30 seconds later. A new prompt, a cancel or the end of the session cancels it.
-  This never applies to one-shot runs, which end straight away.
+- **After a request**, when it finished normally and you have typed something since the
+  last check, one request goes to the summarizer model (the session's model when none
+  is set) about 30 seconds later, covering the messages since that check. A new prompt
+  or a cancel calls it off; when the session ends or is rebuilt (a Plan/Act switch, a
+  settings change) before then, it runs straight away. This never applies to one-shot
+  runs, which end straight away. Each check is logged ("Memory extraction: …").
 
-Each pass saves at most two memories and usually none. A saved memory is reported as a
-"Memory saved" status line.
+Each pass saves at most two memories. A saved memory is reported as a "Memory saved"
+status line.
 
 | Switch | Default | Where |
 |--------|---------|-------|

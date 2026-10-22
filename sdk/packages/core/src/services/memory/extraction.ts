@@ -37,7 +37,7 @@ export interface MemoryCandidate {
 	content: string;
 }
 
-const CANDIDATE_RULES = `${MEMORY_SAVE_BAR} User scope is only for the user's preferences and working style that are not tied to one project or technology. At most ${MAX_MEMORY_CANDIDATES} candidates; usually there are none, and [] is the expected answer. Never repeat what an existing memory already says: to change one, reuse its exact name.`;
+const CANDIDATE_RULES = `${MEMORY_SAVE_BAR} User scope is only for the user's preferences and working style that are not tied to one project or technology. At most ${MAX_MEMORY_CANDIDATES} candidates, or [] when nothing qualifies. Never repeat what an existing memory already says: to change one, reuse its exact name.`;
 
 const CANDIDATE_FORMAT =
 	'a fenced ```json block holding an array of {"scope": "project" | "user", "name": "...", "description": "one line", "content": "..."} objects, or []';
@@ -189,9 +189,6 @@ function hasToolUse(message: MessageWithMetadata): boolean {
 	);
 }
 
-const CORRECTION_PATTERN =
-	/^\s*(no|nope|wrong|actually|not quite)\b|\b(that'?s (wrong|not (it|right|what))|that is (wrong|not)|not what i|i (said|told you|asked)|you should(n'?t| not)|don'?t do|do not do|stop doing|please don'?t|instead of|that didn'?t work|still (fails|failing|broken|wrong))\b/i;
-
 const EVIDENCE_CHARS = 800;
 const MAX_EVIDENCE = 3;
 const PRIMARY_INPUT_KEYS = [
@@ -226,46 +223,27 @@ function toolTarget(name: string, input: Record<string, unknown>): string {
 	return `${name}:${JSON.stringify(key ? input[key] : input)}`;
 }
 
-export interface HardWonSignal {
-	found: boolean;
-	/** Each tool call that failed and later succeeded on the same target. */
-	failedCalls: string[];
-}
-
 /**
- * Knowledge that was hard to get, in the messages from `start` on: the user
- * correcting the agent after it used tools, or a tool call that failed and
- * later succeeded with the same tool on the same target.
+ * Tool calls from `start` on that failed and later succeeded with the same
+ * tool on the same target, as evidence for the extraction request.
  */
-export function findHardWonSignal(
+export function findFailedThenSucceededCalls(
 	messages: readonly MessageWithMetadata[],
 	start = 0,
-): HardWonSignal {
+): string[] {
 	const calls = new Map<
 		string,
 		{ name: string; input: Record<string, unknown> }
 	>();
 	const failures = new Map<string, string>();
 	const failedCalls: string[] = [];
-	let correction = false;
-	let agentUsedTools = false;
 	messages.forEach((message, index) => {
 		if (message.role === "assistant" && Array.isArray(message.content)) {
 			for (const block of message.content) {
 				if (block.type !== "tool_use") continue;
-				agentUsedTools = true;
 				calls.set(block.id, { name: block.name, input: block.input });
 			}
 			return;
-		}
-		const typed = userText(message);
-		if (
-			typed !== undefined &&
-			index >= start &&
-			agentUsedTools &&
-			CORRECTION_PATTERN.test(typed)
-		) {
-			correction = true;
 		}
 		if (!Array.isArray(message.content)) return;
 		for (const block of message.content) {
@@ -290,7 +268,7 @@ export function findHardWonSignal(
 			}
 		}
 	});
-	return { found: correction || failedCalls.length > 0, failedCalls };
+	return failedCalls;
 }
 
 function keepNewest(blocks: string[], budget: number): string[] {
@@ -335,7 +313,7 @@ export function buildIdleExtractionRequest(
 	const evidenceSection = evidence
 		? `\n\nTool calls that failed before a later call on the same target succeeded:\n${evidence}`
 		: "";
-	return `Decide whether this coding session produced anything worth keeping in memory for later sessions. ${CANDIDATE_RULES}
+	return `Decide whether this coding session produced anything worth keeping in memory for later sessions. Corrections the user made and anything the user asked to remember are the most valuable. ${CANDIDATE_RULES}
 
 Existing memories:
 ${formatExistingMemories(store)}
@@ -353,7 +331,7 @@ export async function requestMemoryCandidates(options: {
 	const handler = await createHandlerAsync(options.providerConfig);
 	let text = "";
 	for await (const chunk of handler.createMessage(
-		"You review a finished coding session for findings worth remembering in later sessions. Be strict: most sessions have none.",
+		"You review a finished coding session for findings worth remembering in later sessions.",
 		[{ role: "user", content: options.request }],
 	)) {
 		if (chunk.type === "text") {
@@ -390,10 +368,12 @@ function cursorAfter(
 
 /**
  * One extraction per idle period: armed when a run finishes, cancelled (with
- * any request in flight) when the next prompt arrives or the session ends.
+ * any request in flight) by the next prompt or an abort, and run at once when
+ * the session ends.
  */
 export class MemoryIdleExtractor {
 	private timer: ReturnType<typeof setTimeout> | undefined;
+	private pending: { request: string; next: ExtractionCursor } | undefined;
 	private inFlight: AbortController | undefined;
 	private cursor: ExtractionCursor;
 
@@ -405,19 +385,24 @@ export class MemoryIdleExtractor {
 	schedule(messages: readonly MessageWithMetadata[]): void {
 		this.cancel();
 		const start = this.windowStart(messages);
-		const signal = findHardWonSignal(messages, start);
-		if (!signal.found) return;
+		const window = messages.slice(start);
+		if (!window.some((message) => userText(message) !== undefined)) return;
 		const request = buildIdleExtractionRequest(
 			this.options.store,
-			messages.slice(start),
-			signal.failedCalls,
+			window,
+			findFailedThenSucceededCalls(messages, start),
 		);
-		const next = cursorAfter(messages);
-		this.timer = setTimeout(() => {
-			this.timer = undefined;
-			void this.run(request, next);
-		}, this.options.delayMs ?? MEMORY_IDLE_DELAY_MS);
+		this.pending = { request, next: cursorAfter(messages) };
+		this.timer = setTimeout(
+			() => this.runPending(),
+			this.options.delayMs ?? MEMORY_IDLE_DELAY_MS,
+		);
 		this.timer.unref?.();
+	}
+
+	/** Runs a waiting extraction now, for a session that is ending or being rebuilt. */
+	flush(): void {
+		if (this.timer) this.runPending();
 	}
 
 	cancel(): void {
@@ -425,8 +410,17 @@ export class MemoryIdleExtractor {
 			clearTimeout(this.timer);
 			this.timer = undefined;
 		}
+		this.pending = undefined;
 		this.inFlight?.abort();
 		this.inFlight = undefined;
+	}
+
+	private runPending(): void {
+		clearTimeout(this.timer);
+		this.timer = undefined;
+		const pending = this.pending;
+		this.pending = undefined;
+		if (pending) void this.run(pending.request, pending.next);
 	}
 
 	/** After the last checked message; from the start when compaction replaced it. */
@@ -459,6 +453,9 @@ export class MemoryIdleExtractor {
 				this.options.store,
 				candidates,
 				this.options.logger,
+			);
+			this.options.logger?.log(
+				`Memory extraction: ${candidates.length} candidate(s), ${saved.length} saved`,
 			);
 			if (saved.length > 0) {
 				this.options.onSaved(saved);

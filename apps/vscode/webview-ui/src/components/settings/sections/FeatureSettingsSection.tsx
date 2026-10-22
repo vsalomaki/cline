@@ -222,7 +222,7 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 							</div>
 							<FeatureRow
 								checked={memoryEnabled}
-								description="Cline saves only hard-won findings: project memory per git repository, user memory for your preferences. Both are stored outside the repository."
+								description="Cline saves what a later task would otherwise have to find out again: project memory per git repository, user memory for your preferences. Both are stored outside the repository."
 								id="memory"
 								label="Memory"
 								onChange={(checked) => updateSetting("memoryEnabled", checked)}

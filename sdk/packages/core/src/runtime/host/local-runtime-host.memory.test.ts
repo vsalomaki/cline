@@ -192,14 +192,20 @@ describe("LocalRuntimeHost memory extraction", () => {
 		await host.stopSession("sess-memory");
 	});
 
-	it("cancels it on an abort and when the session stops", async () => {
+	it("cancels it on an abort", async () => {
 		const cancel = vi.spyOn(MemoryIdleExtractor.prototype, "cancel");
 		const { host } = await startSession();
 		cancel.mockClear();
 		await host.abort("sess-memory");
 		expect(cancel).toHaveBeenCalledTimes(1);
 		await host.stopSession("sess-memory");
-		expect(cancel.mock.calls.length).toBeGreaterThan(1);
 		expect(createHandlerMock).not.toHaveBeenCalled();
+	});
+
+	it("runs a waiting check when the session stops", async () => {
+		const flush = vi.spyOn(MemoryIdleExtractor.prototype, "flush");
+		const { host } = await startSession();
+		await host.stopSession("sess-memory");
+		expect(flush).toHaveBeenCalled();
 	});
 });
