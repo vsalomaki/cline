@@ -5221,3 +5221,127 @@ describe("AgentRuntime sdk.error reporting", () => {
 		});
 	});
 });
+
+describe("AgentRuntime image rejection recovery", () => {
+	const screenshot = [
+		{ type: "text", text: "Successfully read image" },
+		{ type: "image", data: "iVBORw0KGgo=", mediaType: "image/png" },
+	];
+	const readScreenshot = (): AgentTool => ({
+		name: "read_image",
+		description: "Read an image",
+		inputSchema: { type: "object" },
+		execute: async () => screenshot,
+	});
+	const callTool = (): AgentModelEvent[] => [
+		{
+			type: "tool-call-delta",
+			toolCallId: "call_img",
+			toolName: "read_image",
+			inputText: "{}",
+		},
+		{ type: "finish", reason: "tool-calls" },
+	];
+	const rejected = (): AgentModelEvent[] => [
+		{
+			type: "finish",
+			reason: "error",
+			error: "fake-qwen is not a multimodal model",
+		},
+	];
+	const answer = (text: string) => (): AgentModelEvent[] => [
+		{ type: "text-delta", text },
+		{ type: "finish", reason: "stop" },
+	];
+	const hasImage = (request: AgentModelRequest | undefined) =>
+		JSON.stringify(request?.messages).includes('"type":"image"');
+
+	it("re-sends a rejected request without its images and keeps them out of later requests", async () => {
+		const model = new ScriptedModel([
+			callTool,
+			rejected,
+			answer("I cannot see it"),
+			answer("hi"),
+		]);
+		const runtime = new AgentRuntime({ model, tools: [readScreenshot()] });
+		const noticeKinds: string[] = [];
+		runtime.subscribe((event) => {
+			if (
+				event.type === "status-notice" &&
+				typeof event.metadata?.kind === "string"
+			) {
+				noticeKinds.push(event.metadata.kind);
+			}
+		});
+
+		const result = await runtime.run("Look at the screenshot");
+
+		expect(result.status).toBe("completed");
+		expect(result.outputText).toBe("I cannot see it");
+		expect(noticeKinds).toContain("image_rejection_recovery");
+		expect(hasImage(model.requests[1])).toBe(true);
+		expect(hasImage(model.requests[2])).toBe(false);
+		expect(JSON.stringify(model.requests[2]?.messages)).toContain(
+			"[Image not sent",
+		);
+		// The transcript keeps the image; only requests leave it out.
+		const toolMessage = result.messages.find((message) =>
+			message.content.some((part) => part.type === "tool-result"),
+		);
+		expect(JSON.stringify(toolMessage?.content)).toContain('"type":"image"');
+		expect(toolMessage?.metadata?.imagesWithheld).toBe(true);
+
+		const followUp = await runtime.continue("Say hi");
+		expect(followUp.status).toBe("completed");
+		expect(model.requests).toHaveLength(4);
+		expect(hasImage(model.requests[3])).toBe(false);
+	});
+
+	it("restores the images when the request fails without them too", async () => {
+		const model = new ScriptedModel([callTool, rejected, rejected]);
+		const runtime = new AgentRuntime({ model, tools: [readScreenshot()] });
+
+		const result = await runtime.run("Look at the screenshot");
+
+		expect(result.status).toBe("failed");
+		expect(model.requests).toHaveLength(3);
+		const toolMessage = result.messages.find((message) =>
+			message.content.some((part) => part.type === "tool-result"),
+		);
+		expect(toolMessage?.metadata?.imagesWithheld).toBeUndefined();
+	});
+
+	it("leaves images in after a transient failure", async () => {
+		const model = new ScriptedModel([
+			callTool,
+			() => [
+				{
+					type: "finish",
+					reason: "error",
+					error: "rate limited",
+					errorRetryable: true,
+				},
+			],
+		]);
+		const runtime = new AgentRuntime({
+			model,
+			tools: [readScreenshot()],
+			providerErrorMaxRetries: 0,
+		});
+
+		const result = await runtime.run("Look at the screenshot");
+
+		expect(result.status).toBe("failed");
+		expect(model.requests).toHaveLength(2);
+	});
+
+	it("does not retry a failed request that carries no images", async () => {
+		const model = new ScriptedModel([rejected]);
+		const runtime = new AgentRuntime({ model });
+
+		const result = await runtime.run("Hello");
+
+		expect(result.status).toBe("failed");
+		expect(model.requests).toHaveLength(1);
+	});
+});
