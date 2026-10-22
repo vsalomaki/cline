@@ -435,6 +435,68 @@ function formatHookContextBlock(
 	return `<hook_context ${attributes.join(" ")}>\n${body}\n</hook_context>`;
 }
 
+/** Message metadata flag: this message's images are no longer sent to the model. */
+const IMAGES_WITHHELD_METADATA_KEY = "imagesWithheld";
+const IMAGE_WITHHELD_TEXT =
+	"[Image not sent: the model provider rejected a request that contained it]";
+
+function isImageBlock(value: unknown): boolean {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		(value as { type?: unknown }).type === "image"
+	);
+}
+
+function containsImageBlock(value: unknown): boolean {
+	if (isImageBlock(value)) return true;
+	if (Array.isArray(value)) return value.some(containsImageBlock);
+	if (typeof value === "object" && value !== null) {
+		return Object.values(value).some(containsImageBlock);
+	}
+	return false;
+}
+
+function replaceImageBlocks(value: unknown): unknown {
+	if (isImageBlock(value)) return { type: "text", text: IMAGE_WITHHELD_TEXT };
+	if (Array.isArray(value)) return value.map(replaceImageBlocks);
+	if (typeof value === "object" && value !== null) {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [
+				key,
+				replaceImageBlocks(entry),
+			]),
+		);
+	}
+	return value;
+}
+
+function messageHasImages(message: AgentMessage): boolean {
+	return message.content.some(
+		(part) =>
+			part.type === "image" ||
+			(part.type === "tool-result" && containsImageBlock(part.output)),
+	);
+}
+
+function withheldImagesForRequest(message: AgentMessage): AgentMessage {
+	if (message.metadata?.[IMAGES_WITHHELD_METADATA_KEY] !== true) {
+		return message;
+	}
+	return {
+		...message,
+		content: message.content.map((part): AgentMessagePart => {
+			if (part.type === "image") {
+				return { type: "text", text: IMAGE_WITHHELD_TEXT };
+			}
+			if (part.type === "tool-result") {
+				return { ...part, output: replaceImageBlocks(part.output) };
+			}
+			return part;
+		}),
+	};
+}
+
 function cloneMessages(messages: readonly AgentMessage[]): AgentMessage[] {
 	return messages.map((message) => ({
 		...message,
@@ -1219,8 +1281,10 @@ export class AgentRuntime {
 		interrupted?: boolean;
 	}> {
 		const issue = () =>
-			this.withProviderErrorRetry(() =>
-				this.generateAssistantMessageWithOverflowRecovery(),
+			this.withImageRejectionRecovery(() =>
+				this.withProviderErrorRetry(() =>
+					this.generateAssistantMessageWithOverflowRecovery(),
+				),
 			);
 		const first = await issue();
 		if (first.finishReason !== "unknown" || first.interrupted) return first;
@@ -1244,6 +1308,78 @@ export class AgentRuntime {
 		);
 		this.resetLastError();
 		return await issue();
+	}
+
+	/**
+	 * When a request with images fails, re-issue it once with those images
+	 * replaced by a note. A provider that cannot take an image (text-only
+	 * model, unsupported format, too large) rejects every later request that
+	 * still carries it, so without this the conversation cannot continue.
+	 * Transient failures (rate limits, network, 5xx) are left to the provider
+	 * retry. Messages whose images were withheld are marked in metadata, so
+	 * later requests and resumed sessions skip them too; the mark stays only
+	 * when the retry succeeds.
+	 */
+	private async withImageRejectionRecovery<
+		T extends {
+			message: AgentMessage;
+			finishReason: AgentModelFinishReason;
+			interrupted?: boolean;
+		},
+	>(issue: () => Promise<T>): Promise<T> {
+		const first = await issue();
+		if (
+			first.finishReason !== "error" ||
+			first.interrupted ||
+			first.message.content.length > 0 ||
+			this.hasModelToolActivity(first.message) ||
+			this.state.lastErrorRetryable === true ||
+			this.state.lastErrorClass === "auth" ||
+			this.state.lastErrorClass === "context_window_exceeded"
+		) {
+			return first;
+		}
+		const withheld = this.state.messages.filter(
+			(message) =>
+				message.metadata?.[IMAGES_WITHHELD_METADATA_KEY] !== true &&
+				messageHasImages(message),
+		);
+		if (withheld.length === 0) {
+			return first;
+		}
+		const providerError = this.state.lastError;
+		for (const message of withheld) {
+			message.metadata = {
+				...message.metadata,
+				[IMAGES_WITHHELD_METADATA_KEY]: true,
+			};
+		}
+		await this.emit({
+			type: "status-notice",
+			snapshot: this.snapshot(),
+			message:
+				"provider rejected a request with images — retrying without them",
+			metadata: {
+				kind: "image_rejection_recovery",
+				reason: "image_rejection_recovery",
+				phase: "started",
+				iteration: this.state.iteration,
+				providerError,
+			},
+		});
+		this.resetLastError();
+		let recovered = false;
+		try {
+			const retry = await issue();
+			recovered = retry.finishReason !== "error" && !retry.interrupted;
+			return retry;
+		} finally {
+			if (!recovered) {
+				for (const message of withheld) {
+					delete message.metadata?.[IMAGES_WITHHELD_METADATA_KEY];
+				}
+			}
+		}
 	}
 
 	/**
@@ -1682,7 +1818,9 @@ export class AgentRuntime {
 		});
 		let request: AgentModelRequest = {
 			systemPrompt: this.config.systemPrompt,
-			messages: cloneMessages(this.state.messages),
+			messages: cloneMessages(this.state.messages).map(
+				withheldImagesForRequest,
+			),
 			tools: [...this.tools.values()].map<AgentToolDefinition>((tool) => ({
 				name: tool.name,
 				description: tool.description,
