@@ -11,9 +11,7 @@ import {
 	type Dirent,
 	existsSync,
 	mkdtempSync,
-	renameSync,
 	rmSync,
-	writeFileSync,
 } from "node:fs";
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -31,18 +29,23 @@ import {
 import { TimeoutError } from "../helpers";
 import type { ShellExecutor } from "../types";
 import {
+	createCommandOutputFile,
+	DEFAULT_COMMAND_LOG_RETENTION_MS,
+	DETACHED_LOG_COMPLETED_FILENAME,
+	DETACHED_LOG_DIRECTORY_PREFIX,
+	DETACHED_LOG_FILENAME,
+	MAX_COMMAND_LOG_BYTES,
+	scheduleDetachedLogCleanup,
+	writeLifecycleMarker,
+} from "./command-output-file";
+import {
 	MAX_COMMAND_OUTPUT_CHARS,
 	truncateCommandOutput,
 } from "./output-limits";
 import type { RunCommandExecutionController } from "./run-command-execution-controller";
 
-const MAX_DETACHED_LOG_BYTES = 10 * 1024 * 1024;
-const DEFAULT_DETACHED_LOG_RETENTION_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_ACTIVE_COMMAND_POLL_INTERVAL_MS = 60_000;
-const DETACHED_LOG_DIRECTORY_PREFIX = "cline-command-";
-const DETACHED_LOG_FILENAME = "output.log";
 const DETACHED_LOG_ACTIVE_COMMAND_FILENAME = "active-command.json";
-const DETACHED_LOG_COMPLETED_FILENAME = "completed-at";
 const COMMAND_PROGRESS_FLUSH_INTERVAL_MS = 48;
 /**
  * How long the executor waits after the shell process exits for its stdio
@@ -76,7 +79,7 @@ type DetachedCommandMarker = {
 function resolveDetachedLogRetentionMs(value: number | undefined): number {
 	return typeof value === "number" && Number.isFinite(value)
 		? Math.max(0, value)
-		: DEFAULT_DETACHED_LOG_RETENTION_MS;
+		: DEFAULT_COMMAND_LOG_RETENTION_MS;
 }
 
 function resolveActiveCommandPollIntervalMs(value: number | undefined): number {
@@ -114,34 +117,6 @@ function parseDetachedCommandMarker(
 		return marker as DetachedCommandMarker;
 	} catch {
 		return undefined;
-	}
-}
-
-function writeLifecycleMarker(path: string, text: string): void {
-	const temporaryPath = `${path}.${randomUUID()}.tmp`;
-	try {
-		writeFileSync(temporaryPath, text, "utf8");
-		try {
-			renameSync(temporaryPath, path);
-		} catch (error) {
-			// Windows does not replace an existing destination atomically. Existing
-			// lifecycle markers are only replaced when corrupt, so remove that
-			// unusable generation before installing the valid one.
-			if (
-				error instanceof Error &&
-				"code" in error &&
-				["EEXIST", "EPERM"].includes(
-					String((error as NodeJS.ErrnoException).code),
-				)
-			) {
-				rmSync(path, { force: true });
-				renameSync(temporaryPath, path);
-			} else {
-				throw error;
-			}
-		}
-	} finally {
-		rmSync(temporaryPath, { force: true });
 	}
 }
 
@@ -440,6 +415,14 @@ export interface ShellExecutorOptions {
 
 	/** Process identity provider used to enable safe command detachment. */
 	processStartTokenProbe?: ProcessStartTokenProbe;
+
+	/**
+	 * Where output too long for the tool result is saved, kept for
+	 * detachedLogRetentionMs. The startup reaper only scans the default.
+	 *
+	 * @default os.tmpdir()
+	 */
+	outputFileDirectory?: string;
 }
 
 interface SpawnConfig {
@@ -616,16 +599,6 @@ function createCommandProgressEmitter(
 	};
 }
 
-function scheduleDetachedLogCleanup(
-	directory: string,
-	retentionMs: number,
-): void {
-	const cleanupTimer = setTimeout(() => {
-		void rm(directory, { recursive: true, force: true }).catch(() => undefined);
-	}, retentionMs);
-	cleanupTimer.unref();
-}
-
 function createDetachedLog(retentionMs: number, marker: DetachedCommandMarker) {
 	const directory = mkdtempSync(join(tmpdir(), DETACHED_LOG_DIRECTORY_PREFIX));
 	const path = join(directory, DETACHED_LOG_FILENAME);
@@ -689,7 +662,7 @@ function createDetachedLog(retentionMs: number, marker: DetachedCommandMarker) {
 		path,
 		write(text: string): void {
 			if (!text || capped || !writable) return;
-			const remaining = MAX_DETACHED_LOG_BYTES - bytesWritten;
+			const remaining = MAX_COMMAND_LOG_BYTES - bytesWritten;
 			if (remaining <= 0) {
 				capped = true;
 				writable = false;
@@ -703,7 +676,7 @@ function createDetachedLog(retentionMs: number, marker: DetachedCommandMarker) {
 			bytesWritten += accepted.length;
 			if (
 				accepted.length < data.length ||
-				bytesWritten >= MAX_DETACHED_LOG_BYTES
+				bytesWritten >= MAX_COMMAND_LOG_BYTES
 			) {
 				capped = true;
 				writable = false;
@@ -721,6 +694,7 @@ function spawnAndCollect(
 	maxOutputChars: number,
 	combineOutput: boolean,
 	detachedLogRetentionMs: number,
+	outputFileDirectory: string | undefined,
 	executionController?: RunCommandExecutionController,
 	processStartTokenProbe: ProcessStartTokenProbe = probeProcessStartTokenAsync,
 ): Promise<string> {
@@ -744,6 +718,12 @@ function spawnAndCollect(
 
 		const stdout = createRollingCollector(maxOutputChars);
 		const stderr = createRollingCollector(maxOutputChars);
+		const outputFile = createCommandOutputFile({
+			maxChars: maxOutputChars,
+			directory: outputFileDirectory,
+			retentionMs: detachedLogRetentionMs,
+			owner: context,
+		});
 		const executionId = randomUUID();
 		const supportsDetachment = Boolean(
 			executionController && context.sessionId,
@@ -825,6 +805,7 @@ function spawnAndCollect(
 			}
 			context.signal?.removeEventListener("abort", abortHandler);
 			unregisterExecution();
+			outputFile.finish();
 		};
 		const killAndReject = (error: Error) => {
 			if (killed || settled) return;
@@ -948,6 +929,7 @@ function spawnAndCollect(
 				detachedLog?.write(chunk);
 				return;
 			}
+			outputFile.append(chunk);
 			progress.append("stdout", chunk);
 		});
 
@@ -958,6 +940,7 @@ function spawnAndCollect(
 				detachedLog?.write(chunk);
 				return;
 			}
+			if (combineOutput) outputFile.append(chunk);
 			progress.append("stderr", chunk);
 		});
 
@@ -973,12 +956,15 @@ function spawnAndCollect(
 			const out = stdout.snapshot();
 			const err = stderr.snapshot();
 			if (out.finalChunk) {
+				outputFile.append(out.finalChunk);
 				progress.append("stdout", out.finalChunk);
 			}
 			if (err.finalChunk) {
+				if (combineOutput) outputFile.append(err.finalChunk);
 				progress.append("stderr", err.finalChunk);
 			}
 			progress.stop({ flush: true });
+			const savedOutput = outputFile.finish();
 			cleanup();
 
 			if (code !== 0) {
@@ -993,6 +979,7 @@ function spawnAndCollect(
 					failureOutput = truncateCommandOutput(failureOutput, {
 						maxChars: maxOutputChars,
 						totalChars,
+						savedOutput,
 					});
 				}
 				const notice = `[${commandCompletionMessage(code, signal)}]`;
@@ -1018,6 +1005,7 @@ function spawnAndCollect(
 					output = truncateCommandOutput(output, {
 						maxChars: maxOutputChars,
 						totalChars,
+						savedOutput,
 					});
 				}
 				settle(() =>
@@ -1140,6 +1128,7 @@ export function createShellExecutor(
 		combineOutput = true,
 		executionController,
 		processStartTokenProbe = probeProcessStartTokenAsync,
+		outputFileDirectory,
 	} = options;
 	const detachedLogRetentionMs = resolveDetachedLogRetentionMs(
 		options.detachedLogRetentionMs,
@@ -1175,6 +1164,7 @@ export function createShellExecutor(
 			maxOutputChars,
 			combineOutput,
 			detachedLogRetentionMs,
+			outputFileDirectory,
 			executionController,
 			processStartTokenProbe,
 		);

@@ -13,11 +13,14 @@
 
 import {
 	CommandExitError,
+	type CommandOutputFileOptions,
+	createCommandOutputFile,
 	createShellExecutor,
 	createShellTool,
 	resolveContextLimits,
 	type ShellExecutor,
 	type StructuredCommandInput,
+	savedCommandOutputNotice,
 	type ToolContextLimits,
 	truncateCommandOutput,
 } from "@cline/core"
@@ -248,6 +251,7 @@ export async function executeForeground(
 	foregroundCommands?: SdkForegroundCommandCoordinator,
 	terminalProfileId?: string,
 	autoProceedMs: number = FOREGROUND_COMMAND_AUTO_PROCEED_MS,
+	outputFileOptions?: Omit<CommandOutputFileOptions, "maxChars">,
 ): Promise<string> {
 	const terminalCommand = formatCommandForTerminal(command)
 
@@ -379,6 +383,7 @@ export async function executeForeground(
 		const process = terminalManager.runCommand(terminalInfo, terminalCommand)
 		const outputLines: string[] = []
 		let droppedLines = 0
+		const outputFile = createCommandOutputFile({ ...outputFileOptions, maxChars: maxOutputChars })
 
 		// Accumulate output lines to return the full output once the command completes.
 		// The chat shows command output at completion, not incrementally.
@@ -386,14 +391,16 @@ export async function executeForeground(
 		// This is a second buffer on top of the process's own `fullOutput` (capped at
 		// MAX_FULL_OUTPUT_SIZE — see VscodeTerminalProcess), so it needs its own cap:
 		// a long-running command emitting many lines must not accumulate them here
-		// without bound. Once the cap is hit, keep only the head and tail — matching
-		// truncateCommandOutput's own head/tail strategy below — since build/test
-		// failures usually appear at the end of output.
+		// without bound. Once the cap is hit, keep only the tail, since build/test
+		// failures usually appear at the end of output; the whole output goes to
+		// outputFile from then on.
 		const maxBufferedLines = MAX_UNRETRIEVED_LINES
 		const bufferLine = (line: string): void => {
+			outputFile.append(`${line}\n`)
 			if (outputLines.length < maxBufferedLines) {
 				outputLines.push(line)
 			} else {
+				outputFile.spill()
 				outputLines.shift()
 				outputLines.push(line)
 				droppedLines++
@@ -425,6 +432,7 @@ export async function executeForeground(
 					return
 				}
 				detachReason = reason
+				outputFile.finish()
 				detachedLog = createDetachedCommandLog(terminalCommand, outputLines)
 				detachedLog.attach(process)
 				if (reason === "user") {
@@ -448,13 +456,23 @@ export async function executeForeground(
 				throw new Error("Command execution aborted")
 			}
 
-			const bufferedOutput =
-				droppedLines > 0
-					? [...outputLines, `\n... (${droppedLines} earlier lines dropped) ...\n`].join("\n")
-					: outputLines.join("\n")
-			const output = truncateCommandOutput(bufferedOutput.trim(), {
-				maxChars: maxOutputChars,
-			})
+			// A detached command's result points at its detached log instead.
+			const savedOutput = detachedLog === undefined ? outputFile.finish() : undefined
+			const bufferedOutput = outputLines.join("\n").trim()
+			let output: string
+			if (droppedLines > 0) {
+				// Only the tail was buffered, so the notice stands in for the dropped head.
+				const notice = savedOutput
+					? savedCommandOutputNotice(savedOutput)
+					: `[... ${droppedLines} earlier lines dropped ...]`
+				output = `${notice}\n${bufferedOutput.slice(-maxOutputChars)}`
+			} else {
+				output = truncateCommandOutput(bufferedOutput, {
+					maxChars: maxOutputChars,
+					totalChars: savedOutput?.totalChars,
+					savedOutput,
+				})
+			}
 
 			if (detachedLog !== undefined) {
 				return formatDetachedResult(detachedLog.path, output, detachReason ?? "timeout", autoProceedMs)
@@ -505,6 +523,7 @@ export async function executeForeground(
 			return output
 		} finally {
 			process.removeListener("line", bufferLine)
+			outputFile.finish()
 		}
 	} finally {
 		clearTimeout(autoProceedTimer)
@@ -637,6 +656,7 @@ function createVscodeShellExecutor(
 			options.foregroundCommands,
 			profileId,
 			options.foregroundAutoProceedMs,
+			{ owner: context },
 		)
 	}
 }
