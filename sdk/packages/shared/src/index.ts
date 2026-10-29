@@ -522,6 +522,8 @@ export {
 	getClineEnvironmentConfig,
 	resolveClineEnvironment,
 } from "./runtime/cline-environment";
+export type { DiagnosticGauge } from "./runtime/diagnostics";
+export { DiagnosticCounters, diagnostics } from "./runtime/diagnostics";
 export type {
 	ConnectorCliLaunchSpec,
 	ConnectorInstanceRef,

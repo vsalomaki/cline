@@ -1,3 +1,4 @@
+import { diagnostics } from "@cline/shared"
 import { sendShowWebviewEvent } from "@core/controller/ui/subscribeToShowWebview"
 import { WebviewProvider } from "@core/webview"
 import * as vscode from "vscode"
@@ -197,7 +198,20 @@ export class VscodeWebviewProvider extends WebviewProvider implements vscode.Web
 	 * @returns A thenable that resolves to a boolean indicating success, or undefined if the webview is not available
 	 */
 	private async postMessageToWebview(message: ExtensionMessage): Promise<boolean | undefined> {
-		return this.webview?.webview.postMessage(message)
+		const webview = this.webview?.webview
+		if (!webview) {
+			diagnostics.bump("vsc.webviewPost.noView")
+			return undefined
+		}
+		diagnostics.bump("vsc.webviewPost.calls")
+		diagnostics.level("vsc.webviewPost.inFlight", 1)
+		try {
+			const delivered = await webview.postMessage(message)
+			if (!delivered) diagnostics.bump("vsc.webviewPost.notDelivered")
+			return delivered
+		} finally {
+			diagnostics.level("vsc.webviewPost.inFlight", -1)
+		}
 	}
 
 	/**

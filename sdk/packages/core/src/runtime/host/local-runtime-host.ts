@@ -10,6 +10,7 @@ import {
 	type BasicLogger,
 	captureSdkError,
 	createSessionId,
+	diagnostics,
 	type ITelemetryService,
 	isLikelyAuthError,
 	normalizeUserInput,
@@ -309,6 +310,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 	private readonly connectorsRequest?: ConnectorsRequest;
 	private readonly events = new RuntimeHostEventBus();
 	private readonly sessions = new Map<string, ActiveSession>();
+	private readonly removeDiagnosticsGauge: () => void;
 	// Serializes manifest read-modify-writes per session; see mutateSessionManifest.
 	private readonly manifestMutationQueues = new Map<string, Promise<void>>();
 	private readonly usageBySession = new Map<string, SessionAccumulatedUsage>();
@@ -326,6 +328,11 @@ export class LocalRuntimeHost implements RuntimeHost {
 	constructor(options: LocalRuntimeHostOptions) {
 		const homeDir = homedir();
 		if (homeDir) setHomeDirIfUnset(homeDir);
+		diagnostics.bump("core.localHost.created");
+		this.removeDiagnosticsGauge = diagnostics.gauge("core.localHost", () => ({
+			busListeners: this.events.size,
+			sessions: this.sessions.size,
+		}));
 		const distinctId = resolveCoreDistinctId(options.distinctId);
 		this.distinctId = distinctId;
 		this.sessionService = options.sessionService;
@@ -935,6 +942,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 				const liveSession = this.sessions.get(sessionId);
 				if (!liveSession) return;
 				const messages = liveSession.agent.getMessages();
+				diagnostics.bump("core.persist.afterAssistantMessage");
 				try {
 					await this.invoke<void>(
 						"persistSessionMessages",
@@ -1361,6 +1369,7 @@ export class LocalRuntimeHost implements RuntimeHost {
 	}
 
 	async dispose(reason = "session_manager_dispose"): Promise<void> {
+		this.removeDiagnosticsGauge();
 		const sessions = [...this.sessions.values()];
 		if (sessions.length === 0) return;
 		await Promise.allSettled(

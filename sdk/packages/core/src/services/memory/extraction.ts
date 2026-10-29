@@ -1,6 +1,7 @@
 import { createHandlerAsync } from "@cline/llms";
 import {
 	type BasicLogger,
+	diagnostics,
 	formatDisplayUserInput,
 	type MessageWithMetadata,
 } from "@cline/shared";
@@ -436,6 +437,8 @@ export class MemoryIdleExtractor {
 	}
 
 	private async run(request: string, next: ExtractionCursor): Promise<void> {
+		diagnostics.bump("core.memory.extractRuns");
+		diagnostics.bump("core.memory.requestChars", request.length);
 		const controller = new AbortController();
 		this.inFlight = controller;
 		try {

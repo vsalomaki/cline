@@ -4,6 +4,7 @@ import {
 	type AgentTool,
 	type AgentToolContext,
 	createTool,
+	diagnostics,
 	type HookErrorMode,
 	type ToolPolicy,
 	zodToJsonSchema,
@@ -225,6 +226,8 @@ export function createConfiguredAgentTools(
 						}
 					}
 
+					diagnostics.bump("core.cfgAgent.started");
+					diagnostics.level("core.cfgAgent.active", 1);
 					try {
 						const result: AgentResult = await subAgent.run(input.prompt);
 						const output: SpawnAgentOutput = {
@@ -268,6 +271,9 @@ export function createConfiguredAgentTools(
 							}
 						}
 						throw error;
+					} finally {
+						diagnostics.level("core.cfgAgent.active", -1);
+						diagnostics.bump("core.cfgAgent.ended");
 					}
 				},
 				timeoutMs: 300000,

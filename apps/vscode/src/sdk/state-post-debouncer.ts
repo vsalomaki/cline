@@ -35,6 +35,10 @@ export class StatePostDebouncer {
 
 	constructor(private readonly options: StatePostDebouncerOptions) {}
 
+	get pendingCount(): number {
+		return this.pendingResolvers.length
+	}
+
 	post(): Promise<void> {
 		if (this.disposed) {
 			return Promise.resolve()

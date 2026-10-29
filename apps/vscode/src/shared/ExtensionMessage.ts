@@ -130,6 +130,7 @@ export interface ExtensionState {
 	agentTeamsEnabled?: boolean
 	memoryEnabled?: boolean
 	memoryExtractAfterRun?: boolean
+	diagnosticsLogEnabled?: boolean
 	worktreesEnabled?: ClineFeatureSetting
 	favoritedModelIds: string[]
 	// NEW: Add workspace information

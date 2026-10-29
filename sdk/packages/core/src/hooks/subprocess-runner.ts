@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import {
 	augmentNodeCommandForDebug,
+	diagnostics,
 	withResolvedClineBuildEnv,
 } from "@cline/shared";
 
@@ -393,8 +394,11 @@ export async function runSubprocessEvent(
 			});
 	}
 
+	const stdinJson = JSON.stringify(payload);
+	diagnostics.bump("core.hook.runs");
+	diagnostics.bump("core.hook.stdinChars", stdinJson.length);
 	await Promise.race([
-		Promise.all([spawned, writeToChildStdin(child, JSON.stringify(payload))]),
+		Promise.all([spawned, writeToChildStdin(child, stdinJson)]),
 		completed,
 	]);
 

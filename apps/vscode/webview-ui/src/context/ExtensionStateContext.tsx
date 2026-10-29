@@ -315,6 +315,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		agentTeamsEnabled: false,
 		memoryEnabled: false,
 		memoryExtractAfterRun: true,
+		diagnosticsLogEnabled: false,
 		worktreesEnabled: { user: true, featureFlag: false },
 		cloudSessionsAvailable: false,
 		cloudSessionsEnabled: false,

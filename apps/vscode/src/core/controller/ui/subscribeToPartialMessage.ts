@@ -1,3 +1,4 @@
+import { diagnostics } from "@cline/shared"
 import { EmptyRequest } from "@shared/proto/cline/common"
 import { ClineMessage } from "@shared/proto/cline/ui"
 import { Logger } from "@/shared/services/Logger"
@@ -10,6 +11,7 @@ const activePartialMessageSubscriptions = new Set<StreamingResponseHandler<Cline
 // Keep track of callback-based subscriptions (for CLI and other non-gRPC consumers)
 type PartialMessageCallback = (message: ClineMessage) => void
 const callbackSubscriptions = new Set<PartialMessageCallback>()
+diagnostics.gauge("vsc.partialSubs", () => activePartialMessageSubscriptions.size + callbackSubscriptions.size)
 
 /**
  * Subscribe to partial message events
@@ -43,6 +45,9 @@ export async function subscribeToPartialMessage(
  * @param partialMessage The ClineMessage to send
  */
 export async function sendPartialMessageEvent(partialMessage: ClineMessage): Promise<void> {
+	diagnostics.bump("vsc.partial.sends")
+	diagnostics.bump("vsc.partial.textChars", (partialMessage.text?.length ?? 0) + (partialMessage.reasoning?.length ?? 0))
+	diagnostics.bump("vsc.partial.posts", activePartialMessageSubscriptions.size)
 	// FIRE-AND-FORGET: do NOT await delivery to the webview. The webview can be hidden,
 	// reloaded, or closed, and VSCode's postMessage may hang or resolve false; awaiting it
 	// could stall the backend's turn loop on a dead consumer. Correctness does not depend on

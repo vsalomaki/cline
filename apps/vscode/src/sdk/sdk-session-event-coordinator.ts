@@ -1,10 +1,12 @@
 import type { AgentEvent, CoreSessionEvent } from "@cline/core"
+import { diagnostics } from "@cline/shared"
 import { refreshClineRecommendedModels } from "@/core/controller/models/refreshClineRecommendedModels"
 import type { StateManager } from "@/core/storage/StateManager"
 import { CLINE_RECOMMENDED_MODELS_FALLBACK } from "@/shared/cline/recommended-models"
 import type { ClineApiReqInfo, TurnPhase } from "@/shared/ExtensionMessage"
 import { Logger } from "@/shared/services/Logger"
 import { isClineManagedProvider } from "@/shared/utils/cline"
+import { diagnosticsLog } from "./diagnostics-log"
 import type { MessageTranslatorState, TranslationResult } from "./message-translator"
 import { translateSessionEvent } from "./message-translator"
 import { PROVIDER_FAILURE_ERROR_TYPE, PROVIDER_FAILURE_PHASE, type ProviderFailureTelemetry } from "./provider-failure-telemetry"
@@ -49,9 +51,11 @@ export class SdkSessionEventCoordinator {
 	}
 
 	async handleSessionEvent(event: CoreSessionEvent): Promise<void> {
+		diagnosticsLog.tick()
 		this.logQueueEvents(event)
 
 		const activeSession = this.options.sessions.getActiveSession()
+		if (diagnostics.enabled) this.countEvent(event, event.payload.sessionId !== activeSession?.sessionId)
 		if (!activeSession || event.payload.sessionId !== activeSession.sessionId) {
 			Logger.debug(
 				`[SdkController] Ignoring stale SDK event for session ${event.payload.sessionId}; active=${activeSession?.sessionId ?? "none"}`,
@@ -66,7 +70,10 @@ export class SdkSessionEventCoordinator {
 			})
 		}
 
+		const translateStart = diagnostics.startTimer()
 		const result = this.translateSessionEvent(event, this.options.messageTranslatorState)
+		diagnostics.bumpElapsed("vsc.translate.ms", translateStart)
+		diagnostics.bump("vsc.translate.msgs", result.messages.length)
 		const agentFailure = this.getAgentFailureTelemetry(event)
 		if (agentFailure && !this.options.messageTranslatorState.isSuppressedToolApprovalDenial(agentFailure.error)) {
 			this.options.captureProviderApiError?.({
@@ -152,9 +159,24 @@ export class SdkSessionEventCoordinator {
 			result.turnComplete ||
 			event.type === "pending_prompt_submitted"
 		) {
+			diagnostics.bump("vsc.event.statePostRequests")
 			this.options.postStateToWebview().catch((err) => {
 				Logger.error("[SdkController] Failed to post state after event:", err)
 			})
+		}
+	}
+
+	private countEvent(event: CoreSessionEvent, isStale: boolean): void {
+		const prefix = isStale ? "vsc.ev.stale." : "vsc.ev."
+		if (event.type === "agent_event") {
+			const payload = event.payload
+			const who = payload.teamRole === "teammate" ? "teammate" : payload.event.parentAgentId ? "child" : "lead"
+			diagnostics.bump(`${prefix}agent_event.${who}.${payload.event.type}`)
+			return
+		}
+		diagnostics.bump(`${prefix}${event.type}`)
+		if (event.type === "chunk") {
+			diagnostics.bump(`${prefix}chunk.chars`, event.payload.chunk?.length ?? 0)
 		}
 	}
 

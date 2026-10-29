@@ -211,6 +211,21 @@ export class MessageTranslatorState {
 		return this.getUiMode?.() === "plan" ? "plan" : "act"
 	}
 
+	/** Collection sizes and buffered text lengths for the diagnostics log. */
+	diagnosticSizes(): Record<string, number> {
+		return {
+			streamingTools: this.streamingTools.size,
+			approvedToolMessageTsByCallId: this.approvedToolMessageTsByCallId.size,
+			deniedToolApprovalsByCallId: this.deniedToolApprovalsByCallId.size,
+			teammateTasks: this.teammateTasks.size,
+			teammateRuns: this.teammateRuns.size,
+			spawnAgentEntries: this.spawnAgentEntries.size,
+			streamingTextChars: this.streamingText.length,
+			streamingReasoningChars: this.streamingReasoningText.length,
+			turnFinalTextChars: this.turnFinalText.length,
+		}
+	}
+
 	/** The shared minter, exposed so coordinators and history rendering mint from the same source. */
 	getMinter(): MessageIdMinter {
 		return this.minter

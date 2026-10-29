@@ -23,7 +23,7 @@ import {
 	setTelemetryOptOutGlobally,
 	type UserInstructionConfigService,
 } from "@cline/core"
-import { formatDisplayUserInput, type RemoteConfig, type RemoteConfigBundle } from "@cline/shared"
+import { diagnostics, formatDisplayUserInput, type RemoteConfig, type RemoteConfigBundle } from "@cline/shared"
 import type { ApiConfiguration } from "@shared/api"
 import type { ChatContent } from "@shared/ChatContent"
 import { CLINE_ACCOUNT_AUTH_ERROR_MESSAGE } from "@shared/ClineAccount"
@@ -65,6 +65,7 @@ import { resolveAgentToolLimits } from "./agent-limit-config"
 import { AuthService, LogoutReason } from "./auth-service"
 import { BUILTIN_SLASH_COMMANDS } from "./builtin-slash-commands"
 import { buildStartSessionInput, createHistoryItemFromSession } from "./cline-session-factory"
+import { diagnosticsLog } from "./diagnostics-log"
 import { MessageTranslatorState, reshapeErrorForWebview } from "./message-translator"
 import { createProviderCatalog } from "./model-catalog/catalog"
 import type { Disposable, ProviderCatalog, ProviderConfigChange, ProviderConfigStore } from "./model-catalog/contracts"
@@ -295,6 +296,7 @@ export class Controller {
 	private userInstructionService?: Promise<UserInstructionConfigService>
 	private userInstructionServiceRoot?: string
 	private isDisposed = false
+	private readonly removeDiagnosticsGauges: Array<() => void>
 
 	// Synchronous snapshot of getWorkspaceRoot()'s latest result, for the message
 	// translator (which runs synchronously and relativizes the tool paths shown in
@@ -784,6 +786,19 @@ export class Controller {
 		// Register the bridge as a session event listener
 		this.onSessionEvent(this.grpcBridge.createListener())
 
+		diagnostics.bump("vsc.sdkController.created")
+		this.removeDiagnosticsGauges = [
+			diagnostics.gauge("vsc.translator", () => this.messageTranslatorState.diagnosticSizes()),
+			diagnostics.gauge("vsc.debouncer.pending", () => this.statePostDebouncer.pendingCount),
+			diagnostics.gauge("vsc.sessionEventListeners", () => this.messages.listenerCount),
+			diagnostics.gauge("vsc.clineMessages", () => this.task?.messageStateHandler.getClineMessages().length ?? 0),
+			diagnostics.gauge(
+				"vsc.clineMessages.changeListeners",
+				() => this.task?.messageStateHandler.listenerCount("clineMessagesChanged") ?? 0,
+			),
+		]
+		diagnosticsLog.setEnabled(this.stateManager.getGlobalSettingsKey("diagnosticsLogEnabled") ?? false)
+
 		// Restore auth state from secrets on startup, then start the remote
 		// config polling timer (enterprise policy enforcement). The timer must
 		// start after auth is restored so remote config can identify the user's
@@ -852,6 +867,10 @@ export class Controller {
 
 	handleMemorySettingChanged(previous: MemorySettings, next: MemorySettings): void {
 		this.sessionConfigChanges.handleMemorySettingChanged(previous, next)
+	}
+
+	handleDiagnosticsLogSettingChanged(enabled: boolean): void {
+		diagnosticsLog.setEnabled(enabled)
 	}
 
 	handleCommandTimeoutsChanged(): void {
@@ -1079,6 +1098,8 @@ export class Controller {
 		this.mcpHub?.dispose?.()
 		this.messages.dispose()
 		await this.sdkTelemetry.dispose()
+		diagnosticsLog.stop()
+		for (const remove of this.removeDiagnosticsGauges) remove()
 		Logger.log("[SdkController] Disposed")
 	}
 
@@ -2589,15 +2610,26 @@ export class Controller {
 		if (this.isDisposed) {
 			return Promise.resolve()
 		}
+		diagnostics.bump("vsc.postStateToWebview")
 		return this.statePostDebouncer.post()
 	}
 
 	/** Build the current ExtensionState and push it to the webview immediately. */
 	private async flushStateToWebview(): Promise<void> {
-		// Import dynamically to avoid circular deps
-		const { sendStateUpdate } = await import("@core/controller/state/subscribeToState")
-		const state = await this.getStateToPostToWebview()
-		await sendStateUpdate(state)
+		const flushStart = diagnostics.startTimer()
+		diagnostics.bump("vsc.flush.calls")
+		diagnostics.level("vsc.flush.inFlight", 1)
+		try {
+			// Import dynamically to avoid circular deps
+			const { sendStateUpdate } = await import("@core/controller/state/subscribeToState")
+			const buildStart = diagnostics.startTimer()
+			const state = await this.getStateToPostToWebview()
+			diagnostics.bumpElapsed("vsc.flush.buildMs", buildStart)
+			await sendStateUpdate(state)
+		} finally {
+			diagnostics.level("vsc.flush.inFlight", -1)
+			diagnostics.max("vsc.flush.maxMs", diagnostics.bumpElapsed("vsc.flush.ms", flushStart))
+		}
 	}
 
 	/**
@@ -2613,6 +2645,16 @@ export class Controller {
 	}
 
 	async getStateToPostToWebview(snapshotAttempt = 0): Promise<ExtensionState> {
+		diagnostics.bump(snapshotAttempt === 0 ? "vsc.getState.calls" : "vsc.getState.retries")
+		diagnostics.level("vsc.getState.inFlight", 1)
+		try {
+			return await this.buildStateForWebview(snapshotAttempt)
+		} finally {
+			diagnostics.level("vsc.getState.inFlight", -1)
+		}
+	}
+
+	private async buildStateForWebview(snapshotAttempt: number): Promise<ExtensionState> {
 		// Build the base ExtensionState from StateManager, then layer the SDK's
 		// task history on top.
 		try {

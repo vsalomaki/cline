@@ -41,6 +41,8 @@ vi.mock("@core/controller/state/getStateToPostToWebview", () => ({
 	getStateToPostToWebview: buildBaseStateMock,
 }))
 
+const buildStateForWebview = (SdkController.prototype as unknown as { buildStateForWebview: unknown }).buildStateForWebview
+
 describe("SDK remote-config coordination", () => {
 	it("posts the current remote-config revision to the webview", async () => {
 		const controller = {
@@ -61,6 +63,7 @@ describe("SDK remote-config coordination", () => {
 			cloud: { getCurrentTaskInfo: () => undefined },
 			turnStateTracker: { get: () => undefined },
 			messageTranslatorState: { getMinter: () => ({ epoch: 1, nextSeq: () => 1 }) },
+			buildStateForWebview,
 		}
 
 		await SdkController.prototype.getStateToPostToWebview.call(controller as never)
@@ -99,6 +102,7 @@ describe("SDK remote-config coordination", () => {
 			turnStateTracker: { get: () => undefined },
 			messageTranslatorState: { getMinter: () => minter },
 			getStateToPostToWebview: SdkController.prototype.getStateToPostToWebview,
+			buildStateForWebview,
 		}
 
 		const state = await SdkController.prototype.getStateToPostToWebview.call(controller as never)

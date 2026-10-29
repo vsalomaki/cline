@@ -1,4 +1,5 @@
 import type { CoreSessionEvent } from "@cline/core"
+import { diagnostics } from "@cline/shared"
 import type { ClineApiReqInfo, ClineMessage } from "@shared/ExtensionMessage"
 import { Logger } from "@/shared/services/Logger"
 import type { MessageIdMinter } from "./message-id-minter"
@@ -81,10 +82,14 @@ export class SdkMessageCoordinator {
 			return
 		}
 
+		const addStart = diagnostics.startTimer()
 		task.messageStateHandler.addMessages(messages)
+		diagnostics.bumpElapsed("vsc.addMessages.ms", addStart)
 	}
 
 	replaceMessages(messages: ClineMessage[]): void {
+		diagnostics.bump("vsc.replaceMessages.calls")
+		diagnostics.bump("vsc.replaceMessages.msgs", messages.length)
 		this.stamp(messages)
 
 		const task = this.options.getTask()
@@ -96,11 +101,30 @@ export class SdkMessageCoordinator {
 	}
 
 	appendAndEmit(messages: ClineMessage[], event: CoreSessionEvent): void {
+		if (diagnostics.enabled) this.countAppended(messages)
 		this.appendMessages(messages)
 		this.emitSessionEvents(messages, event)
 	}
 
+	private countAppended(messages: ClineMessage[]): void {
+		diagnostics.bump("vsc.appendAndEmit.calls")
+		diagnostics.bump("vsc.appendAndEmit.msgs", messages.length)
+		let textChars = 0
+		for (const message of messages) {
+			const chars = (message.text?.length ?? 0) + (message.reasoning?.length ?? 0)
+			textChars += chars
+			diagnostics.max("vsc.appendAndEmit.maxMsgChars", chars)
+			if (message.partial) diagnostics.bump("vsc.appendAndEmit.partialMsgs")
+		}
+		diagnostics.bump("vsc.appendAndEmit.textChars", textChars)
+	}
+
+	get listenerCount(): number {
+		return this.sessionEventListeners.size
+	}
+
 	emitHookMessage(message: ClineMessage): void {
+		diagnostics.bump("vsc.emitHookMessage")
 		this.appendMessages([message])
 		pushMessageToWebview(message).catch(() => {})
 	}

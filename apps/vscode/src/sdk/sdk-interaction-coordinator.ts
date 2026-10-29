@@ -1,5 +1,11 @@
 import type { AskQuestionExecutor } from "@cline/core"
-import type { ConsecutiveMistakeLimitContext, ConsecutiveMistakeLimitDecision, ImageContent, TextContent } from "@cline/shared"
+import {
+	type ConsecutiveMistakeLimitContext,
+	type ConsecutiveMistakeLimitDecision,
+	diagnostics,
+	type ImageContent,
+	type TextContent,
+} from "@cline/shared"
 import type { ClineAskQuestion, ClineMessage, TurnPhase } from "@shared/ExtensionMessage"
 import type { ClineAskResponse } from "@shared/WebviewMessage"
 import { processFilesIntoText } from "@/integrations/misc/extract-text"
@@ -116,6 +122,7 @@ export class SdkInteractionCoordinator {
 	}
 
 	async handleRequestToolApproval(request: ToolApprovalRequest): Promise<{ approved: boolean; reason?: string }> {
+		diagnostics.bump("vsc.toolApproval.requests")
 		if (
 			!request.policy.requireApproval &&
 			(request.policy.autoApprove === true || this.options.shouldAutoApproveTool?.(request) === true)
@@ -178,6 +185,7 @@ export class SdkInteractionCoordinator {
 	}
 
 	async handleAskQuestion(question: string, options: string[], _context: unknown): Promise<AskQuestionAnswer> {
+		diagnostics.bump("vsc.askQuestion.asked")
 		const askData: ClineAskQuestion = {
 			question,
 			options: options?.length ? options : undefined,
@@ -263,6 +271,7 @@ export class SdkInteractionCoordinator {
 	}
 
 	resolvePendingAskQuestion(prompt: string | undefined, images?: string[], files?: string[]): boolean {
+		diagnostics.bump(this.pendingAskResolve ? "vsc.askQuestion.answered" : "vsc.askQuestion.answerWithoutPending")
 		if (!this.pendingAskResolve) {
 			return false
 		}

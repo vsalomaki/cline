@@ -51,6 +51,7 @@ export async function getStateToPostToWebview(controller: {
 	const agentTeamsEnabled = stateManager.getGlobalSettingsKey("agentTeamsEnabled")
 	const memoryEnabled = stateManager.getGlobalSettingsKey("memoryEnabled")
 	const memoryExtractAfterRun = stateManager.getGlobalSettingsKey("memoryExtractAfterRun")
+	const diagnosticsLogEnabled = stateManager.getGlobalSettingsKey("diagnosticsLogEnabled")
 	const userInfo = stateManager.getGlobalStateKey("userInfo")
 	const mcpMarketplaceEnabled = stateManager.getGlobalStateKey("mcpMarketplaceEnabled")
 	const mcpDisplayMode = stateManager.getGlobalStateKey("mcpDisplayMode")
@@ -140,6 +141,7 @@ export async function getStateToPostToWebview(controller: {
 		agentTeamsEnabled,
 		memoryEnabled: memoryEnabled ?? false,
 		memoryExtractAfterRun: memoryExtractAfterRun ?? true,
+		diagnosticsLogEnabled: diagnosticsLogEnabled ?? false,
 		userInfo,
 		mcpMarketplaceEnabled,
 		mcpDisplayMode,

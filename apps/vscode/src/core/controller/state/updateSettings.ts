@@ -233,6 +233,11 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			controller.handleMemorySettingChanged(previous, readMemory())
 		}
 
+		if (request.diagnosticsLogEnabled !== undefined) {
+			controller.stateManager.setGlobalState("diagnosticsLogEnabled", request.diagnosticsLogEnabled)
+			controller.handleDiagnosticsLogSettingChanged(request.diagnosticsLogEnabled)
+		}
+
 		// Update auto-condense setting
 		if (request.useAutoCondense !== undefined) {
 			if (controller.task) {
