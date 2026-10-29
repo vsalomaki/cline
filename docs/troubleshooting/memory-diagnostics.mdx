@@ -1,0 +1,28 @@
+---
+title: "Memory Diagnostics"
+sidebarTitle: "Memory Diagnostics"
+description: "Log memory use and activity counters when the VS Code extension crashes"
+---
+
+If the extension host stops with "JavaScript heap out of memory", or Cline slows down and stops responding during long tasks, a memory diagnostics log shows what was growing before it happened.
+
+## Turn it on
+
+Open Cline's **Settings → General** and check **Log memory diagnostics**. It takes effect at once, with no reload, and stays on until you uncheck it. It is off by default.
+
+While it is on, Cline writes one line a second to its output channel (**View → Output**, then pick **Cline**). Each line holds:
+
+- the extension host's memory: heap used and allocated, external memory, array buffers and resident set size
+- how many times each counted thing happened since the previous line, such as session events by type, state updates sent to the webview and their size, streamed message updates, subagent starts and saved transcripts
+- the largest single value of some of those since the previous line
+- current levels, such as open webview subscriptions and webview messages still in flight. Counts of work in flight start at zero when you turn the log on, so right after that they can briefly read below zero.
+
+A second with nothing counted and little change in the heap writes no line, but there is at least one line every 30 seconds. When the heap passes 60% of its limit, Cline also writes a block of lines starting with `[diag] HIGH` with the totals since logging started.
+
+The log holds names and numbers only. It never contains your prompts, model responses, tool input or output, or file contents.
+
+## Find the log file
+
+The output channel is also saved to disk. Run **Developer: Open Extension Logs Folder** from the Command Palette and open `1-Cline.log` in the folder for Cline. The lines that matter most are the ones just before the crash.
+
+Turn the setting off when you have what you need: it adds a line a second to the log for as long as it is on.

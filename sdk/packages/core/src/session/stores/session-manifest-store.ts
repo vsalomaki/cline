@@ -8,7 +8,7 @@ import {
 import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type * as LlmsProviders from "@cline/llms";
-import type { BasicLogger } from "@cline/shared";
+import { type BasicLogger, diagnostics } from "@cline/shared";
 import { ensureHookLogDir } from "@cline/shared/storage";
 import { nowIso, SessionArtifacts } from "../../services/session-artifacts";
 import {
@@ -234,6 +234,13 @@ export class SessionManifestStore {
 			systemPrompt,
 		});
 		const contents = `${JSON.stringify(payload, null, 2)}\n`;
+		if (diagnostics.enabled) {
+			const kind = sessionId.includes("__") ? "sub" : "root";
+			diagnostics.bump(`core.persist.${kind}.calls`);
+			diagnostics.bump(`core.persist.${kind}.chars`, contents.length);
+			diagnostics.bump(`core.persist.${kind}.msgs`, messages.length);
+			diagnostics.max("core.persist.maxChars", contents.length);
+		}
 		mkdirSync(dirname(path), { recursive: true });
 		writeFileSync(path, contents, "utf8");
 		if (!this.messagesArtifactUploader) {

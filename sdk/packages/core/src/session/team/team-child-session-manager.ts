@@ -2,7 +2,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import type * as LlmsProviders from "@cline/llms";
 import type { AgentResult } from "@cline/shared";
-import { resolveRootSessionId } from "@cline/shared";
+import { diagnostics, resolveRootSessionId } from "@cline/shared";
 import { ensureHookLogDir } from "@cline/shared/storage";
 import { z } from "zod";
 import type {
@@ -426,6 +426,8 @@ export class TeamChildSessionManager {
 		rootSessionId: string,
 		context: SubAgentTurnContext,
 	): Promise<void> {
+		diagnostics.bump("core.subTurn.calls");
+		diagnostics.bump("core.subTurn.msgs", context.messages?.length ?? 0);
 		const persistedMessages = this.toPersistedMessages(context.messages);
 		if (!persistedMessages) return;
 		await this.manifestStore.persistSessionMessages(

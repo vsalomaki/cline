@@ -1,3 +1,4 @@
+import { diagnostics } from "@cline/shared"
 import { EmptyRequest } from "@shared/proto/cline/common"
 import { State } from "@shared/proto/cline/state"
 import { telemetryService } from "@/services/telemetry"
@@ -8,6 +9,7 @@ import { Controller } from "../index"
 
 // Keep track of active state subscriptions
 const activeStateSubscriptions = new Set<StreamingResponseHandler<State>>()
+diagnostics.gauge("vsc.stateSubs", () => activeStateSubscriptions.size)
 
 /**
  * Subscribe to state updates
@@ -38,6 +40,8 @@ export async function subscribeToState(
 	// Send the initial state
 	const initialState = await controller.getStateToPostToWebview()
 	const initialStateJson = JSON.stringify(initialState)
+	diagnostics.bump("vsc.stateSubscribe.calls")
+	diagnostics.bump("vsc.stateSubscribe.jsonChars", initialStateJson.length)
 
 	recordStateSizeTelemetry(Buffer.byteLength(initialStateJson, "utf8"))
 
@@ -66,6 +70,12 @@ export async function sendStateUpdate(state: ExtensionState): Promise<void> {
 		Logger.error("Error serializing state update:", error)
 		return
 	}
+
+	diagnostics.bump("vsc.stateSend.calls")
+	diagnostics.bump("vsc.stateSend.jsonChars", stateJson.length)
+	diagnostics.bump("vsc.stateSend.posts", activeStateSubscriptions.size)
+	diagnostics.max("vsc.stateSend.maxJsonChars", stateJson.length)
+	diagnostics.bump("vsc.stateSend.clineMessages", state.clineMessages?.length ?? 0)
 
 	recordStateSizeTelemetry(Buffer.byteLength(stateJson, "utf8"))
 

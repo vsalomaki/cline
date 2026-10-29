@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@cline/shared";
+import { type AgentEvent, diagnostics } from "@cline/shared";
 import type { SessionAccumulatedUsage } from "../runtime/host/runtime-host";
 import type { CoreSessionConfig } from "../types/config";
 import type { CoreSessionEvent } from "../types/events";
@@ -309,6 +309,7 @@ export function handleAgentEvent(
 		);
 	}
 
+	const emitStart = diagnostics.startTimer();
 	if (event.type === "iteration_end" && isPrimaryAgentEvent) {
 		ctx.persistMessages(
 			sessionId,
@@ -329,13 +330,21 @@ export function handleAgentEvent(
 					: undefined,
 		},
 	});
+	const chunk = serializeAgentEvent(event);
+	if (diagnostics.enabled) {
+		const who = isPrimaryAgentEvent ? "lead" : "sub";
+		diagnostics.bump(`core.agentEvent.${who}.${event.type}`);
+		diagnostics.bump(`core.chunk.chars.${who}`, chunk.length);
+		diagnostics.max("core.chunk.maxChars", chunk.length);
+	}
 	emit({
 		type: "chunk",
 		payload: {
 			sessionId,
 			stream: "agent",
-			chunk: serializeAgentEvent(event),
+			chunk,
 			ts: Date.now(),
 		},
 	});
+	diagnostics.bumpElapsed("core.agentEvent.syncMs", emitStart);
 }

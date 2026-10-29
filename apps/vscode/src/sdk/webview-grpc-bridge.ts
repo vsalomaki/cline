@@ -7,6 +7,7 @@
 // already listens on.
 
 import type { CoreSessionEvent } from "@cline/core"
+import { diagnostics } from "@cline/shared"
 import { sendStateUpdate } from "@core/controller/state/subscribeToState"
 import { sendPartialMessageEvent } from "@core/controller/ui/subscribeToPartialMessage"
 import type { ClineMessage, ExtensionState } from "@shared/ExtensionMessage"
@@ -80,6 +81,7 @@ export class WebviewGrpcBridge {
 			(event.type === "agent_event" && (event.payload.event.type === "done" || event.payload.event.type === "error"))
 
 		if (needsStateUpdate) {
+			diagnostics.bump("vsc.bridge.directStatePush")
 			// Push state update asynchronously — don't block the event stream
 			this.pushStateUpdate().catch((err) => {
 				Logger.error("[WebviewGrpcBridge] Failed to push state update:", err)

@@ -11,7 +11,7 @@ interface GeneralSettingsSectionProps {
 }
 
 const GeneralSettingsSection = ({ renderSectionHeader }: GeneralSettingsSectionProps) => {
-	const { telemetrySetting, remoteConfigSettings } = useExtensionState()
+	const { telemetrySetting, remoteConfigSettings, diagnosticsLogEnabled } = useExtensionState()
 
 	return (
 		<div>
@@ -59,6 +59,18 @@ const GeneralSettingsSection = ({ renderSectionHeader }: GeneralSettingsSectionP
 							privacy policy
 						</VSCodeLink>{" "}
 						for more details.
+					</p>
+				</div>
+
+				<div className="mb-[5px]">
+					<VSCodeCheckbox
+						checked={diagnosticsLogEnabled}
+						onChange={(e: any) => updateSetting("diagnosticsLogEnabled", e.target.checked === true)}>
+						Log memory diagnostics
+					</VSCodeCheckbox>
+					<p className="text-sm mt-[5px] text-description">
+						Writes memory use and activity counters to the Cline output once a second, for troubleshooting crashes.
+						The log holds no conversation content.
 					</p>
 				</div>
 			</Section>

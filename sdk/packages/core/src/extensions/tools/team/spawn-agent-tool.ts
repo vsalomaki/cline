@@ -11,6 +11,7 @@ import {
 	type AgentToolContext,
 	type BasicLogger,
 	createTool,
+	diagnostics,
 	type HookErrorMode,
 	type ITelemetryService,
 	type MessageWithMetadata,
@@ -165,6 +166,7 @@ export function createSpawnAgentTool(
 					}
 					const update = progress.apply(event);
 					if (update) {
+						diagnostics.bump("core.spawn.progressUpdate");
 						context.emitUpdate?.(update);
 					}
 				},
@@ -188,6 +190,8 @@ export function createSpawnAgentTool(
 					// Best-effort observer callback.
 				}
 			}
+			diagnostics.bump("core.spawn.started");
+			diagnostics.level("core.spawn.active", 1);
 			try {
 				const result = await subAgent.run(input.task);
 				const output: SpawnAgentOutput = {
@@ -230,6 +234,9 @@ export function createSpawnAgentTool(
 					}
 				}
 				throw error;
+			} finally {
+				diagnostics.level("core.spawn.active", -1);
+				diagnostics.bump("core.spawn.ended");
 			}
 		},
 		timeoutMs: 300000,

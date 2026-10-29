@@ -292,6 +292,7 @@ message Settings {
   optional bool agent_teams_enabled = 190;
   optional bool memory_enabled = 191;
   optional bool memory_extract_after_run = 192;
+  optional bool diagnostics_log_enabled = 193;
 }
 
 message State {
@@ -446,6 +447,7 @@ message UpdateSettingsRequest {
   optional bool agent_teams_enabled = 1004;
   optional bool memory_enabled = 1005;
   optional bool memory_extract_after_run = 1006;
+  optional bool diagnostics_log_enabled = 1007;
 }
 
 message UpdateTerminalConnectionTimeoutRequest {

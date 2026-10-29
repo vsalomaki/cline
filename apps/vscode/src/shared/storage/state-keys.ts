@@ -290,6 +290,7 @@ const USER_SETTINGS_FIELDS = {
 	agentTeamsEnabled: { default: false as boolean },
 	memoryEnabled: { default: false as boolean },
 	memoryExtractAfterRun: { default: true as boolean },
+	diagnosticsLogEnabled: { default: false as boolean },
 	worktreesEnabled: { default: false as boolean },
 	cloudSessionsEnabled: { default: false as boolean },
 	preferredLanguage: { default: "English" as string },
