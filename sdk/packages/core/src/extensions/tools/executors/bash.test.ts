@@ -5,6 +5,7 @@ import {
 	copyFile,
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	rm,
 	utimes,
@@ -13,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentToolContext } from "@cline/shared";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	CommandExitError,
 	CommandSpawnError,
@@ -27,6 +28,17 @@ const ctx: AgentToolContext = {
 	conversationId: "conv-1",
 	iteration: 1,
 };
+
+// Saved command output lands in os.tmpdir(); keep this file's out of the real one.
+let testTmpDir: string;
+beforeAll(async () => {
+	testTmpDir = await mkdtemp(join(tmpdir(), "bash-test-"));
+	for (const name of ["TMPDIR", "TMP", "TEMP"]) vi.stubEnv(name, testTmpDir);
+});
+afterAll(async () => {
+	vi.unstubAllEnvs();
+	await rm(testTmpDir, { recursive: true, force: true });
+});
 
 const longRunningCommand = {
 	command: process.execPath,
@@ -963,6 +975,160 @@ describe("createShellExecutor", () => {
 		);
 		expect(renamed).toContain("output truncated: 500 chars total");
 		expect(alias).toContain("output truncated: 500 chars total");
+	});
+
+	describe("output too long for the result", () => {
+		const savedPathPattern =
+			/The full output is saved to (\S+) for 24 hours; read line ranges from it with read_files or grep it instead of re-running the command/;
+
+		async function withOutputDirectory(
+			run: (directory: string) => Promise<void>,
+		): Promise<void> {
+			const directory = await mkdtemp(join(tmpdir(), "cline-output-file-"));
+			try {
+				await run(directory);
+			} finally {
+				await rm(directory, { recursive: true, force: true });
+			}
+		}
+
+		it("saves the whole output to a file and names it in the notice", async () => {
+			await withOutputDirectory(async (directory) => {
+				const shell = createShellExecutor({
+					maxOutputChars: 100,
+					outputFileDirectory: directory,
+				});
+				const output = await shell(
+					{
+						command: process.execPath,
+						args: [
+							"-e",
+							"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
+						],
+					},
+					process.cwd(),
+					ctx,
+				);
+
+				const path = output.match(savedPathPattern)?.[1];
+				expect(path).toBeDefined();
+				expect(path?.startsWith(join(directory, "cline-command-"))).toBe(true);
+				const expected = Array.from(
+					{ length: 2000 },
+					(_, i) => `line-${i}\n`,
+				).join("");
+				expect(output).toContain(`${expected.length} chars total`);
+				expect(await readFile(path as string, "utf8")).toBe(expected);
+				expect(
+					await fileExists(join(dirname(path as string), "completed-at")),
+				).toBe(true);
+			});
+		});
+
+		it("keeps parallel commands of different agents in their own named files", async () => {
+			await withOutputDirectory(async (directory) => {
+				const shell = createShellExecutor({
+					maxOutputChars: 20,
+					outputFileDirectory: directory,
+				});
+				const run = (agentId: string, toolCallId: string, text: string) =>
+					shell(
+						{
+							command: process.execPath,
+							args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
+						},
+						process.cwd(),
+						{ ...ctx, sessionId: "session-1", agentId, toolCallId },
+					);
+				const outputs = await Promise.all([
+					run("lead", "call-1", "L".repeat(100)),
+					run("lead", "call-1", "M".repeat(100)),
+					run("subagent-7", "call-2", "S".repeat(100)),
+				]);
+
+				const paths = outputs.map(
+					(output) => output.match(savedPathPattern)?.[1] as string,
+				);
+				expect(new Set(paths).size).toBe(3);
+				expect(paths[0]).toContain("cline-command-ssession1-alead-ccall1-");
+				expect(paths[2]).toContain("cline-command-ssession1-aubagent7-ccall2-");
+				expect(await readFile(paths[0], "utf8")).toBe("L".repeat(100));
+				expect(await readFile(paths[1], "utf8")).toBe("M".repeat(100));
+				expect(await readFile(paths[2], "utf8")).toBe("S".repeat(100));
+			});
+		});
+
+		it("writes no file when the output fits", async () => {
+			await withOutputDirectory(async (directory) => {
+				const shell = createShellExecutor({
+					maxOutputChars: 1000,
+					outputFileDirectory: directory,
+				});
+				const output = await shell(
+					{
+						command: process.execPath,
+						args: ["-e", "process.stdout.write('b'.repeat(500))"],
+					},
+					process.cwd(),
+					ctx,
+				);
+
+				expect(output).toBe("b".repeat(500));
+				expect(await readdir(directory)).toEqual([]);
+			});
+		});
+
+		it("names the file when a failing command's output is truncated", async () => {
+			await withOutputDirectory(async (directory) => {
+				const shell = createShellExecutor({
+					maxOutputChars: 50,
+					outputFileDirectory: directory,
+				});
+				const error = await shell(
+					{
+						command: process.execPath,
+						args: [
+							"-e",
+							"process.stdout.write('OUT' + 'o'.repeat(100)); process.stderr.write('ERR' + 'e'.repeat(100) + 'END'); process.exit(3)",
+						],
+					},
+					process.cwd(),
+					ctx,
+				).catch((caught: unknown) => caught);
+
+				if (!(error instanceof CommandExitError)) {
+					throw new Error("Expected CommandExitError");
+				}
+				expect(error.output).toMatch(/^\[Command exited with code 3\]/);
+				const path = error.output.match(savedPathPattern)?.[1];
+				expect(path).toBeDefined();
+				const saved = await readFile(path as string, "utf8");
+				expect(saved).toContain(`OUT${"o".repeat(100)}`);
+				expect(saved).toContain(`ERR${"e".repeat(100)}END`);
+			});
+		});
+
+		it("keeps the plain notice when the file cannot be created", async () => {
+			await withOutputDirectory(async (directory) => {
+				const shell = createShellExecutor({
+					maxOutputChars: 20,
+					outputFileDirectory: join(directory, "missing"),
+				});
+				const output = await shell(
+					{
+						command: process.execPath,
+						args: ["-e", "process.stdout.write('x'.repeat(100))"],
+					},
+					process.cwd(),
+					ctx,
+				);
+
+				expect(output).toContain(
+					"[... output truncated: 100 chars total. Refine the command",
+				);
+				expect(output).not.toContain("saved to");
+			});
+		});
 	});
 });
 

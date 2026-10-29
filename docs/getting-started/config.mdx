@@ -172,6 +172,10 @@ Rules:
 - Values that are not positive integers are ignored, and the default applies
 - Lowering `CLINE_MESSAGE_BUILDER_MAX_TOOL_RESULT_CHARS` lowers the tool caps with
   it, so output is never trimmed twice; raising a tool cap raises it to match
+- When `run_commands` output is longer than `CLINE_TOOL_MAX_COMMAND_OUTPUT_CHARS`,
+  the whole output (up to 10 MB) is also saved to a file in the system temp
+  directory, kept for 24 hours, and the tool result names it so the model can
+  read or grep it instead of running the command again
 - `CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES` also accepts `0` to rewrite
   superseded file reads immediately, or `infinity` to leave them in place
 - A tool result is re-sent on every later turn of a task, so larger limits cost

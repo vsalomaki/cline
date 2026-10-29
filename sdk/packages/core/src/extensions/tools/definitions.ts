@@ -477,7 +477,7 @@ export function buildRunCommandsDescription(
 		return (
 			`Run non-interactive shell commands from the root of the workspace${isWindows ? " in Windows environment" : ""}. ` +
 			sharedInstructions +
-			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved); filter output when you need specific sections. ` +
+			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved, the full output saved to a file named in the result); filter output when you need specific sections. ` +
 			`Commands run through ${shellName}; quote paths and arguments for ${executable} and use ${sequencingOperator} to sequence commands. ` +
 			`Write commands directly; do not wrap them in another ${wrapper} invocation. ` +
 			"Only start another shell when you intentionally need a different shell or a separate process. " +
@@ -496,7 +496,7 @@ export function buildRunCommandsDescription(
 		sharedInstructions +
 		environmentNote +
 		"Commands should be properly shell-escaped and targeted to avoid error or timeout. Include multiple commands in the same call when they are independent complete shell commands and safe to run concurrently; multiline scripts and heredocs must be a single command string. When independent reads, searches, or edits are also needed, call those tools in the same response. " +
-		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved); pipe through grep/head/tail when you need specific sections of large output. ` +
+		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved, the full output saved to a file named in the result); pipe through grep/head/tail when you need specific sections of large output. ` +
 		"For long-running commands, run them in background and redirect output to a tmp file that you can read from later."
 	);
 }

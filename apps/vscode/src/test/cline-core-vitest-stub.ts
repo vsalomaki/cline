@@ -14,6 +14,12 @@ export interface StartSessionResult {
 }
 
 export {
+	type CommandOutputFileOptions,
+	createCommandOutputFile,
+	type SavedCommandOutput,
+	savedCommandOutputNotice,
+} from "../../../../sdk/packages/core/src/extensions/tools/executors/command-output-file"
+export {
 	MAX_COMMAND_OUTPUT_CHARS,
 	truncateCommandOutput,
 } from "../../../../sdk/packages/core/src/extensions/tools/executors/output-limits"

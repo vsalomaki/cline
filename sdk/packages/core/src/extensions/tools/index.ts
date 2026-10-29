@@ -28,6 +28,13 @@ export {
 	createSubmitAndExitTool,
 	createWebFetchTool,
 } from "./definitions";
+export {
+	type CommandOutputFile,
+	type CommandOutputFileOptions,
+	createCommandOutputFile,
+	type SavedCommandOutput,
+	savedCommandOutputNotice,
+} from "./executors/command-output-file";
 // Built-in Executors
 export {
 	type ApplyPatchExecutorOptions,

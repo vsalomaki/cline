@@ -14,6 +14,10 @@
  */
 
 import { DEFAULT_CONTEXT_LIMITS } from "../../../settings/context-limits";
+import {
+	type SavedCommandOutput,
+	savedCommandOutputNotice,
+} from "./command-output-file";
 
 /**
  * Compile-time defaults. Each executor takes its effective cap from resolved
@@ -27,7 +31,11 @@ export const MAX_COMMAND_OUTPUT_CHARS =
 
 export function truncateCommandOutput(
 	text: string,
-	options: { maxChars?: number; totalChars?: number } = {},
+	options: {
+		maxChars?: number;
+		totalChars?: number;
+		savedOutput?: SavedCommandOutput;
+	} = {},
 ): string {
 	const maxChars = options.maxChars ?? MAX_COMMAND_OUTPUT_CHARS;
 	const totalChars = options.totalChars ?? text.length;
@@ -37,12 +45,11 @@ export function truncateCommandOutput(
 
 	const headLimit = Math.ceil(maxChars / 2);
 	const tailLimit = Math.max(1, maxChars - headLimit);
-	return (
-		`${text.slice(0, headLimit)}\n` +
-		`[... output truncated: ${totalChars} chars total. ` +
-		"Refine the command (grep, head, tail) to view the elided middle ...]\n" +
-		text.slice(-tailLimit)
-	);
+	const notice = options.savedOutput
+		? savedCommandOutputNotice(options.savedOutput)
+		: `[... output truncated: ${totalChars} chars total. ` +
+			"Refine the command (grep, head, tail) to view the elided middle ...]";
+	return `${text.slice(0, headLimit)}\n${notice}\n${text.slice(-tailLimit)}`;
 }
 
 /** Max lines returned per file read when the range is larger or absent. */
