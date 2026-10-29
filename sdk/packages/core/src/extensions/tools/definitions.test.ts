@@ -11,7 +11,7 @@ import {
 	createSkillsTool,
 	createWebFetchTool,
 } from "./definitions";
-import { CommandExitError } from "./executors/bash";
+import { CommandExitError, createShellExecutor } from "./executors/bash";
 import { RUN_COMMAND_QUERY_PREVIEW_LIMIT, TimeoutError } from "./helpers";
 import { EDITOR_INPUT_CHAR_LIMIT, type EditFileInput } from "./schemas";
 import type { SkillsExecutorWithMetadata } from "./types";
@@ -735,6 +735,19 @@ describe("default run_commands tool", () => {
 			.filter((event) => event.event === "sdk.tool_timeout");
 	}
 
+	/** An executor that only settles when its signal aborts, like the default one. */
+	function rejectOnAbort(
+		_command: unknown,
+		_cwd: string,
+		context: AgentToolContext,
+	): Promise<string> {
+		return new Promise<string>((_, reject) => {
+			context.signal?.addEventListener("abort", () =>
+				reject(context.signal?.reason),
+			);
+		});
+	}
+
 	it("accepts object input with commands as a single string", async () => {
 		const execute = vi.fn(async (command: string | { command: string }) =>
 			typeof command === "string" ? `ran:${command}` : `ran:${command.command}`,
@@ -1377,10 +1390,7 @@ describe("default run_commands tool", () => {
 	});
 
 	it("emits timeout telemetry without leaking raw command data", async () => {
-		// Never resolves, so the configured timeout deterministically wins the
-		// race regardless of host load (a tight real-timer margin flaked under
-		// heavy parallel CI runs).
-		const execute = vi.fn((): Promise<string> => new Promise<string>(() => {}));
+		const execute = vi.fn(rejectOnAbort);
 		const telemetry = createTelemetryStub();
 		const tool = createShellTool(execute, { bashTimeoutMs: 5, telemetry });
 
@@ -1479,10 +1489,7 @@ describe("default run_commands tool", () => {
 
 	it("emits timeout telemetry on the default bash tool path", async () => {
 		const telemetry = createTelemetryStub();
-		// Never resolves, so the configured timeout deterministically wins the
-		// race regardless of host load (a tight real-timer margin flaked under
-		// heavy parallel CI runs).
-		const execute = vi.fn((): Promise<string> => new Promise<string>(() => {}));
+		const execute = vi.fn(rejectOnAbort);
 		const tool = createShellTool(execute, { bashTimeoutMs: 5, telemetry });
 
 		const result = await tool.execute(
@@ -1530,6 +1537,42 @@ describe("default run_commands tool", () => {
 			expect(call.properties).not.toHaveProperty("command");
 			expect(call.properties).not.toHaveProperty("commands");
 		}
+	});
+
+	it("returns the output a command printed before it timed out", async () => {
+		const telemetry = createTelemetryStub();
+		const tool = createShellTool(createShellExecutor(), {
+			bashTimeoutMs: 1_000,
+			telemetry,
+		});
+
+		const result = await tool.execute(
+			{
+				commands: [
+					{
+						command: process.execPath,
+						args: [
+							"-e",
+							"process.stdout.write('compiled 3 of 9'); setInterval(() => {}, 1_000)",
+						],
+					},
+				],
+			} as never,
+			{ agentId: "agent-1", conversationId: "conv-1", iteration: 1 },
+		);
+
+		expect(result).toEqual([
+			expect.objectContaining({
+				result: "[Command timed out after 1000ms]\ncompiled 3 of 9",
+				error: "Command timed out after 1000ms",
+				success: false,
+			}),
+		]);
+		expect(capturedTimeoutEvents(telemetry)).toEqual([
+			expect.objectContaining({
+				properties: expect.objectContaining({ effective_timeout_ms: 1_000 }),
+			}),
+		]);
 	});
 
 	it("does not emit timeout telemetry for normal command success", async () => {

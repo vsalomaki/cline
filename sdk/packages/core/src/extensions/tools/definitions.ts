@@ -21,7 +21,11 @@ import {
 	type ToolContextLimits,
 } from "../../settings/context-limits";
 import { createCodeIntelligenceTool } from "./code-intelligence/tool";
-import { CommandExitError, CommandTerminationError } from "./executors/bash";
+import {
+	CommandExitError,
+	CommandInterruptedError,
+	CommandTerminationError,
+} from "./executors/bash";
 import {
 	formatError,
 	formatReadFileQuery,
@@ -209,37 +213,58 @@ async function executeShellCommands(
 					command,
 					commandPreviewChars,
 				);
-				const commandContext: AgentToolContext = context.emitUpdate
-					? {
-							...context,
-							emitUpdate: (update) => {
-								const payload =
-									update && typeof update === "object" && !Array.isArray(update)
-										? (update as Record<string, unknown>)
-										: { update };
-								context.emitUpdate?.({
-									...payload,
-									commandIndex,
-									query,
-								});
-							},
-						}
-					: context;
+				// The executor stops the command on this signal and keeps the
+				// output so far in its result.
+				const deadline = new AbortController();
+				const deadlineTimer = setTimeout(
+					() =>
+						deadline.abort(
+							new TimeoutError(
+								`Command timed out after ${timeoutMs}ms`,
+								timeoutMs,
+							),
+						),
+					timeoutMs,
+				);
+				const commandContext: AgentToolContext = {
+					...context,
+					signal: context.signal
+						? AbortSignal.any([context.signal, deadline.signal])
+						: deadline.signal,
+					...(context.emitUpdate
+						? {
+								emitUpdate: (update: unknown) => {
+									const payload =
+										update &&
+										typeof update === "object" &&
+										!Array.isArray(update)
+											? (update as Record<string, unknown>)
+											: { update };
+									context.emitUpdate?.({
+										...payload,
+										commandIndex,
+										query,
+									});
+								},
+							}
+						: {}),
+				};
 				try {
-					const output = await withTimeout(
-						executor(command, cwd, commandContext),
-						timeoutMs,
-						`Command timed out after ${timeoutMs}ms`,
-					);
+					const output = await executor(command, cwd, commandContext);
 					return {
 						query,
 						result: output,
 						success: true,
 					};
 				} catch (error) {
-					if (error instanceof TimeoutError) {
+					const timedOutAfterMs =
+						error instanceof TimeoutError ||
+						error instanceof CommandInterruptedError
+							? error.timeoutMs
+							: undefined;
+					if (timedOutAfterMs !== undefined) {
 						captureRunCommandsTimeoutFromContext(telemetry, context, {
-							effectiveTimeoutMs: error.timeoutMs,
+							effectiveTimeoutMs: timedOutAfterMs,
 							timeoutSource,
 							commandCount: commands.length,
 							durationMs: Date.now() - startedAt,
@@ -247,7 +272,8 @@ async function executeShellCommands(
 					}
 					if (
 						error instanceof CommandExitError ||
-						error instanceof CommandTerminationError
+						error instanceof CommandTerminationError ||
+						error instanceof CommandInterruptedError
 					) {
 						return {
 							query,
@@ -263,6 +289,8 @@ async function executeShellCommands(
 						error: `Command failed: ${msg}`,
 						success: false,
 					};
+				} finally {
+					clearTimeout(deadlineTimer);
 				}
 			},
 		),

@@ -93,7 +93,9 @@ export type ListFilesExecutor = (
  *
  * @param command - Shell command to execute
  * @param cwd - Current working directory for execution
- * @param context - Tool execution context
+ * @param context - Tool execution context. run_commands enforces its timeout
+ *   by aborting `context.signal`, so an executor must stop on it; throwing
+ *   {@link CommandInterruptedError} keeps the output printed so far.
  * @returns Command output (stdout)
  */
 export type ShellExecutor = (

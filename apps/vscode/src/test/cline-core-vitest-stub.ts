@@ -227,6 +227,7 @@ export function setModelToolEnabledGlobally(name: ModelToolName, enabled: boolea
 
 export {
 	CommandExitError,
+	CommandInterruptedError,
 	CommandSpawnError,
 	CommandTerminationError,
 } from "../../../../sdk/packages/core/src/extensions/tools/executors/bash"

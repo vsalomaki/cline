@@ -1,4 +1,4 @@
-import { CommandExitError } from "@cline/core"
+import { CommandExitError, CommandInterruptedError } from "@cline/core"
 import { EventEmitter } from "events"
 import * as fs from "fs"
 import * as os from "os"
@@ -528,6 +528,70 @@ describe("executeForeground", () => {
 				const output = (error as InstanceType<typeof CommandExitError>).output
 				expect(output).toMatch(/^\[Command exited with code 2\]\n\[\.\.\. output truncated: \d+ chars total/)
 				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toContain("line-0\n")
+			})
+		})
+
+		it("names the file when the terminal closes mid-command", async () => {
+			await withOutputDirectory(async (directory) => {
+				const error = await run(lines(600), 100_000, directory, { terminalClosed: true }).catch(
+					(caught: unknown) => caught,
+				)
+
+				expect(error).toBeInstanceOf(CommandExitError)
+				const output = (error as InstanceType<typeof CommandExitError>).output
+				expect(output).toMatch(
+					/^\[Terminal closed while the command was running; output may be incomplete\]\n\[\.\.\. output truncated:/,
+				)
+				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toContain("line-0\n")
+			})
+		})
+
+		const abortAfter = async (lineList: string[], maxChars: number, directory: string) => {
+			const { process, emitLine } = createControllableTerminalProcess()
+			const terminalManager = {
+				getOrCreateTerminal: async () => ({ terminal: { show: () => {} } }) as never,
+				runCommand: () => process,
+				sendInterrupt: () => {},
+			} as unknown as VscodeTerminalManager
+			const abortController = new AbortController()
+			const execution = executeForeground(
+				"build",
+				"/workspace",
+				terminalManager,
+				maxChars,
+				abortController.signal,
+				undefined,
+				undefined,
+				undefined,
+				{ directory },
+			)
+			await waitFor(() => process.listenerCount("line") > 0)
+			for (const line of lineList) {
+				emitLine(line)
+			}
+			abortController.abort()
+			const error = await execution.catch((caught: unknown) => caught)
+			expect(error).toBeInstanceOf(CommandInterruptedError)
+			return (error as InstanceType<typeof CommandInterruptedError>).output
+		}
+
+		it("keeps an aborted command's short output inline without a file", async () => {
+			await withOutputDirectory(async (directory) => {
+				const output = await abortAfter(["compiling", "linking"], 1000, directory)
+
+				expect(output).toBe("[Command execution aborted]\ncompiling\nlinking")
+				expect(fs.readdirSync(directory)).toEqual([])
+			})
+		})
+
+		it("names the file when an aborted command kept only the tail of its lines", async () => {
+			await withOutputDirectory(async (directory) => {
+				const all = lines(600)
+				const output = await abortAfter(all, 100_000, directory)
+
+				expect(output).toMatch(/^\[Command execution aborted\]\n\[\.\.\. output truncated:/)
+				expect(output).toContain("line-599")
+				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toBe(`${all.join("\n")}\n`)
 			})
 		})
 

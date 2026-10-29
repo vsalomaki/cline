@@ -15,8 +15,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { TimeoutError } from "../helpers";
 import {
 	CommandExitError,
+	CommandInterruptedError,
 	CommandSpawnError,
 	cleanupStaleDetachedCommandLogs,
 	createShellExecutor,
@@ -1127,6 +1129,141 @@ describe("createShellExecutor", () => {
 					"[... output truncated: 100 chars total. Refine the command",
 				);
 				expect(output).not.toContain("saved to");
+			});
+		});
+
+		describe("when the command is interrupted", () => {
+			const printThenHang = (script: string) => ({
+				command: process.execPath,
+				args: ["-e", `${script}; setInterval(() => {}, 1_000)`],
+			});
+
+			async function interrupted(execution: Promise<string>) {
+				const error = await execution.catch((caught: unknown) => caught);
+				if (!(error instanceof CommandInterruptedError)) {
+					throw new Error(`Expected CommandInterruptedError, got ${error}`);
+				}
+				return error;
+			}
+
+			it("keeps short output inline and writes no file on timeout", async () => {
+				await withOutputDirectory(async (directory) => {
+					const shell = createShellExecutor({
+						timeoutMs: 1_000,
+						outputFileDirectory: directory,
+					});
+					const error = await interrupted(
+						shell(
+							printThenHang("process.stdout.write('partial')"),
+							process.cwd(),
+							ctx,
+						),
+					);
+
+					expect(error.message).toBe("Command timed out after 1000ms");
+					expect(error.timeoutMs).toBe(1_000);
+					expect(error.output).toBe(
+						"[Command timed out after 1000ms]\npartial",
+					);
+					expect(await readdir(directory)).toEqual([]);
+				});
+			});
+
+			it("saves everything printed before a timeout when it outgrows the limit", async () => {
+				await withOutputDirectory(async (directory) => {
+					const shell = createShellExecutor({
+						timeoutMs: 1_000,
+						maxOutputChars: 100,
+						outputFileDirectory: directory,
+					});
+					const error = await interrupted(
+						shell(
+							printThenHang(
+								"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
+							),
+							process.cwd(),
+							ctx,
+						),
+					);
+
+					const expected = Array.from(
+						{ length: 2000 },
+						(_, i) => `line-${i}\n`,
+					).join("");
+					expect(error.output).toMatch(
+						/^\[Command timed out after 1000ms\]\nline-0\n/,
+					);
+					expect(error.output).toContain(
+						`output truncated: ${expected.length} chars total`,
+					);
+					expect(error.output).toMatch(/line-1999\n$/);
+					const path = error.output.match(savedPathPattern)?.[1];
+					expect(path).toBeDefined();
+					expect(await readFile(path as string, "utf8")).toBe(expected);
+				});
+			});
+
+			it("keeps the output so far when aborted", async () => {
+				const ac = new AbortController();
+				const shell = createShellExecutor();
+				const execution = shell(
+					printThenHang("process.stdout.write('partial')"),
+					process.cwd(),
+					{
+						...ctx,
+						signal: ac.signal,
+						emitUpdate: (update) => {
+							if ((update as { chunk?: string }).chunk) ac.abort();
+						},
+					},
+				);
+				const error = await interrupted(execution);
+
+				expect(error.message).toBe("Command was aborted");
+				expect(error.timeoutMs).toBeUndefined();
+				expect(error.output).toBe("[Command was aborted]\npartial");
+			});
+
+			it("reports an abort with a TimeoutError reason as a timeout", async () => {
+				const ac = new AbortController();
+				const shell = createShellExecutor();
+				const execution = shell(
+					printThenHang("process.stdout.write('partial')"),
+					process.cwd(),
+					{
+						...ctx,
+						signal: ac.signal,
+						emitUpdate: (update) => {
+							if ((update as { chunk?: string }).chunk) {
+								ac.abort(
+									new TimeoutError("Command timed out after 5000ms", 5_000),
+								);
+							}
+						},
+					},
+				);
+				const error = await interrupted(execution);
+
+				expect(error.timeoutMs).toBe(5_000);
+				expect(error.output).toBe("[Command timed out after 5000ms]\npartial");
+			});
+
+			it.each([
+				[true, "[Command timed out after 1000ms]\nout\n[stderr]\nerr"],
+				[false, "[Command timed out after 1000ms]\nout"],
+			])("combineOutput %s decides whether stderr is included", async (combineOutput, expected) => {
+				const shell = createShellExecutor({ timeoutMs: 1_000, combineOutput });
+				const error = await interrupted(
+					shell(
+						printThenHang(
+							"process.stdout.write('out'); process.stderr.write('err')",
+						),
+						process.cwd(),
+						ctx,
+					),
+				);
+
+				expect(error.output).toBe(expected);
 			});
 		});
 	});
