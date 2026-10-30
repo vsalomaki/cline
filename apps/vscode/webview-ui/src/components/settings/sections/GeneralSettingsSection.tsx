@@ -1,9 +1,12 @@
 import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import { VSCodeCheckbox, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useExtensionState } from "@/context/ExtensionStateContext"
+import FeatureRow from "../FeatureRow"
 import PreferredLanguageSetting from "../PreferredLanguageSetting"
 import Section from "../Section"
+import { featureSettingControlId, featureSettingElementId } from "../settingsTargets"
 import { updateSetting } from "../utils/settingsHandlers"
 
 interface GeneralSettingsSectionProps {
@@ -11,13 +14,61 @@ interface GeneralSettingsSectionProps {
 }
 
 const GeneralSettingsSection = ({ renderSectionHeader }: GeneralSettingsSectionProps) => {
-	const { telemetrySetting, remoteConfigSettings, diagnosticsLogEnabled } = useExtensionState()
+	const {
+		telemetrySetting,
+		remoteConfigSettings,
+		diagnosticsLogEnabled,
+		mcpDisplayMode,
+		showFeatureTips,
+		backgroundEditEnabled,
+	} = useExtensionState()
 
 	return (
 		<div>
 			{renderSectionHeader("general")}
 			<Section>
 				<PreferredLanguageSetting />
+
+				<div className="my-5" id={featureSettingElementId("mcp-display-mode")}>
+					<label className="block mb-1 text-base font-medium" htmlFor={featureSettingControlId("mcp-display-mode")}>
+						MCP Display Mode
+					</label>
+					<Select onValueChange={(v) => updateSetting("mcpDisplayMode", v)} value={mcpDisplayMode}>
+						<SelectTrigger className="w-full" id={featureSettingControlId("mcp-display-mode")}>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="plain">Plain Text</SelectItem>
+							<SelectItem value="rich">Rich Display</SelectItem>
+							<SelectItem value="markdown">Markdown</SelectItem>
+						</SelectContent>
+					</Select>
+					<p className="text-sm text-description mt-1">Controls how MCP responses are displayed</p>
+				</div>
+
+				<div className="mb-3 -mx-1">
+					<FeatureRow
+						checked={showFeatureTips}
+						description="Show rotating tips during the thinking phase to help you discover Cline features."
+						id="show-feature-tips"
+						label="Feature Tips"
+						onChange={(checked) => updateSetting("showFeatureTips", checked)}
+					/>
+					<FeatureRow
+						checked={backgroundEditEnabled}
+						description="Allow edits without stealing editor focus"
+						id="background-edit"
+						label="Background Edit"
+						onChange={(checked) => updateSetting("backgroundEditEnabled", checked)}
+					/>
+					<FeatureRow
+						checked={diagnosticsLogEnabled}
+						description="Writes memory use and activity counters to the Cline output once a second, for troubleshooting crashes. The log holds no conversation content."
+						id="diagnostics-log"
+						label="Log memory diagnostics"
+						onChange={(checked) => updateSetting("diagnosticsLogEnabled", checked)}
+					/>
+				</div>
 
 				<div className="mb-[5px]" hidden={isRemoteServicesDisabled()}>
 					<Tooltip>
@@ -59,18 +110,6 @@ const GeneralSettingsSection = ({ renderSectionHeader }: GeneralSettingsSectionP
 							privacy policy
 						</VSCodeLink>{" "}
 						for more details.
-					</p>
-				</div>
-
-				<div className="mb-[5px]">
-					<VSCodeCheckbox
-						checked={diagnosticsLogEnabled}
-						onChange={(e: any) => updateSetting("diagnosticsLogEnabled", e.target.checked === true)}>
-						Log memory diagnostics
-					</VSCodeCheckbox>
-					<p className="text-sm mt-[5px] text-description">
-						Writes memory use and activity counters to the Cline output once a second, for troubleshooting crashes.
-						The log holds no conversation content.
 					</p>
 				</div>
 			</Section>

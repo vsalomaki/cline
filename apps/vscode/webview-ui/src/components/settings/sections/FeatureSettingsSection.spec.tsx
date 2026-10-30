@@ -71,16 +71,13 @@ describe("FeatureSettingsSection", () => {
 		expect(agentSection?.querySelector("#hooks-setting-control")).toBeNull()
 	})
 
-	it("renders Feature Tips toggle in the Editor section", () => {
-		const { container } = render(<FeatureSettingsSection renderSectionHeader={() => null} />)
+	it("leaves personal preferences to the General tab", () => {
+		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
 
-		expect(screen.getByText("Feature Tips")).toBeTruthy()
-
-		const editorSection = container.querySelector("#optional-features")
-		const agentSection = container.querySelector("#agent-features")
-
-		expect(editorSection?.querySelector("#show-feature-tips-setting-control")).toBeTruthy()
-		expect(agentSection?.querySelector("#show-feature-tips-setting-control")).toBeNull()
+		for (const label of ["Feature Tips", "Background Edit", "MCP Display Mode"]) {
+			expect(screen.queryByText(label)).toBeNull()
+		}
+		expect(screen.getByRole("switch", { name: "Checkpoints" })).toBeTruthy()
 	})
 
 	it("renders the Auto Compact Strategy setting in the Agent section", () => {
@@ -114,14 +111,6 @@ describe("FeatureSettingsSection", () => {
 
 		expect(screen.getByText("Agent teams")).toBeTruthy()
 		expect(screen.getByText(/start teammates that work in the background/)).toBeTruthy()
-	})
-
-	it("calls updateSetting with showFeatureTips when toggled", () => {
-		render(<FeatureSettingsSection renderSectionHeader={() => null} />)
-
-		fireEvent.click(screen.getByRole("switch", { name: "Feature Tips" }))
-
-		expect(mockUpdateSetting).toHaveBeenCalledWith("showFeatureTips", true)
 	})
 
 	it("hides the Cloud toggle unless the rollout flag makes it available", () => {

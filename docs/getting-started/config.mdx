@@ -184,13 +184,15 @@ Rules:
 - The IDE reads the environment its editor was launched with, which on a desktop
   launch is not your shell's; restart the editor after changing these
 
-In the VS Code extension, the same limits can be set under **Settings → Agent
-Limits**, together with tool, ripgrep and hook timeouts, repeated-tool-call
-detection, the consecutive-mistake limit and [compaction](#compaction). An env
-var set for the editor takes precedence over the setting, and the settings page
-marks each field it overrides. Changes apply to the current task once it is idle.
+In the VS Code extension, the same limits can be set under **Settings → Context &
+Limits**, together with tool and ripgrep timeouts and [compaction](#compaction).
+Repeated-tool-call detection, the consecutive-mistake limit and the hook timeout
+are under **Settings → Agent Behavior**. An env var set for the editor takes
+precedence over the setting, and the settings page marks each field it
+overrides. Changes apply to the current task once it is idle.
 
-The **Model API** group there applies to every provider:
+The **Model requests** group under **Settings → API Configuration** applies to
+every provider:
 
 - **Response timeout** (default 5 minutes): how long a request may wait for the
   model to start responding. A request that times out is retried. Once a
@@ -226,8 +228,8 @@ starts them. Each subagent gets Cline's working rules and environment around the
 main agent wrote for it, and compacts its own context under the session's compaction
 settings.
 
-In the VS Code extension, these settings are under **Settings → Agent Limits → Tool calls**,
-and nested subagents under **Agent Limits → Subagents**.
+In the VS Code extension, these settings are under **Settings → Agent Behavior**, in the
+**Tool calls**, **Edit safety** and **Subagents** groups.
 The CLI also takes `--max-parallel-tool-calls <n>`, `--no-parallel-tool-calls`,
 `--no-read-before-write`, `--no-revert-detection`, `--no-review-before-finish` and
 `--nested-subagents`, and reads `maxParallelToolCalls`, `parallelToolCalls`,
@@ -270,7 +272,7 @@ agent names a position by file, line and the symbol on that line; the tool finds
 the column. Results are capped at 50 entries. Without language servers the tool
 is not offered. Switching the tool off (`CLINE_CODE_INTELLIGENCE_TOOL=0`,
 `--no-code-intelligence-tool`, `codeIntelligenceTool: false`, or **Settings → Agent
-Limits → Language servers** in VS Code) saves its tokens in every request; problems
+Behavior → Language servers** in VS Code) saves its tokens in every request; problems
 after edits keep working.
 
 After `editor` or `apply_patch` writes a file, the problems the edit introduced
@@ -366,7 +368,7 @@ history and keeps the most recent part verbatim. The messages you typed before t
 part stay word for word next to the summary, up to 2,000 characters each and a
 quarter of the size compaction shrinks the context to, oldest left out first (agentic
 strategy; the basic strategy keeps all of them). In the VS Code extension these
-settings are under **Settings → Agent Limits → Compaction** and apply when
+settings are under **Settings → Context & Limits → Compaction** and apply when
 auto-compaction is on under Features:
 
 | Setting | Default | Governs |

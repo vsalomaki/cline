@@ -130,14 +130,14 @@ This is a fork of [Cline](https://github.com/cline/cline). It ships the VS Code 
   - Review before finishing: in act mode the agent goes over the files it changed once before it reports done. On by default.
   - Point out reverted edits: the agent is told when an edit puts a file back the way it was a few edits earlier. On by default.
   - Loop-detection warnings reach the agent, and the Retries setting caps every retry layer.
-- **Context and compaction:** Compaction keeps your messages verbatim. Its summary adds "User instructions" and "Decisions and rejected approaches" sections. Compaction triggers on the provider's token count. "Summary input per block" and "Summary length" are adjustable in Agent Limits.
+- **Context and compaction:** Compaction keeps your messages verbatim. Its summary adds "User instructions" and "Decisions and rejected approaches" sections. Compaction triggers on the provider's token count. "Summary input per block" and "Summary length" are adjustable in Context & Limits.
 - **Tools:**
   - The editor tool accepts a whole file in one call.
   - A `list_files` tool gives a `.gitignore`-aware directory listing, with an optional glob pattern.
   - Tool input and output size limits are settings instead of hard-coded values, and tool output is not truncated twice.
-  - Read-only tools (read, search, list, fetch) run in parallel, four at a time by default. Set the cap or turn it off in Agent Limits, Tool calls.
+  - Read-only tools (read, search, list, fetch) run in parallel, four at a time by default. Set the cap or turn it off in Agent Behavior, Tool calls.
   - Read before edit: the agent must read a file before it edits it. On by default.
-  - After an edit, new errors and warnings are reported to the agent. Errors only by default. Set in Agent Limits, Language servers.
+  - After an edit, new errors and warnings are reported to the agent. Errors only by default. Set in Agent Behavior, Language servers.
   - A `code_intelligence` tool gives definitions, references, hover, symbols and diagnostics when a language server is available.
   - Git commands that throw away uncommitted work always ask for approval, even with auto-approve on. Headless runs refuse them.
   - Tool names from other agents, such as `Read`, `Bash` and `Edit`, map to Cline's own tools.
@@ -145,15 +145,15 @@ This is a fork of [Cline](https://github.com/cline/cline). It ships the VS Code 
   - Runs Claude Code-style `hooks.json` files. Hooks can block a tool call, rewrite its input, or add context.
   - Events include prompt submit, task start and resume (once per conversation), and pre-compaction.
   - Hook runs that change nothing are hidden from the chat.
-  - The hook engine and timeout are in Agent Limits, Hooks.
+  - The hook engine and timeout are in Agent Behavior, Hooks.
 - **Subagents and teams:**
   - Delegation in Features is Off (default), Subagents, or Agent teams.
   - Subagents run a delegated task in their own context. You approve each handoff. Subagents in VS Code cannot run shell commands.
   - Agent teams keep the lead agent usable while teammates work. Each teammate's status shows in the chat.
-  - Nested subagents are off by default. Agent Limits, Subagents turns them on.
+  - Nested subagents are off by default. Agent Behavior, Subagents turns them on.
 - **MCP:** `${env:VAR}` and `${workspaceFolder}` work in MCP server settings.
 - **Memory:** Off by default. Turn it on in Features, Memory, or with `--memory` in the CLI. Project memory is kept per git repository, outside the repo, so your project tree stays clean. It saves only hard-won findings, not routine steps.
-- **Settings:** Most fork settings are in the VS Code Agent Limits and Features tabs. Full descriptions and defaults are in [`docs/getting-started/config.mdx`](docs/getting-started/config.mdx).
+- **Settings:** Most fork settings are in the VS Code Features, Agent Behavior and Context & Limits tabs; retries and the response timeout are under API Configuration. Full descriptions and defaults are in [`docs/getting-started/config.mdx`](docs/getting-started/config.mdx).
 
 **Install.** Download `cline-<version>.vsix` from the releases page and run `code --install-extension cline-<version>.vsix`. The VSIX keeps upstream's extension ID, so it replaces the Marketplace Cline and shares its settings. Turn off VS Code's auto-update for this extension. Otherwise the next Marketplace release replaces the fork build.
 

@@ -152,7 +152,7 @@ When a model calls an MCP tool by its Claude Code name, such as `mcp__plugin_acm
 
 Hooks run when **Hooks** is on under **Settings → Features**. The **Hooks** tab of the rules panel lists the hook files and creates new ones.
 
-**Settings → Agent Limits → Hooks** has two settings:
+**Settings → Agent Behavior → Hooks** has two settings:
 
 - **Hook engine.** **SDK** (the default) runs hooks as described on this page, the same way as the Cline CLI. **Legacy** is the engine of earlier versions: it runs only files named exactly after the event (`.ps1` on Windows), sends `hookName` as the file name, and does not read `hooks.json` or the Claude Code output fields.
 - **Hook script.** How long a hook may run, default 30 seconds.

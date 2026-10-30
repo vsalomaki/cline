@@ -102,7 +102,7 @@ export interface BuildApiHandlerOptions {
 	client?: Partial<HostClientContext>
 }
 
-/** The response timeout and retry count from Agent Limits, as provider config. */
+/** The response timeout and retry count from the agent limits, as provider config. */
 function readProviderLimits(configuration: ApiConfiguration): Partial<ProviderConfig> {
 	let agentLimitSettings: AgentLimitValues | undefined
 	try {
