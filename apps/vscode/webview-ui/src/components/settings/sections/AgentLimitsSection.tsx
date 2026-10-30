@@ -4,6 +4,7 @@ import {
 	type AgentLimitDefinition,
 	type AgentLimitId,
 	type AgentLimitsState,
+	type AgentLimitTab,
 	type AgentLimitUnit,
 } from "@shared/AgentLimits"
 import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
@@ -14,23 +15,6 @@ import { Switch } from "@/components/ui/switch"
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import Section from "../Section"
 import { updateSetting } from "../utils/settingsHandlers"
-
-interface AgentLimitsSectionProps {
-	renderSectionHeader: (tabId: string) => JSX.Element | null
-}
-
-interface LimitCategory {
-	id: string
-	title: string
-	groups: readonly string[]
-}
-
-/** Groups not listed here still render, in a final "Other" category. */
-const LIMIT_CATEGORIES: readonly LimitCategory[] = [
-	{ id: "model", title: "Model", groups: ["modelApi", "providerRequest", "compaction"] },
-	{ id: "tools", title: "Tools", groups: ["toolCalls", "toolInput", "toolOutput", "timeouts", "languageServers"] },
-	{ id: "agent", title: "Agent", groups: ["loop", "hooks", "subagents"] },
-]
 
 const UNIT_LABELS: Record<AgentLimitUnit, string> = {
 	chars: "characters",
@@ -227,95 +211,78 @@ const LimitChoice: React.FC<{ definition: AgentLimitDefinition; limits: AgentLim
 	)
 }
 
-const AgentLimitsSection = ({ renderSectionHeader }: AgentLimitsSectionProps) => {
+/**
+ * The agent limits whose group declares this tab, with the note on how changes
+ * apply and a reset for this tab's limits only.
+ */
+export const AgentLimitsPanel = ({ tab }: { tab: AgentLimitTab }) => {
 	const { agentLimits } = useExtensionState()
-
 	if (!agentLimits) {
-		return <div>{renderSectionHeader("agent-limits")}</div>
+		return null
 	}
 
+	const groups = AGENT_LIMIT_GROUPS.filter((group) => group.tab === tab)
+	const definitions = AGENT_LIMIT_DEFINITIONS.filter((definition) => groups.some((group) => group.id === definition.group))
+	const changedIds = definitions.map((definition) => definition.id).filter((id) => agentLimits.values[id] !== undefined)
 	const loopDetectionOn = (agentLimits.values["session.loopDetection"] ?? 1) === 1
-	const hasChanges = Object.keys(agentLimits.values).length > 0
 
-	const resetAll = () => {
-		updateSetting("agentLimitUpdates", Object.fromEntries(Object.keys(agentLimits.values).map((id) => [id, -1])))
+	const resetTab = () => {
+		updateSetting("agentLimitUpdates", Object.fromEntries(changedIds.map((id) => [id, -1])))
 	}
-
-	const knownGroups = new Set(LIMIT_CATEGORIES.flatMap((category) => category.groups))
-	const otherGroups = AGENT_LIMIT_GROUPS.filter((group) => !knownGroups.has(group.id)).map((group) => group.id)
-	const categories = [...LIMIT_CATEGORIES, { id: "other", title: "Other", groups: otherGroups }]
-		.map((category) => ({
-			id: category.id,
-			title: category.title,
-			groups: AGENT_LIMIT_GROUPS.filter((group) => category.groups.includes(group.id)),
-		}))
-		.filter((category) => category.groups.length > 0)
 
 	return (
-		<div className="mb-2">
-			{renderSectionHeader("agent-limits")}
-			<Section>
-				<p className="text-xs text-description mb-5">
-					Changes apply to the current task once it is idle. Leave a field empty to use the default. Env vars the editor
-					was launched with take precedence.
-				</p>
-				<div className="mb-5 flex flex-col gap-3">
-					{categories.map((category) => (
-						<div key={category.id}>
-							<div className="text-xs font-medium text-foreground/80 uppercase tracking-wider mb-3">
-								{category.title}
-							</div>
-							<div
-								className="relative p-3 pt-0 my-3 rounded-md border border-editor-widget-border/50"
-								id={`agent-limits-category-${category.id}`}>
-								{category.groups.map((group) => (
-									<div
-										className="py-3 border-t border-editor-widget-border/50 first:border-t-0"
-										id={`agent-limits-${group.id}`}
-										key={group.id}>
-										<h4 className="text-sm font-semibold">{group.title}</h4>
-										<p className="text-xs text-description mb-3">{group.description}</p>
-										<div className="flex flex-col gap-4">
-											{AGENT_LIMIT_DEFINITIONS.filter((definition) => definition.group === group.id).map(
-												(definition) =>
-													definition.unit === "toggle" ? (
-														<LimitToggle
-															definition={definition}
-															key={definition.id}
-															limits={agentLimits}
-														/>
-													) : definition.unit === "choice" ? (
-														<LimitChoice
-															definition={definition}
-															key={definition.id}
-															limits={agentLimits}
-														/>
-													) : (
-														<LimitField
-															definition={definition}
-															disabled={
-																definition.id.startsWith("session.loop") && !loopDetectionOn
-															}
-															key={definition.id}
-															limits={agentLimits}
-														/>
-													),
-											)}
-										</div>
-									</div>
-								))}
-							</div>
+		<div id={`agent-limits-tab-${tab}`}>
+			<p className="text-xs text-description mb-3">
+				Changes apply to the current task once it is idle. Leave a field empty to use the default. Env vars the editor was
+				launched with take precedence.
+			</p>
+			<div className="relative p-3 pt-0 mb-5 rounded-md border border-editor-widget-border/50">
+				{groups.map((group) => (
+					<div
+						className="py-3 border-t border-editor-widget-border/50 first:border-t-0"
+						id={`agent-limits-${group.id}`}
+						key={group.id}>
+						<h4 className="text-sm font-semibold">{group.title}</h4>
+						<p className="text-xs text-description mb-3">{group.description}</p>
+						<div className="flex flex-col gap-4">
+							{definitions
+								.filter((definition) => definition.group === group.id)
+								.map((definition) =>
+									definition.unit === "toggle" ? (
+										<LimitToggle definition={definition} key={definition.id} limits={agentLimits} />
+									) : definition.unit === "choice" ? (
+										<LimitChoice definition={definition} key={definition.id} limits={agentLimits} />
+									) : (
+										<LimitField
+											definition={definition}
+											disabled={definition.id.startsWith("session.loop") && !loopDetectionOn}
+											key={definition.id}
+											limits={agentLimits}
+										/>
+									),
+								)}
 						</div>
-					))}
-				</div>
-				<div>
-					<VSCodeButton appearance="secondary" disabled={!hasChanges} onClick={resetAll}>
-						Reset all to defaults
-					</VSCodeButton>
-				</div>
-			</Section>
+					</div>
+				))}
+			</div>
+			<VSCodeButton appearance="secondary" disabled={changedIds.length === 0} onClick={resetTab}>
+				Reset these to defaults
+			</VSCodeButton>
 		</div>
 	)
 }
+
+interface AgentLimitsSectionProps {
+	renderSectionHeader: (tabId: string) => JSX.Element | null
+}
+
+const AgentLimitsSection = ({ renderSectionHeader }: AgentLimitsSectionProps) => (
+	<div className="mb-2">
+		{renderSectionHeader("agent-limits")}
+		<Section>
+			<AgentLimitsPanel tab="agent-limits" />
+		</Section>
+	</div>
+)
 
 export default AgentLimitsSection

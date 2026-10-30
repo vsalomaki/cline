@@ -8,18 +8,69 @@
  * limit lives in `agentLimitSettings`.
  */
 
-export type AgentLimitGroup =
-	| "modelApi"
-	| "toolCalls"
-	| "languageServers"
-	| "toolOutput"
-	| "toolInput"
-	| "providerRequest"
-	| "timeouts"
-	| "hooks"
-	| "subagents"
-	| "loop"
-	| "compaction"
+/** The settings tabs that show agent limits. */
+export type AgentLimitTab = "api-config" | "agent-behavior" | "agent-limits"
+
+interface AgentLimitGroupInfo {
+	id: string
+	title: string
+	description: string
+	/** The settings tab the group renders in. */
+	tab: AgentLimitTab
+}
+
+/** Groups render in this order within their tab. */
+export const AGENT_LIMIT_GROUPS = [
+	{ id: "modelApi", tab: "api-config", title: "Model requests", description: "Applies to every provider." },
+	{
+		id: "toolCalls",
+		tab: "agent-behavior",
+		title: "Tool calls",
+		description: "How Cline runs the tool calls in one model response.",
+	},
+	{ id: "safety", tab: "agent-behavior", title: "Edit safety", description: "Checks around the agent's file edits." },
+	{
+		id: "languageServers",
+		tab: "agent-behavior",
+		title: "Language servers",
+		description: "Cline uses the language extensions installed in VS Code to navigate code and to check its edits.",
+	},
+	{
+		id: "loop",
+		tab: "agent-behavior",
+		title: "Loops and mistakes",
+		description: "When Cline stops a task that is going nowhere.",
+	},
+	{ id: "subagents", tab: "agent-behavior", title: "Subagents", description: "Applies when delegation is on under Features." },
+	{ id: "hooks", tab: "agent-behavior", title: "Hooks", description: "Applies when hooks are on under Features." },
+	{ id: "toolInput", tab: "agent-limits", title: "Tool input", description: "How much the model may send in one tool call." },
+	{
+		id: "toolOutput",
+		tab: "agent-limits",
+		title: "Tool output",
+		description: "How much each tool returns. A tool result is re-sent on every later turn, so larger values cost tokens.",
+	},
+	{
+		id: "providerRequest",
+		tab: "agent-limits",
+		title: "Provider request",
+		description: "Caps applied while assembling each request to the model.",
+	},
+	{
+		id: "compaction",
+		tab: "agent-limits",
+		title: "Compaction",
+		description: "Applies when auto-compaction is on under Features.",
+	},
+	{
+		id: "timeouts",
+		tab: "agent-limits",
+		title: "Tool timeouts",
+		description: "Command timeouts live under Terminal settings.",
+	},
+] as const satisfies readonly AgentLimitGroupInfo[]
+
+export type AgentLimitGroup = (typeof AGENT_LIMIT_GROUPS)[number]["id"]
 
 export type AgentLimitUnit = "chars" | "bytes" | "lines" | "milliseconds" | "count" | "tokens" | "percent" | "toggle" | "choice"
 
@@ -71,18 +122,6 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		max: 10,
 	},
 	{
-		id: "session.maxParallelToolCalls",
-		group: "toolCalls",
-		label: "Parallel tool calls",
-		description:
-			"Read-only tools (file reads, searches, listings, web fetches, skills) run at once when the model asks for several in one response. Edits, commands and questions always run one at a time. 1 runs every call in order.",
-		unit: "count",
-		default: 4,
-		min: 1,
-		max: 16,
-		envVar: "CLINE_MAX_PARALLEL_TOOL_CALLS",
-	},
-	{
 		id: "api.parallelToolCalls",
 		group: "toolCalls",
 		label: "Several tool calls per response",
@@ -95,8 +134,20 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		envVar: "CLINE_PARALLEL_TOOL_CALLS",
 	},
 	{
-		id: "session.readBeforeWrite",
+		id: "session.maxParallelToolCalls",
 		group: "toolCalls",
+		label: "Parallel tool calls",
+		description:
+			"Read-only tools (file reads, searches, listings, web fetches, skills) run at once when the model asks for several in one response. Edits, commands and questions always run one at a time. 1 runs every call in order.",
+		unit: "count",
+		default: 4,
+		min: 1,
+		max: 16,
+		envVar: "CLINE_MAX_PARALLEL_TOOL_CALLS",
+	},
+	{
+		id: "session.readBeforeWrite",
+		group: "safety",
 		label: "Read before edit",
 		description:
 			"Refuse an edit to an existing file the agent has not read in this task, or that changed since it read it. The agent then reads the file and retries. Shell commands are not checked.",
@@ -108,7 +159,7 @@ export const AGENT_LIMIT_DEFINITIONS = [
 	},
 	{
 		id: "session.revertDetection",
-		group: "toolCalls",
+		group: "safety",
 		label: "Point out reverted edits",
 		description:
 			"When an edit puts a file back to how it was earlier in this task, add a note to the edit's result asking the agent to check why the later changes were made. Helps models that keep undoing their own work. Shell commands are not checked.",
@@ -120,7 +171,7 @@ export const AGENT_LIMIT_DEFINITIONS = [
 	},
 	{
 		id: "session.reviewBeforeFinish",
-		group: "toolCalls",
+		group: "safety",
 		label: "Review before finishing",
 		description:
 			"When a request changed files, send the agent back once to review everything it changed before its final report: it gets a list of the changed files and checks them, removes leftovers and runs what is still unverified. Costs one more model turn per such request.",
@@ -546,28 +597,6 @@ export interface AgentLimitsState {
 	/** Env var currently setting a limit, when one is. */
 	envOverrides: Partial<Record<AgentLimitId, string>>
 }
-
-export const AGENT_LIMIT_GROUPS: ReadonlyArray<{ id: AgentLimitGroup; title: string; description: string }> = [
-	{ id: "modelApi", title: "Model API", description: "Applies to every provider." },
-	{ id: "toolCalls", title: "Tool calls", description: "How Cline runs the tool calls in one model response." },
-	{
-		id: "languageServers",
-		title: "Language servers",
-		description: "Cline uses the language extensions installed in VS Code to navigate code and to check its edits.",
-	},
-	{
-		id: "toolOutput",
-		title: "Tool output",
-		description: "How much each tool returns. A tool result is re-sent on every later turn, so larger values cost tokens.",
-	},
-	{ id: "toolInput", title: "Tool input", description: "How much the model may send in one tool call." },
-	{ id: "providerRequest", title: "Provider request", description: "Caps applied while assembling each request to the model." },
-	{ id: "timeouts", title: "Tool timeouts", description: "Command timeouts live under Terminal settings." },
-	{ id: "hooks", title: "Hooks", description: "Applies when hooks are on under Features." },
-	{ id: "subagents", title: "Subagents", description: "Applies when subagents are on under Features." },
-	{ id: "loop", title: "Loops and mistakes", description: "When Cline stops a task that is going nowhere." },
-	{ id: "compaction", title: "Compaction", description: "Applies when auto-compaction is on under Features." },
-]
 
 const DEFINITIONS_BY_ID = new Map<string, AgentLimitDefinition>(AGENT_LIMIT_DEFINITIONS.map((d) => [d.id, d]))
 

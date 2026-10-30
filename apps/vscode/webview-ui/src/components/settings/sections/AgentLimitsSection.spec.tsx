@@ -1,4 +1,4 @@
-import { AGENT_LIMIT_GROUPS, type AgentLimitsState } from "@shared/AgentLimits"
+import { AGENT_LIMIT_DEFINITIONS, AGENT_LIMIT_GROUPS, type AgentLimitsState, type AgentLimitTab } from "@shared/AgentLimits"
 import { fireEvent, render, screen } from "@testing-library/react"
 import {
 	type ChangeEventHandler,
@@ -10,7 +10,7 @@ import {
 	type ReactNode,
 } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import AgentLimitsSection from "./AgentLimitsSection"
+import { AgentLimitsPanel } from "./AgentLimitsSection"
 
 vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 	VSCodeTextField: (props: {
@@ -82,7 +82,9 @@ function setLimits(limits: Partial<AgentLimitsState>) {
 	}
 }
 
-const renderSection = () => render(<AgentLimitsSection renderSectionHeader={() => null} />)
+const TABS: AgentLimitTab[] = ["api-config", "agent-behavior", "agent-limits"]
+
+const renderTab = (tab: AgentLimitTab) => render(<AgentLimitsPanel tab={tab} />)
 const field = (id: string) => document.getElementById(`agent-limit-${id.replace(".", "-")}`) as HTMLInputElement
 
 describe("AgentLimitsSection", () => {
@@ -91,57 +93,52 @@ describe("AgentLimitsSection", () => {
 		setLimits({})
 	})
 
-	it("renders every group", () => {
-		renderSection()
+	it("renders every group in exactly one tab", () => {
+		const tabsByGroup = new Map<string, AgentLimitTab[]>()
+		const tabsByLimit = new Map<string, AgentLimitTab[]>()
+		for (const tab of TABS) {
+			const { unmount } = renderTab(tab)
+			for (const group of AGENT_LIMIT_GROUPS) {
+				if (document.getElementById(`agent-limits-${group.id}`)) {
+					tabsByGroup.set(group.id, [...(tabsByGroup.get(group.id) ?? []), tab])
+				}
+			}
+			for (const definition of AGENT_LIMIT_DEFINITIONS) {
+				if (field(definition.id)) {
+					tabsByLimit.set(definition.id, [...(tabsByLimit.get(definition.id) ?? []), tab])
+				}
+			}
+			unmount()
+		}
 
-		for (const title of [
-			"Language servers",
-			"Tool output",
-			"Tool input",
-			"Provider request",
-			"Tool timeouts",
-			"Loops and mistakes",
-			"Compaction",
-		]) {
-			expect(screen.getByText(title)).toBeTruthy()
+		for (const group of AGENT_LIMIT_GROUPS) {
+			expect(tabsByGroup.get(group.id), group.id).toEqual([group.tab])
+		}
+		for (const definition of AGENT_LIMIT_DEFINITIONS) {
+			expect(tabsByLimit.get(definition.id), definition.id).toHaveLength(1)
 		}
 	})
 
-	it("puts the groups under category cards", () => {
-		renderSection()
-		const inCategory = (category: string, group: string) =>
-			document
-				.getElementById(`agent-limits-category-${category}`)
-				?.contains(document.getElementById(`agent-limits-${group}`))
-
-		for (const title of ["Model", "Tools", "Agent"]) {
+	it("keeps switches on Agent Behavior and caps on Context & Limits", () => {
+		renderTab("agent-limits")
+		for (const title of ["Tool input", "Tool output", "Provider request", "Compaction", "Tool timeouts"]) {
 			expect(screen.getByText(title)).toBeTruthy()
 		}
-		expect(inCategory("model", "compaction")).toBe(true)
-		expect(inCategory("tools", "timeouts")).toBe(true)
-		expect(inCategory("agent", "loop")).toBe(true)
-		expect(document.getElementById("agent-limits-category-other")).toBeNull()
+		expect(field("session.readBeforeWrite")).toBeNull()
+		expect(field("api.maxRetries")).toBeNull()
 	})
 
-	it("renders a group missing from the category map under Other", () => {
-		const groups = AGENT_LIMIT_GROUPS as unknown as Array<{ id: string; title: string; description: string }>
-		groups.push({ id: "futureGroup", title: "Future group", description: "Added later." })
-		try {
-			renderSection()
+	it("shows the model request settings on the API tab", () => {
+		renderTab("api-config")
 
-			expect(
-				document
-					.getElementById("agent-limits-category-other")
-					?.contains(document.getElementById("agent-limits-futureGroup")),
-			).toBe(true)
-			expect(screen.getByText("Other")).toBeTruthy()
-		} finally {
-			groups.pop()
-		}
+		expect(screen.getByText("Model requests")).toBeTruthy()
+		expect(field("api.maxRetries")).toBeTruthy()
+		expect(field("api.requestTimeout")).toBeTruthy()
+		expect(screen.getByText(/Changes apply to the current task once it is idle/)).toBeTruthy()
 	})
 
 	it("saves a toggle as its number and resets it at the default", () => {
-		renderSection()
+		renderTab("agent-behavior")
 		const toggle = document.getElementById("agent-limit-session-loopDetection") as HTMLElement
 
 		expect(toggle.getAttribute("aria-checked")).toBe("true")
@@ -151,7 +148,7 @@ describe("AgentLimitsSection", () => {
 
 	it("resets a toggle that returns to its default", () => {
 		setLimits({ values: { "session.loopDetection": 0 } })
-		renderSection()
+		renderTab("agent-behavior")
 		const toggle = document.getElementById("agent-limit-session-loopDetection") as HTMLElement
 
 		expect(toggle.getAttribute("aria-checked")).toBe("false")
@@ -164,7 +161,7 @@ describe("AgentLimitsSection", () => {
 			effective: { "session.readBeforeWrite": 0 },
 			envOverrides: { "session.readBeforeWrite": "CLINE_READ_BEFORE_WRITE" },
 		})
-		renderSection()
+		renderTab("agent-behavior")
 		const toggle = document.getElementById("agent-limit-session-readBeforeWrite") as HTMLButtonElement
 
 		expect(toggle.disabled).toBe(true)
@@ -173,7 +170,7 @@ describe("AgentLimitsSection", () => {
 	})
 
 	it("saves timeouts entered in seconds as milliseconds", () => {
-		renderSection()
+		renderTab("agent-limits")
 
 		fireEvent.change(field("timeout.ripgrep"), { target: { value: "20" } })
 		fireEvent.blur(field("timeout.ripgrep"))
@@ -183,7 +180,7 @@ describe("AgentLimitsSection", () => {
 
 	it("resets a limit when its field is cleared", () => {
 		setLimits({ values: { "tool.readLines": 500 } })
-		renderSection()
+		renderTab("agent-limits")
 
 		expect(field("tool.readLines").value).toBe("500")
 		fireEvent.change(field("tool.readLines"), { target: { value: "" } })
@@ -193,7 +190,7 @@ describe("AgentLimitsSection", () => {
 	})
 
 	it("rejects out-of-range input without saving", () => {
-		renderSection()
+		renderTab("agent-limits")
 
 		fireEvent.change(field("tool.commandOutputChars"), { target: { value: "5" } })
 		expect(screen.getByText(/Enter 1,000–10,000,000/)).toBeTruthy()
@@ -208,7 +205,7 @@ describe("AgentLimitsSection", () => {
 			effective: { "tool.readLines": 900 },
 			envOverrides: { "tool.readLines": "CLINE_TOOL_MAX_READ_LINES" },
 		})
-		renderSection()
+		renderTab("agent-limits")
 
 		expect(field("tool.readLines").disabled).toBe(true)
 		expect(screen.getByText("CLINE_TOOL_MAX_READ_LINES")).toBeTruthy()
@@ -216,14 +213,14 @@ describe("AgentLimitsSection", () => {
 
 	it("shows the effective value when coupling adjusts it", () => {
 		setLimits({ values: { "message.toolResultChars": 10_000 }, effective: { "tool.commandOutputChars": 8_000 } })
-		renderSection()
+		renderTab("agent-limits")
 
 		expect(screen.getByText(/In effect: 8,000/)).toBeTruthy()
 	})
 
 	it("disables the thresholds when loop detection is off", () => {
 		setLimits({ values: { "session.loopDetection": 0 } })
-		renderSection()
+		renderTab("agent-behavior")
 
 		expect(field("session.loopSoftThreshold").disabled).toBe(true)
 		expect(field("session.loopHardThreshold").disabled).toBe(true)
@@ -231,7 +228,7 @@ describe("AgentLimitsSection", () => {
 	})
 
 	it("saves a choice as its number and resets it at the default", () => {
-		renderSection()
+		renderTab("agent-behavior")
 		const select = field("session.problemsAfterEdit") as unknown as HTMLSelectElement
 
 		expect(select.value).toBe("1")
@@ -246,7 +243,7 @@ describe("AgentLimitsSection", () => {
 			effective: { "session.problemsAfterEdit": 0 },
 			envOverrides: { "session.problemsAfterEdit": "CLINE_PROBLEMS_AFTER_EDIT" },
 		})
-		renderSection()
+		renderTab("agent-behavior")
 		const select = field("session.problemsAfterEdit") as unknown as HTMLSelectElement
 
 		expect(select.disabled).toBe(true)
@@ -254,12 +251,22 @@ describe("AgentLimitsSection", () => {
 		expect(screen.getByText("CLINE_PROBLEMS_AFTER_EDIT")).toBeTruthy()
 	})
 
-	it("resets every changed limit at once", () => {
-		setLimits({ values: { "tool.readLines": 500, "timeout.hook": 60_000 } })
-		renderSection()
+	it("resets only the changed limits on its own tab", () => {
+		setLimits({ values: { "tool.readLines": 500, "message.toolResultChars": 20_000, "session.loopDetection": 0 } })
+		renderTab("agent-limits")
 
-		fireEvent.click(screen.getByText("Reset all to defaults"))
+		fireEvent.click(screen.getByText("Reset these to defaults"))
 
-		expect(mockUpdateSetting).toHaveBeenCalledWith("agentLimitUpdates", { "tool.readLines": -1, "timeout.hook": -1 })
+		expect(mockUpdateSetting).toHaveBeenCalledWith("agentLimitUpdates", {
+			"tool.readLines": -1,
+			"message.toolResultChars": -1,
+		})
+	})
+
+	it("disables the reset while its tab has no changes", () => {
+		setLimits({ values: { "session.loopDetection": 0 } })
+		renderTab("agent-limits")
+
+		expect((screen.getByText("Reset these to defaults") as HTMLButtonElement).disabled).toBe(true)
 	})
 })

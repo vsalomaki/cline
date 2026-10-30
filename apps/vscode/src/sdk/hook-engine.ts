@@ -16,7 +16,7 @@ import type { HookMessageEmitter } from "./hooks-adapter"
 
 export type HookEngine = "sdk" | "legacy"
 
-/** The "Hook engine" Agent Limits choice: 0 is the SDK engine, 1 the legacy one. */
+/** The "Hook engine" agent limit: 0 is the SDK engine, 1 the legacy one. */
 export function readHookEngine(stateManager: StateManager): HookEngine {
 	return getAgentLimitValue(stateManager.getGlobalStateKey("agentLimitSettings"), "session.hookEngine") === 1 ? "legacy" : "sdk"
 }

@@ -1,9 +1,11 @@
+import type { AgentLimitTab } from "@shared/AgentLimits"
 import type { ExtensionMessage } from "@shared/ExtensionMessage"
 import { isClineInternalTester } from "@shared/internal/account"
 import { ResetStateRequest } from "@shared/proto/cline/state"
 import type { UserOrganization } from "@shared/proto/index.cline"
 import { isRemoteServicesDisabled } from "@shared/services/config/remote-services"
 import {
+	Bot,
 	CheckCheck,
 	FlaskConical,
 	Gauge,
@@ -27,6 +29,7 @@ import ViewHeader from "../common/ViewHeader"
 import SectionHeader from "./SectionHeader"
 import SettingsTargetHighlight from "./SettingsTargetHighlight"
 import AboutSection from "./sections/AboutSection"
+import AgentBehaviorSection from "./sections/AgentBehaviorSection"
 import AgentLimitsSection from "./sections/AgentLimitsSection"
 import ApiConfigurationSection from "./sections/ApiConfigurationSection"
 import DebugSection from "./sections/DebugSection"
@@ -39,7 +42,7 @@ import { getNextSettingsNavigationRequestId, resolveSettingsTarget, type Setting
 const IS_DEV = process.env.IS_DEV
 
 // Tab definitions
-type SettingsTabID = "api-config" | "features" | "terminal" | "agent-limits" | "general" | "about" | "debug" | "remote-config"
+type SettingsTabID = AgentLimitTab | "features" | "terminal" | "general" | "about" | "debug" | "remote-config"
 interface SettingsTab {
 	id: SettingsTabID
 	name: string
@@ -65,6 +68,13 @@ const SETTINGS_TABS: SettingsTab[] = [
 		icon: CheckCheck,
 	},
 	{
+		id: "agent-behavior",
+		name: "Agent Behavior",
+		tooltipText: "Agent Behavior",
+		headerText: "Agent Behavior",
+		icon: Bot,
+	},
+	{
 		id: "terminal",
 		name: "Terminal",
 		tooltipText: "Terminal Settings",
@@ -73,9 +83,9 @@ const SETTINGS_TABS: SettingsTab[] = [
 	},
 	{
 		id: "agent-limits",
-		name: "Agent Limits",
-		tooltipText: "Agent Limits",
-		headerText: "Agent Limits",
+		name: "Context & Limits",
+		tooltipText: "Context & Limits",
+		headerText: "Context & Limits",
 		icon: Gauge,
 	},
 	{
@@ -142,6 +152,7 @@ const SettingsView = ({ navigationRequest, onDone }: SettingsViewProps) => {
 			"api-config": ApiConfigurationSection,
 			general: GeneralSettingsSection,
 			features: FeatureSettingsSection,
+			"agent-behavior": AgentBehaviorSection,
 			terminal: TerminalSettingsSection,
 			"agent-limits": AgentLimitsSection,
 			"remote-config": RemoteConfigSection,
