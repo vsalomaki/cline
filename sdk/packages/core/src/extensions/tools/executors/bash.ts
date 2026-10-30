@@ -325,6 +325,21 @@ export class CommandTerminationError extends Error {
 }
 
 /**
+ * The command was stopped before it finished, by a timeout or an abort.
+ * `output` is what it printed until then; `timeoutMs` is set for a timeout.
+ */
+export class CommandInterruptedError extends Error {
+	constructor(
+		message: string,
+		readonly output: string,
+		readonly timeoutMs?: number,
+	) {
+		super(message);
+		this.name = "CommandInterruptedError";
+	}
+}
+
+/**
  * The shell process could not be started, so the command never ran and there
  * is no exit code. `code` carries the operating system error libuv reported —
  * `ENOENT`, `EACCES`, `EFTYPE` for a file that is not a valid executable — so
@@ -797,7 +812,14 @@ function spawnAndCollect(
 		};
 
 		let timeout: NodeJS.Timeout;
-		const abortHandler = () => killAndReject(new Error("Command was aborted"));
+		const abortHandler = () => {
+			const reason = context.signal?.reason;
+			interrupt(
+				reason instanceof TimeoutError
+					? reason
+					: new Error("Command was aborted"),
+			);
+		};
 		const cleanup = () => {
 			clearTimeout(timeout);
 			if (exitStreamGraceTimer) {
@@ -815,9 +837,51 @@ function spawnAndCollect(
 			void killProcessTree().finally(() => settle(() => reject(error)));
 		};
 
+		// Snapshots the collectors, flushes the final decoder chunks and
+		// finishes the output file, so the result can name it.
+		const collectOutput = (): string => {
+			const out = stdout.snapshot();
+			const err = stderr.snapshot();
+			if (out.finalChunk) {
+				outputFile.append(out.finalChunk);
+				progress.append("stdout", out.finalChunk);
+			}
+			if (err.finalChunk) {
+				if (combineOutput) outputFile.append(err.finalChunk);
+				progress.append("stderr", err.finalChunk);
+			}
+			progress.stop({ flush: true });
+			const savedOutput = outputFile.finish();
+			const output = combineOutput
+				? out.text + (err.text ? `\n[stderr]\n${err.text}` : "")
+				: out.text;
+			const dropped = out.dropped || (combineOutput && err.dropped);
+			if (!dropped && output.length <= maxOutputChars) return output;
+			return truncateCommandOutput(output, {
+				maxChars: maxOutputChars,
+				totalChars: combineOutput
+					? out.totalChars + err.totalChars
+					: out.totalChars,
+				savedOutput,
+			});
+		};
+
+		const interrupt = (cause: Error) => {
+			if (killed || settled) return;
+			const notice = `[${cause.message}]`;
+			const output = collectOutput();
+			killAndReject(
+				new CommandInterruptedError(
+					cause.message,
+					output ? `${notice}\n${output}` : notice,
+					cause instanceof TimeoutError ? cause.timeoutMs : undefined,
+				),
+			);
+		};
+
 		timeout = setTimeout(
 			() =>
-				killAndReject(
+				interrupt(
 					new TimeoutError(`Command timed out after ${timeoutMs}ms`, timeoutMs),
 				),
 			timeoutMs,
@@ -945,69 +1009,29 @@ function spawnAndCollect(
 		});
 
 		// Shared completion path for 'close' (stdio drained) and the
-		// exit-grace fallback below: snapshot the collectors, flush the final
-		// decoder chunks, and settle with the exit code or signal. `trailingNote` is
-		// appended after truncation so it always reaches the caller.
+		// exit-grace fallback below: settle with the exit code or signal.
+		// `trailingNote` is appended after truncation so it always reaches the
+		// caller.
 		const completeCommand = (
 			code: number | null,
 			signal: NodeJS.Signals | null,
 			trailingNote: string,
 		) => {
-			const out = stdout.snapshot();
-			const err = stderr.snapshot();
-			if (out.finalChunk) {
-				outputFile.append(out.finalChunk);
-				progress.append("stdout", out.finalChunk);
-			}
-			if (err.finalChunk) {
-				if (combineOutput) outputFile.append(err.finalChunk);
-				progress.append("stderr", err.finalChunk);
-			}
-			progress.stop({ flush: true });
-			const savedOutput = outputFile.finish();
+			const output = collectOutput();
 			cleanup();
 
 			if (code !== 0) {
-				let failureOutput = combineOutput
-					? out.text + (err.text ? `\n[stderr]\n${err.text}` : "")
-					: out.text;
-				const dropped = out.dropped || (combineOutput && err.dropped);
-				const totalChars = combineOutput
-					? out.totalChars + err.totalChars
-					: out.totalChars;
-				if (dropped || failureOutput.length > maxOutputChars) {
-					failureOutput = truncateCommandOutput(failureOutput, {
-						maxChars: maxOutputChars,
-						totalChars,
-						savedOutput,
-					});
-				}
 				const notice = `[${commandCompletionMessage(code, signal)}]`;
-				const result =
-					failureOutput.length > 0 ? `${notice}\n${failureOutput}` : notice;
-				const output = trailingNote ? `${result}\n${trailingNote}` : result;
+				const result = output.length > 0 ? `${notice}\n${output}` : notice;
+				const failure = trailingNote ? `${result}\n${trailingNote}` : result;
 				settle(() =>
 					reject(
 						code === null
-							? new CommandTerminationError(signal, output)
-							: new CommandExitError(code, output),
+							? new CommandTerminationError(signal, failure)
+							: new CommandExitError(code, failure),
 					),
 				);
 			} else {
-				let output = combineOutput
-					? out.text + (err.text ? `\n[stderr]\n${err.text}` : "")
-					: out.text;
-				const dropped = out.dropped || (combineOutput && err.dropped);
-				if (dropped || output.length > maxOutputChars) {
-					const totalChars = combineOutput
-						? out.totalChars + err.totalChars
-						: out.totalChars;
-					output = truncateCommandOutput(output, {
-						maxChars: maxOutputChars,
-						totalChars,
-						savedOutput,
-					});
-				}
 				settle(() =>
 					resolve(trailingNote ? `${output}\n${trailingNote}` : output),
 				);
@@ -1017,14 +1041,14 @@ function spawnAndCollect(
 		child.on("close", (code, signal) => {
 			if (killed || settledOnExitGrace) return;
 
-			const out = stdout.snapshot();
-			const err = stderr.snapshot();
 			if (detached) {
 				// The log is finalized here; the exit-grace timer must not
 				// double-write it later.
 				if (exitStreamGraceTimer) {
 					clearTimeout(exitStreamGraceTimer);
 				}
+				const out = stdout.snapshot();
+				const err = stderr.snapshot();
 				detachedLog?.write(out.finalChunk);
 				detachedLog?.write(err.finalChunk);
 				detachedLog?.write(`\n[${commandCompletionMessage(code, signal)}]\n`);

@@ -1040,6 +1040,7 @@ export {
 	type CodePosition,
 	type CodeSymbol,
 	CommandExitError,
+	CommandInterruptedError,
 	type CommandOutputFile,
 	type CommandOutputFileOptions,
 	CommandSpawnError,

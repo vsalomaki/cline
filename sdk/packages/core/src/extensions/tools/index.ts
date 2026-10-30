@@ -39,6 +39,7 @@ export {
 export {
 	type ApplyPatchExecutorOptions,
 	CommandExitError,
+	CommandInterruptedError,
 	CommandSpawnError,
 	CommandTerminationError,
 	computePatchChanges,
@@ -231,6 +232,7 @@ export function createBuiltinTools(
 		...executorOptions,
 		bash: {
 			maxOutputChars: limits.commandOutputChars,
+			timeoutMs: toolsConfig.bashTimeoutMs,
 			...executorOptions.bash,
 			shell,
 		},

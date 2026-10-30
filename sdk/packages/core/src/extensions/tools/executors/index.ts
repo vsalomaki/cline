@@ -37,6 +37,7 @@ export {
 export { PATCH_MARKERS, PatchActionType } from "./apply-patch-parser";
 export {
 	CommandExitError,
+	CommandInterruptedError,
 	CommandSpawnError,
 	CommandTerminationError,
 	createShellExecutor,

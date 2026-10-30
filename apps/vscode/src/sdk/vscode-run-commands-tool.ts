@@ -13,6 +13,7 @@
 
 import {
 	CommandExitError,
+	CommandInterruptedError,
 	type CommandOutputFileOptions,
 	createCommandOutputFile,
 	createShellExecutor,
@@ -452,10 +453,6 @@ export async function executeForeground(
 			// Wait for completion (or detach, which also resolves the promise)
 			await process
 
-			if (abortSignal?.aborted) {
-				throw new Error("Command execution aborted")
-			}
-
 			// A detached command's result points at its detached log instead.
 			const savedOutput = detachedLog === undefined ? outputFile.finish() : undefined
 			const bufferedOutput = outputLines.join("\n").trim()
@@ -472,6 +469,11 @@ export async function executeForeground(
 					totalChars: savedOutput?.totalChars,
 					savedOutput,
 				})
+			}
+
+			if (abortSignal?.aborted) {
+				const message = "Command execution aborted"
+				throw new CommandInterruptedError(message, output.length > 0 ? `[${message}]\n${output}` : `[${message}]`)
 			}
 
 			if (detachedLog !== undefined) {
