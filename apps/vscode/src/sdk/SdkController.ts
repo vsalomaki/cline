@@ -59,7 +59,7 @@ import { isRemoteServicesDisabled } from "@/shared/services/config/remote-servic
 import { Logger } from "@/shared/services/Logger"
 import { resolveDataDirFromEnv } from "@/shared/storage/storage-context"
 import { isClineManagedProvider } from "@/shared/utils/cline"
-import { arePathsEqual, getDesktopDir } from "@/utils/path"
+import { getDesktopDir } from "@/utils/path"
 import { ClineAccountService } from "./account-service"
 import { resolveAgentToolLimits } from "./agent-limit-config"
 import { AuthService, LogoutReason } from "./auth-service"
@@ -101,7 +101,7 @@ import { SdkSessionHistoryLoader } from "./sdk-session-history-loader"
 import { SdkSessionLifecycle } from "./sdk-session-lifecycle"
 import { SdkSessionRebuildScheduler } from "./sdk-session-rebuild-scheduler"
 import { SdkTaskControlCoordinator } from "./sdk-task-control-coordinator"
-import { SdkTaskHistory, sessionHistoryRecordToHistoryItem } from "./sdk-task-history"
+import { isInWorkspace, SdkTaskHistory, sessionHistoryRecordToHistoryItem } from "./sdk-task-history"
 import { SdkTaskStartCoordinator } from "./sdk-task-start-coordinator"
 import { createVscodeSdkTelemetryHandle, type VscodeSdkTelemetryHandle } from "./sdk-telemetry"
 import { isToolAutoApproved } from "./sdk-tool-policies"
@@ -1299,6 +1299,20 @@ export class Controller {
 		return this.lastKnownWorkspaceRoot
 	}
 
+	/** Every open workspace folder, else the folder a no-workspace task runs in. */
+	private async getHistoryWorkspaceRoots(): Promise<string[]> {
+		try {
+			const { paths } = await HostProvider.workspace.getWorkspacePaths({})
+			const roots = (paths ?? []).filter((workspacePath) => workspacePath.trim().length > 0)
+			if (roots.length > 0) {
+				return roots
+			}
+		} catch (error) {
+			Logger.warn("[SdkController] Failed to get workspace paths for history:", error)
+		}
+		return [await this.getWorkspaceRoot()]
+	}
+
 	private noWorkspaceFallbackPromise?: Promise<string>
 
 	/**
@@ -2351,12 +2365,11 @@ export class Controller {
 		const { favoritesOnly, currentWorkspaceOnly, searchQuery, sortBy, cloudOnly } = request
 		const limit = request.limit > 0 ? Math.min(request.limit, 100) : 50
 		const offset = request.offset > 0 ? request.offset : 0
-		const workspacePath = currentWorkspaceOnly ? await this.getWorkspaceRoot() : undefined
-		// Cloud tasks are a small minority of the merged list, so page them after
-		// filtering: a page cut from the merged list first can hold none of them
-		// while cloud tasks exist further down. Other filters keep the cheaper
-		// pre-filter pagination the local-only history has always used.
-		const paginateAfterFilter = !!cloudOnly
+		const workspaceRoots = currentWorkspaceOnly ? await this.getHistoryWorkspaceRoots() : []
+		// Cloud and workspace filters drop most of the merged list, so page after
+		// filtering: a page cut first can hold none of the matches. Other filters
+		// keep the cheaper pre-filter pagination.
+		const paginateAfterFilter = !!cloudOnly || !!currentWorkspaceOnly
 		const sessionHistory = await this.taskHistory.listHistory(
 			paginateAfterFilter ? { hydrate: false } : { hydrate: false, limit: limit + 1, offset },
 		)
@@ -2379,11 +2392,12 @@ export class Controller {
 				return false
 			}
 
-			if (currentWorkspaceOnly && workspacePath) {
-				const sessionWorkspacePath = item.cwd ?? item.workspaceRoot
-				if (!sessionWorkspacePath || !arePathsEqual(sessionWorkspacePath, workspacePath)) {
-					return false
-				}
+			if (
+				currentWorkspaceOnly &&
+				metadataString(item.metadata, "executionTarget") !== "cloud" &&
+				!isInWorkspace(item.cwd ?? item.workspaceRoot, workspaceRoots)
+			) {
+				return false
 			}
 
 			return true
@@ -2455,7 +2469,15 @@ export class Controller {
 			}
 		})
 
-		if (offset === 0 && !favoritesOnly && this.task?.taskId && !tasks.some((task) => task.id === this.task?.taskId)) {
+		// A brand-new task may not be persisted yet; a listed one that the filters dropped stays out.
+		const activeTaskListed = paginateAfterFilter && sessionHistory.some((item) => item.sessionId === this.task?.taskId)
+		if (
+			offset === 0 &&
+			!favoritesOnly &&
+			!activeTaskListed &&
+			this.task?.taskId &&
+			!tasks.some((task) => task.id === this.task?.taskId)
+		) {
 			const taskMessage = this.task.messageStateHandler
 				.getClineMessages()
 				.find((message) => message.type === "say" && message.say === "task" && message.text)
@@ -2485,7 +2507,7 @@ export class Controller {
 			}
 		}
 
-		return TaskHistoryArray.create({ tasks: tasks.slice(0, limit), hasMore })
+		return TaskHistoryArray.create({ tasks, hasMore })
 	}
 
 	resolveCloudSessionStatuses(sessionIds: Iterable<string>) {
@@ -2521,10 +2543,11 @@ export class Controller {
 			await HostProvider.window.showMessage(
 				ShowMessageRequest.create({
 					type: ShowMessageType.WARNING,
-					message: "What would you like to delete?",
+					message:
+						"Delete the tasks of this workspace, or of every workspace? Favorites are kept unless you choose Delete Everything.",
 					options: {
 						modal: true,
-						items: ["Delete All Except Favorites", "Delete Everything"],
+						items: ["Delete This Workspace's Tasks", "Delete All Except Favorites", "Delete Everything"],
 					},
 				}),
 			)
@@ -2532,6 +2555,15 @@ export class Controller {
 
 		if (userChoice === undefined) {
 			return DeleteAllTaskHistoryCount.create({ tasksDeleted: 0 })
+		}
+
+		if (userChoice === "Delete This Workspace's Tasks") {
+			const tasksDeleted = await this.taskHistory.deleteAllTaskHistory({
+				preserveFavorites: true,
+				workspaceRoots: await this.getHistoryWorkspaceRoots(),
+			})
+			await this.postStateToWebview()
+			return DeleteAllTaskHistoryCount.create({ tasksDeleted })
 		}
 
 		if (userChoice === "Delete All Except Favorites") {
@@ -2678,10 +2710,20 @@ export class Controller {
 				// badge and anything else keyed on workspaceRoots depend on it.
 				workspaceManager: await this.ensureWorkspaceManager(),
 			})
-			const sdkTaskHistory = (await this.taskHistory.listHistory({ limit: 100, hydrate: false }))
-				.map(sessionHistoryRecordToHistoryItem)
-				.filter((item) => item.ts && item.task)
-				.sort((a, b) => b.ts - a.ts)
+			const workspaceRoots = await this.getHistoryWorkspaceRoots()
+			const inScope = (item: HistoryItem) =>
+				item.id === snapshotTask?.taskId ||
+				item.executionTarget === "cloud" ||
+				isInWorkspace(item.cwdOnTaskInitialization, workspaceRoots)
+			const scopeHistory = (records: SessionHistoryRecord[]) =>
+				records.map(sessionHistoryRecordToHistoryItem).filter((item) => item.ts && item.task && inScope(item))
+			const recentRecords = await this.taskHistory.listHistory({ limit: 100, hydrate: false })
+			let sdkTaskHistory = scopeHistory(recentRecords)
+			// The newest 100 tasks can all belong to other workspaces; the home screen shows three.
+			if (sdkTaskHistory.length < 3 && recentRecords.length === 100) {
+				sdkTaskHistory = scopeHistory(await this.taskHistory.listHistory({ hydrate: false }))
+			}
+			sdkTaskHistory.sort((a, b) => b.ts - a.ts)
 			const legacyTaskHistory = state.taskHistory ?? []
 			const mergedTaskHistoryById = new Map<string, HistoryItem>()
 
@@ -2728,7 +2770,7 @@ export class Controller {
 			}
 
 			const processedTaskHistory = Array.from(mergedTaskHistoryById.values())
-				.filter((item) => item.ts && item.task)
+				.filter((item) => item.ts && item.task && inScope(item))
 				.sort((a, b) => b.ts - a.ts)
 				.slice(0, 100)
 

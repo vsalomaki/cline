@@ -564,6 +564,20 @@ describe("SdkTaskHistory", () => {
 		await expect(history.findHistoryItem("favorite-legacy-task")).resolves.toMatchObject({ id: "favorite-legacy-task" })
 	})
 
+	it("deletes only the given workspaces' tasks, keeping favorites", async () => {
+		const { history, deleteSession } = makeHistory([
+			makeSessionRecord("here"),
+			makeSessionRecord("here-favorite", { metadata: { isFavorited: true } }),
+			makeSessionRecord("elsewhere", { cwd: "/other", workspaceRoot: "/other" }),
+		])
+
+		const deletedCount = await history.deleteAllTaskHistory({ preserveFavorites: true, workspaceRoots: ["/repo"] })
+
+		expect(deletedCount).toBe(1)
+		expect(deleteSession).toHaveBeenCalledTimes(1)
+		expect(deleteSession).toHaveBeenCalledWith("here")
+	})
+
 	it("never deletes cloud sessions when deleting all history", async () => {
 		const cloudRecord = makeSessionRecord("ses-cloud", { metadata: { executionTarget: "cloud" } })
 		const cloud = {
