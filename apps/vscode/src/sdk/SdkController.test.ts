@@ -58,6 +58,7 @@ describe("SDK remote-config coordination", () => {
 			isRemoteConfigAvailable: true,
 			currentRemoteConfigRevision: 7,
 			ensureWorkspaceManager: async () => undefined,
+			getHistoryWorkspaceRoots: async () => ["/workspace"],
 			taskHistory: { listHistory: async () => [] },
 			sessions: { getActiveSession: () => undefined },
 			cloud: { getCurrentTaskInfo: () => undefined },
@@ -89,6 +90,7 @@ describe("SDK remote-config coordination", () => {
 			isRemoteConfigAvailable: false,
 			currentRemoteConfigRevision: undefined,
 			ensureWorkspaceManager: async () => undefined,
+			getHistoryWorkspaceRoots: async () => ["/workspace"],
 			taskHistory: {
 				listHistory: async () => {
 					// A conversation boundary (follow-up on an idle session) bumps the
@@ -795,6 +797,98 @@ describe("getTaskHistory with Cloud Only", () => {
 		expect(first.hasMore).toBe(true)
 		expect(second.tasks.map((task) => task.id)).toEqual(["ses-2"])
 		expect(second.hasMore).toBe(false)
+	})
+})
+
+describe("history scoped to the open workspace", () => {
+	function record(sessionId: string, updatedAt: number, cwd?: string, metadata: Record<string, unknown> = {}) {
+		return {
+			sessionId,
+			prompt: `task ${sessionId}`,
+			startedAt: new Date(updatedAt).toISOString(),
+			updatedAt: new Date(updatedAt).toISOString(),
+			metadata,
+			cwd,
+		}
+	}
+
+	// The 100 newest tasks belong to another workspace.
+	const history = [
+		...Array.from({ length: 100 }, (_, i) => record(`other-${i}`, 3_000_000 - i, "/other")),
+		record("a-1", 2_000_000, "/repo-a"),
+		record("no-path", 1_999_999),
+		record("cloud-1", 1_999_998, "/workspace", { executionTarget: "cloud" }),
+		record("b-1", 1_999_997, "/repo-b"),
+		record("a-2", 1_999_996, "/repo-a"),
+	]
+	const listHistory = vi.fn(async ({ limit = history.length, offset = 0 }: { limit?: number; offset?: number }) =>
+		history.slice(offset, offset + limit),
+	)
+
+	function activeTask(taskId: string) {
+		return {
+			taskId,
+			messageStateHandler: { getClineMessages: () => [{ type: "say", say: "task", text: `task ${taskId}`, ts: 1 }] },
+		}
+	}
+
+	function historyPage(task: ReturnType<typeof activeTask> | undefined, workspaceRoots: string[], offset = 0) {
+		const controller = {
+			task,
+			taskHistory: { listHistory },
+			cloud: { getCurrentTaskInfo: () => undefined },
+			getHistoryWorkspaceRoots: async () => workspaceRoots,
+		}
+		return SdkController.prototype.getTaskHistory.call(
+			controller as never,
+			GetTaskHistoryRequest.create({ currentWorkspaceOnly: true, limit: 2, offset }),
+		)
+	}
+
+	it("pages tasks from every open folder in the history view, cloud tasks included", async () => {
+		const first = await historyPage(undefined, ["/repo-a", "/repo-b"])
+		const second = await historyPage(undefined, ["/repo-a", "/repo-b"], 2)
+
+		expect(first.tasks.map((task) => task.id)).toEqual(["a-1", "cloud-1"])
+		expect(first.hasMore).toBe(true)
+		expect(second.tasks.map((task) => task.id)).toEqual(["b-1", "a-2"])
+		expect(second.hasMore).toBe(false)
+	})
+
+	it("keeps an open task from another workspace out of the page", async () => {
+		const page = await historyPage(activeTask("other-0"), ["/repo-a"])
+
+		expect(page.tasks.map((task) => task.id)).toEqual(["a-1", "cloud-1"])
+	})
+
+	it("adds a task that is not saved yet without dropping one from the page", async () => {
+		const page = await historyPage(activeTask("new-task"), ["/repo-a"])
+
+		expect(page.tasks.map((task) => task.id)).toEqual(["new-task", "a-1", "cloud-1"])
+	})
+
+	it("posts this workspace's tasks to the webview even when they are older than the newest 100", async () => {
+		const controller = {
+			stateManager: {
+				getGlobalSettingsKey: () => undefined,
+				getGlobalStateKey: () => undefined,
+				getRemoteConfigSettings: () => ({}),
+				setGlobalState: vi.fn(),
+			},
+			foregroundCommands: { isRunning: false },
+			ensureWorkspaceManager: async () => undefined,
+			getHistoryWorkspaceRoots: async () => ["/repo-b"],
+			taskHistory: { listHistory },
+			sessions: { getActiveSession: () => undefined },
+			cloud: { getCurrentTaskInfo: () => undefined },
+			turnStateTracker: { get: () => undefined },
+			messageTranslatorState: { getMinter: () => ({ epoch: 1, nextSeq: () => 1 }) },
+			buildStateForWebview,
+		}
+
+		const state = await SdkController.prototype.getStateToPostToWebview.call(controller as never)
+
+		expect(state.taskHistory.map((item) => item.id)).toEqual(["cloud-1", "b-1"])
 	})
 })
 

@@ -10,6 +10,7 @@ import getFolderSize from "get-folder-size"
 import type { McpHub } from "@/services/mcp/McpHub"
 import type { TelemetryService } from "@/services/telemetry/TelemetryService"
 import { Logger } from "@/shared/services/Logger"
+import { arePathsEqual } from "@/utils/path"
 import { deleteLegacyTask, readApiConversationHistory, readTaskHistory, readUiMessages, taskDirPath } from "./legacy-state-reader"
 import {
 	appendLegacyResumeWarning,
@@ -60,6 +61,10 @@ export interface CloudHistorySource {
 
 type SdkTaskHistoryListOptions = ClineCoreListHistoryOptions & {
 	offset?: number
+}
+
+export function isInWorkspace(taskPath: string | undefined, workspaceRoots: string[]): boolean {
+	return !!taskPath && workspaceRoots.some((root) => arePathsEqual(taskPath, root))
 }
 
 function metadataNumber(metadata: SessionHistoryRecord["metadata"] | undefined, key: string): number | undefined {
@@ -710,10 +715,15 @@ export class SdkTaskHistory {
 		return (await this.listHistory()).map(sessionHistoryRecordToHistoryItem)
 	}
 
-	async deleteAllTaskHistory(options: { preserveFavorites?: boolean } = {}): Promise<number> {
+	async deleteAllTaskHistory(options: { preserveFavorites?: boolean; workspaceRoots?: string[] } = {}): Promise<number> {
+		const { workspaceRoots } = options
 		// Cloud sessions are account-wide control-plane records (possibly started from
 		// another client), so bulk-clearing local history must never delete them.
-		const history = (await this.listHistory({ hydrate: false })).filter((item) => !this.isCloudTask(item.sessionId))
+		const history = (await this.listHistory({ hydrate: false })).filter(
+			(item) =>
+				!this.isCloudTask(item.sessionId) &&
+				(!workspaceRoots || isInWorkspace(item.cwd ?? item.workspaceRoot, workspaceRoots)),
+		)
 		const tasksToDelete = options.preserveFavorites
 			? history.filter(
 					(item) =>
