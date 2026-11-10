@@ -6,6 +6,8 @@ import {
 	type ReadFileRequest,
 	ReadFilesInputUnionSchema,
 	RunCommandsInputUnionSchema,
+	type RunCommandsView,
+	RunCommandsViewSchema,
 	SearchCodebaseUnionInputSchema,
 	type StructuredCommandInput,
 } from "./schemas";
@@ -308,6 +310,23 @@ export function normalizeRunCommandsInput(
 	}
 
 	return [validate];
+}
+
+/** The view options of a run_commands call; anything malformed is ignored. */
+export function normalizeRunCommandsView(input: unknown): RunCommandsView {
+	if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+	const view: RunCommandsView = {};
+	for (const key of Object.keys(RunCommandsViewSchema.shape) as Array<
+		keyof RunCommandsView
+	>) {
+		const value = (input as Record<string, unknown>)[key];
+		if (value === null || value === undefined) continue;
+		const parsed = RunCommandsViewSchema.shape[key].safeParse(value);
+		if (parsed.success && parsed.data !== undefined) {
+			(view as Record<string, unknown>)[key] = parsed.data;
+		}
+	}
+	return view;
 }
 
 export function formatRunCommandQuery(

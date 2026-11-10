@@ -57,6 +57,45 @@ describe("resolveContextLimits", () => {
 		}
 	});
 
+	it("defaults keepRecentToolResults to 6", () => {
+		expect(DEFAULT_CONTEXT_LIMITS.message.keepRecentToolResults).toBe(6);
+		expect(MESSAGE_LIMIT_ENV.keepRecentToolResults).toBe(
+			"CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS",
+		);
+	});
+
+	it("reads keepRecentToolResults from env, where 0 keeps none and the sentinels switch it off", () => {
+		const resolve = (raw: string) =>
+			resolveContextLimits(
+				{},
+				{ [MESSAGE_LIMIT_ENV.keepRecentToolResults]: raw },
+			).message.keepRecentToolResults;
+
+		expect(resolve("0")).toBe(0);
+		expect(resolve("3")).toBe(3);
+		expect(resolve("disable")).toBe(Number.POSITIVE_INFINITY);
+		expect(resolve("infinity")).toBe(Number.POSITIVE_INFINITY);
+		expect(resolve("  DISABLE  ")).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it("ignores an invalid keepRecentToolResults env value", () => {
+		for (const raw of ["-1", "abc", "1.5", ""]) {
+			const limits = resolveContextLimits(
+				{ message: { keepRecentToolResults: 4 } },
+				{ [MESSAGE_LIMIT_ENV.keepRecentToolResults]: raw },
+			);
+			expect(limits.message.keepRecentToolResults).toBe(4);
+		}
+	});
+
+	it("lets env override an explicit keepRecentToolResults", () => {
+		const limits = resolveContextLimits(
+			{ message: { keepRecentToolResults: 10 } },
+			{ [MESSAGE_LIMIT_ENV.keepRecentToolResults]: "2" },
+		);
+		expect(limits.message.keepRecentToolResults).toBe(2);
+	});
+
 	it("keeps every executor cap clear of the forwarding cap by default", () => {
 		const { message, tool } = resolveContextLimits({}, {});
 		const largest = Math.max(
@@ -154,5 +193,22 @@ describe("getContextLimitEnvSources", () => {
 			minOutdatedRewriteBytes:
 				"CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES",
 		});
+	});
+
+	it("reports keepRecentToolResults, including 0 and the disable sentinel", () => {
+		for (const raw of ["0", "3", "disable", "infinity"]) {
+			expect(
+				getContextLimitEnvSources({
+					CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS: raw,
+				}).message,
+			).toEqual({
+				keepRecentToolResults: "CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS",
+			});
+		}
+		expect(
+			getContextLimitEnvSources({
+				CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS: "-2",
+			}).message,
+		).toEqual({});
 	});
 });
