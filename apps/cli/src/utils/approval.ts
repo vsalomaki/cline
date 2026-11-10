@@ -117,12 +117,17 @@ export async function requestToolApproval(
 // Interactive question
 // =============================================================================
 
+/** The answer when no one can be asked; picking an option would put words in the user's mouth. */
+export const NO_USER_TO_ASK_ANSWER =
+	"[No answer: this run has no user to ask, so none of the options was chosen. " +
+	"Go on with what the evidence supports, or stop and state the open question in your final report.]";
+
 export async function askQuestionInTerminal(
 	question: string,
 	options: string[],
 ): Promise<string> {
 	if (!process.stdin.isTTY || !process.stdout.isTTY) {
-		return options[0] ?? "";
+		return NO_USER_TO_ASK_ANSWER;
 	}
 
 	return new Promise<string>((resolve) => {

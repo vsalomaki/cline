@@ -4,6 +4,7 @@ import {
 	type LastContextUsage,
 	type ProviderSettings,
 	prewarmFileIndex,
+	type SessionAccumulatedUsage,
 	SessionSource,
 	type UserInstructionConfigService,
 } from "@cline/core";
@@ -40,6 +41,7 @@ import {
 	writeWarn,
 } from "../utils/output";
 import { formatPluginIssueWarnings } from "../utils/plugin-issues";
+import { loadInteractiveResumeMessages } from "../utils/resume";
 import type { Config } from "../utils/types";
 import { shouldShowCliUsageCost } from "../utils/usage-cost-display";
 import { setActiveRuntimeAbort } from "./active-runtime";
@@ -142,6 +144,20 @@ function printRunStats(
 	}
 }
 
+function subtractUsage(
+	after: SessionAccumulatedUsage | undefined,
+	before: SessionAccumulatedUsage | undefined,
+): SessionAccumulatedUsage | undefined {
+	if (!after || !before) return after;
+	return {
+		inputTokens: after.inputTokens - before.inputTokens,
+		outputTokens: after.outputTokens - before.outputTokens,
+		cacheReadTokens: after.cacheReadTokens - before.cacheReadTokens,
+		cacheWriteTokens: after.cacheWriteTokens - before.cacheWriteTokens,
+		totalCost: after.totalCost - before.totalCost,
+	};
+}
+
 export async function runAgent(
 	prompt: string,
 	config: Config,
@@ -149,6 +165,8 @@ export async function runAgent(
 	options?: {
 		clineApiBaseUrl?: string;
 		clineProviderSettings?: ProviderSettings;
+		/** Continue this saved session with the prompt instead of starting a new one. */
+		resumeSessionId?: string;
 	},
 ): Promise<void> {
 	// A clean one-shot run should not inherit a stale nonzero process exit code
@@ -227,7 +245,7 @@ export async function runAgent(
 		}
 		handleEvent(event, config);
 	};
-	const plannedSessionId = createSessionId();
+	const plannedSessionId = options?.resumeSessionId ?? createSessionId();
 	const unsubscribe = subscribeToAgentEvents(sessionManager, onAgentEvent, {
 		sessionId: plannedSessionId,
 	});
@@ -295,6 +313,19 @@ export async function runAgent(
 		} = await buildUserInputMessage(prompt, userInstructionService, {
 			mode: config.mode,
 		});
+		const initialMessages = options?.resumeSessionId
+			? await loadInteractiveResumeMessages(
+					sessionManager,
+					options.resumeSessionId,
+				)
+			: undefined;
+		if (options?.resumeSessionId && !initialMessages?.length) {
+			throw new Error(`Session not found: ${options.resumeSessionId}`);
+		}
+		// A resumed session starts without the prompt, so the host loads its saved
+		// manifest and compaction state instead of recreating them; the prompt then
+		// goes in as the next turn, after which the one-shot session finalizes.
+		const resuming = initialMessages !== undefined;
 		const started = await sessionManager.start({
 			source: SessionSource.CLI,
 			config: {
@@ -312,10 +343,14 @@ export async function runAgent(
 					context: ConsecutiveMistakeLimitContext,
 				) => resolveMistakeLimitDecision(config, context),
 			},
-			prompt: userInput,
-			userImages: userImages.length > 0 ? userImages : undefined,
-			userFiles: userFiles.length > 0 ? userFiles : undefined,
-			interactive: false,
+			...(resuming
+				? { initialMessages, interactive: false }
+				: {
+						prompt: userInput,
+						userImages: userImages.length > 0 ? userImages : undefined,
+						userFiles: userFiles.length > 0 ? userFiles : undefined,
+						interactive: false,
+					}),
 			localRuntime: {
 				onTeamRestored: () => emitTeamRestored(config),
 			},
@@ -349,6 +384,14 @@ export async function runAgent(
 		// When start() already ran the first turn (non-interactive with prompt),
 		// the session is finalized before start() returns. Use that result
 		// directly; calling send() would fail with "session not found".
+		// Usage the resumed conversation already had, so this run reports only its own.
+		const usageBefore = resuming
+			? await sessionManager.getAccumulatedUsage(started.sessionId)
+			: undefined;
+		if (abortRequested) {
+			clearRunTimeout();
+			return;
+		}
 		let result: AgentResult | undefined;
 		if (started.result) {
 			clearRunTimeout();
@@ -371,17 +414,20 @@ export async function runAgent(
 			started.sessionId,
 		);
 		const aggregateUsage = zeroCliUsageCost(
-			usageSummary?.aggregateUsage,
+			subtractUsage(usageSummary?.aggregateUsage, usageBefore?.aggregateUsage),
 			shouldZeroCost,
 		);
 		const usage = zeroCliUsageCost(
-			aggregateUsage ?? usageSummary?.usage ?? result.usage,
+			aggregateUsage ??
+				subtractUsage(usageSummary?.usage, usageBefore?.usage) ??
+				result.usage,
 			shouldZeroCost,
 		);
 
 		if (config.outputMode === "json") {
 			emitJsonLine("stdout", {
 				type: "run_result",
+				sessionId: started.sessionId,
 				finishReason: result.finishReason,
 				iterations: result.iterations,
 				usage,

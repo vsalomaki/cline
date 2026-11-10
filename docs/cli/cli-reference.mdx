@@ -90,7 +90,7 @@ Commands:
 | `--hooks-dir <path>` | Directory path to additional hooks for runtime hook injection (default: `~/.cline/hooks`) |
 | `--acp` | Run in Agent Client Protocol (ACP) mode for [editor integration](/usage/acp) |
 | `-i, --tui` | Open the terminal user interface (TUI) for interactive sessions |
-| `--id <session-id>` | Resume an existing session by ID |
+| `--id <session-id>` | Resume an existing session by ID. With a prompt and without `--tui`, `--zen` or `--worktree`, the prompt continues the session headless, like a single-prompt run; otherwise the TUI opens on the session |
 | `-k, --key <api-key>` | API key for this run. The CLI also saves it as the provider's key |
 | `-P, --provider <id>` | Provider id (default: `cline`) |
 | `-s, --system <system-prompt>` | Override the default system prompt |
@@ -111,7 +111,10 @@ cline
 cline "your prompt here"
 cline "Run tests and fix failures"
 echo "prompt" | cline
+cline --id <session-id> "Now add a test for it"
 ```
+
+Pass a session ID to `--id` with a new prompt to send a follow-up to the same conversation without opening the TUI. `cline history` lists session IDs, and with `--json` the final `run_result` line carries the run's `sessionId`.
 
 ### `auth [options] [provider]`
 
