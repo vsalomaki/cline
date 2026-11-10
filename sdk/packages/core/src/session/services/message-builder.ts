@@ -54,7 +54,11 @@ export const MESSAGE_BUILDER_LIMIT_ENV = {
 	maxAssistantTextChars: MESSAGE_LIMIT_ENV.assistantTextChars,
 	maxAssistantToolMarkupChars: MESSAGE_LIMIT_ENV.assistantToolMarkupChars,
 	minOutdatedRewriteBytes: MESSAGE_LIMIT_ENV.minOutdatedRewriteBytes,
+	keepRecentToolResults: MESSAGE_LIMIT_ENV.keepRecentToolResults,
 } as const;
+/** Shorter results are never shortened; they are not stored either. */
+const MIN_CLEARED_RESULT_CHARS = 2_000;
+const MAX_CLEARED_STATUS_CHARS = 300;
 const READ_TOOL_NAMES = new Set(["read", "read_files"]);
 const OUTDATED_FILE_CONTENT = "[outdated - see the latest file content]";
 const MISSING_TOOL_RESULT_TEXT =
@@ -96,6 +100,17 @@ export interface MessageBuilderOptions {
 	maxAssistantTextChars?: number;
 	maxAssistantToolMarkupChars?: number;
 	minOutdatedRewriteBytes?: number;
+	/** See `MessageContextLimits.keepRecentToolResults`. */
+	keepRecentToolResults?: number;
+	/** The stored copy of a tool result, which a shortened result points to. */
+	getStoredToolOutput?: (toolUseId: string) => StoredToolOutputInfo | undefined;
+}
+
+export interface StoredToolOutputInfo {
+	id: string;
+	summary: string;
+	lines: number;
+	chars: number;
 }
 
 export function getMessageBuilderOptionsFromEnv(
@@ -116,6 +131,7 @@ export function getMessageBuilderOptions(
 		maxAssistantTextChars: message.assistantTextChars,
 		maxAssistantToolMarkupChars: message.assistantToolMarkupChars,
 		minOutdatedRewriteBytes: message.minOutdatedRewriteBytes,
+		keepRecentToolResults: message.keepRecentToolResults,
 	};
 }
 
@@ -146,6 +162,10 @@ export class MessageBuilder {
 	private readonly maxAssistantTextChars: number;
 	private readonly maxAssistantToolMarkupChars: number;
 	private readonly minOutdatedRewriteBytes: number;
+	private readonly keepRecentToolResults: number;
+	private readonly getStoredToolOutput?: MessageBuilderOptions["getStoredToolOutput"];
+	// Shortened results by tool_use_id, sticky like the stale-read rewrites.
+	private readonly committedClearedResults = new Map<string, string>();
 	// Sticky rewrite decisions. Kept across resetIndexes because production
 	// rebuilds fresh Message objects; entries are revalidated/pruned per build.
 	private readonly committedOutdatedRewrites = new Map<string, Set<string>>();
@@ -177,17 +197,24 @@ export class MessageBuilder {
 			options.minOutdatedRewriteBytes,
 			DEFAULT_MIN_OUTDATED_REWRITE_BYTES,
 		);
+		this.keepRecentToolResults = normalizeNonNegativeLimit(
+			options.keepRecentToolResults,
+			DEFAULT_CONTEXT_LIMITS.message.keepRecentToolResults,
+		);
+		this.getStoredToolOutput = options.getStoredToolOutput;
 	}
 
 	resetConversationState(): void {
 		this.resetIndexes();
 		this.committedOutdatedRewrites.clear();
+		this.committedClearedResults.clear();
 	}
 
 	buildForApi(messages: Message[]): Message[] {
 		this.recoveryNoticeBytes = 0;
 		this.reindex(messages);
 		this.commitOutdatedRewrites(messages);
+		this.commitClearedToolResults(messages);
 		const repairedMessages = this.addMissingToolResults(messages);
 
 		const prepared = repairedMessages.map((message) => {
@@ -267,6 +294,11 @@ export class MessageBuilder {
 
 		if (block.type !== "tool_result") {
 			return block;
+		}
+
+		const cleared = this.committedClearedResults.get(block.tool_use_id);
+		if (cleared !== undefined) {
+			return { ...block, content: [{ type: "text", text: cleared }] };
 		}
 
 		const toolName = this.resolveToolName(block);
@@ -463,6 +495,94 @@ export class MessageBuilder {
 				committed.add(key);
 			}
 		}
+	}
+
+	/**
+	 * Shortens stored tool results the model has already acted on, all but the
+	 * newest `keepRecentToolResults` of them. Like stale-read rewrites, a
+	 * result once shortened stays so, and new ones are committed only once
+	 * they free `minOutdatedRewriteBytes`, so the request prefix, and with it
+	 * the provider's prompt cache, changes rarely.
+	 */
+	private commitClearedToolResults(messages: Message[]): void {
+		if (!Number.isFinite(this.keepRecentToolResults)) {
+			this.committedClearedResults.clear();
+			return;
+		}
+		let lastAssistantIndex = -1;
+		for (let index = messages.length - 1; index >= 0; index--) {
+			if (messages[index].role === "assistant") {
+				lastAssistantIndex = index;
+				break;
+			}
+		}
+		const present = new Set<string>();
+		const actedOn: ToolResultContent[] = [];
+		messages.forEach((message, index) => {
+			if (!Array.isArray(message.content)) return;
+			for (const block of message.content) {
+				if (block.type !== "tool_result") continue;
+				present.add(block.tool_use_id);
+				if (index < lastAssistantIndex) actedOn.push(block);
+			}
+		});
+		for (const toolUseId of this.committedClearedResults.keys()) {
+			if (!present.has(toolUseId))
+				this.committedClearedResults.delete(toolUseId);
+		}
+
+		const eligible = actedOn.slice(
+			0,
+			Math.max(0, actedOn.length - this.keepRecentToolResults),
+		);
+		const pending = new Map<string, string>();
+		let pendingChars = 0;
+		for (const block of eligible) {
+			if (
+				this.committedClearedResults.has(block.tool_use_id) ||
+				this.committedOutdatedRewrites.has(block.tool_use_id)
+			) {
+				continue;
+			}
+			const { text } = prepareToolResultPreview(block.content);
+			if (typeof text !== "string" || text.length < MIN_CLEARED_RESULT_CHARS) {
+				continue;
+			}
+			const stub = this.clearedResultStub(block, text);
+			if (stub === undefined) continue;
+			pending.set(block.tool_use_id, stub);
+			// Count what the request really sheds: results over the cap are sent truncated.
+			pendingChars +=
+				Math.min(text.length, this.maxToolResultChars) - stub.length;
+		}
+		if (pending.size === 0 || pendingChars < this.minOutdatedRewriteBytes) {
+			return;
+		}
+		for (const [toolUseId, stub] of pending) {
+			this.committedClearedResults.set(toolUseId, stub);
+		}
+	}
+
+	/** The pointer a shortened result leaves; undefined when nothing could bring it back. */
+	private clearedResultStub(
+		block: ToolResultContent,
+		text: string,
+	): string | undefined {
+		const toolName = this.resolveToolName(block) ?? block.name ?? "tool";
+		if (toolName === "tool_output") {
+			return "[Earlier tool_output result shortened to save context; run the query again if you need it.]";
+		}
+		const stored = this.getStoredToolOutput?.(block.tool_use_id);
+		if (!stored) return undefined;
+		const status = describeCommandResults(text);
+		const reread = this.isReadTool(toolName)
+			? " Read the file again for its current content."
+			: "";
+		return (
+			`[Earlier ${toolName} result shortened to save context: ${stored.summary}` +
+			`${status ? ` (${status})` : ""}. ${stored.lines} lines, ${stored.chars} chars, ` +
+			`stored as tool output ${stored.id}; search or read it with tool_output if you need it.${reread}]`
+		);
 	}
 
 	/** Estimates reclaimable bytes for stale locators inside one tool-result block. */
@@ -1562,6 +1682,39 @@ function normalizePositiveLimit(
 	return typeof value === "number" && Number.isFinite(value) && value > 0
 		? Math.floor(value)
 		: fallback;
+}
+
+/** "npm test: ok; npm run lint: Command exited with code 1" for a run_commands result. */
+function describeCommandResults(text: string): string | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+	if (!Array.isArray(parsed)) return undefined;
+	const parts: string[] = [];
+	for (const entry of parsed) {
+		if (!entry || typeof entry !== "object" || !("success" in entry)) {
+			return undefined;
+		}
+		const { query, success, error } = entry as {
+			query?: unknown;
+			success?: unknown;
+			error?: unknown;
+		};
+		const outcome =
+			success === true
+				? "ok"
+				: typeof error === "string" && error
+					? error
+					: "failed";
+		parts.push(typeof query === "string" ? `${query}: ${outcome}` : outcome);
+	}
+	const joined = parts.join("; ");
+	return joined.length > MAX_CLEARED_STATUS_CHARS
+		? `${joined.slice(0, MAX_CLEARED_STATUS_CHARS - 1)}…`
+		: joined || undefined;
 }
 
 function normalizeNonNegativeLimit(

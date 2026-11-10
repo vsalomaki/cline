@@ -85,6 +85,7 @@ import { describeToolCall } from "../../services/tool-output/describe";
 import {
 	getToolOutputStore,
 	MIN_STORED_OUTPUT_CHARS,
+	type ToolOutputRecord,
 	type ToolOutputStore,
 } from "../../services/tool-output/store";
 import { FileReadLedger } from "../../session/services/file-read-ledger";
@@ -414,8 +415,11 @@ export class SessionRuntime {
 	private readonly conversation: ConversationStore;
 	private readonly toolOutputs: ToolOutputStore;
 	private readonly toolOutputTool: AgentTool;
-	// Stored output id per tool call; the message builder asks on every request.
-	private readonly storedOutputIds = new Map<string, string | undefined>();
+	// Stored output per tool call; the message builder asks on every request.
+	private readonly storedOutputs = new Map<
+		string,
+		ToolOutputRecord | undefined
+	>();
 	private readonly fileReadLedger: FileReadLedger | undefined;
 	private readonly fileWriteHistory: FileWriteHistory | undefined;
 	private readonly codeIntelligenceMetadata: Record<string, unknown>;
@@ -544,9 +548,10 @@ export class SessionRuntime {
 		this.messageBuilder = new MessageBuilder({
 			...messageBuilderOptions,
 			getToolResultRecovery: (result) => {
-				const outputId = this.storedOutputId(result.tool_use_id);
+				const outputId = this.storedOutput(result.tool_use_id)?.id;
 				return outputId ? { outputId } : undefined;
 			},
+			getStoredToolOutput: (toolUseId) => this.storedOutput(toolUseId),
 		});
 		this.contributionRegistry = createContributionRegistry<
 			AgentExtension,
@@ -1302,14 +1307,14 @@ export class SessionRuntime {
 		return this.config.sessionId ?? this.agentId;
 	}
 
-	private storedOutputId(toolCallId: string): string | undefined {
-		if (!this.storedOutputIds.has(toolCallId)) {
-			this.storedOutputIds.set(
+	private storedOutput(toolCallId: string): ToolOutputRecord | undefined {
+		if (!this.storedOutputs.has(toolCallId)) {
+			this.storedOutputs.set(
 				toolCallId,
-				this.toolOutputs.findByToolCall(this.toolOutputKey, toolCallId)?.id,
+				this.toolOutputs.findByToolCall(this.toolOutputKey, toolCallId),
 			);
 		}
-		return this.storedOutputIds.get(toolCallId);
+		return this.storedOutputs.get(toolCallId);
 	}
 
 	/** Keeps a long text result for tool_output. */
@@ -1327,7 +1332,7 @@ export class SessionRuntime {
 			summary: describeToolCall(ctx.input),
 			text,
 		});
-		this.storedOutputIds.set(toolCallId, record?.id);
+		this.storedOutputs.set(toolCallId, record);
 	}
 
 	private createRuntimeHooks(): Partial<AgentRuntimeHooks> {

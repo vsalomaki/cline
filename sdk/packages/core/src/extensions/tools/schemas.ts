@@ -241,6 +241,38 @@ export const StructuredCommandEntrySchema = z.union([
 	StructuredCommandInputSchema,
 ]);
 
+/** Optional views of each command's output; the full output is stored either way. */
+export const RunCommandsViewSchema = z.object({
+	head_lines: z.coerce
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe("Show only the first N lines of each command's output."),
+	tail_lines: z.coerce
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe("Show only the last N lines of each command's output."),
+	grep: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"Show only the lines of each command's output that match this regular expression (JavaScript syntax), numbered, with context_lines around each match.",
+		),
+	context_lines: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(20)
+		.optional()
+		.describe("Lines shown around each grep match. Default 2."),
+});
+
+export type RunCommandsView = z.infer<typeof RunCommandsViewSchema>;
+
 export function createRunCommandsInputSchema(
 	commandInputChars: number = COMMAND_INPUT_CHAR_LIMIT,
 ) {
@@ -248,6 +280,7 @@ export function createRunCommandsInputSchema(
 		commands: z
 			.array(commandInputSchemaFor(commandInputChars))
 			.describe("Array of complete shell command strings to execute."),
+		...RunCommandsViewSchema.shape,
 	});
 }
 

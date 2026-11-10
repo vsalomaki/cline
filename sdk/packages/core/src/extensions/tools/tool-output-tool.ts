@@ -85,7 +85,7 @@ function missingOutput(id: string): Error {
 	);
 }
 
-function compilePattern(
+export function compilePattern(
 	pattern: string,
 	ignoreCase: boolean,
 ): { regex: RegExp; literal: boolean } {
@@ -98,7 +98,7 @@ function compilePattern(
 	}
 }
 
-interface SearchBudget {
+export interface SearchBudget {
 	usedChars: number;
 	maxChars: number;
 	lineChars: number;
@@ -109,12 +109,12 @@ interface SearchBudget {
  * once the shared budget is spent but keeps counting matches, so memory stays
  * bounded however large the output or broad the pattern.
  */
-function searchText(
+export function searchText(
 	text: string,
 	regex: RegExp,
 	contextLines: number,
 	budget: SearchBudget,
-	header: string,
+	header?: string,
 ): { lines: string[]; matches: number; truncated: boolean } {
 	const lines: string[] = [];
 	if (!text) return { lines, matches: 0, truncated: false };
@@ -132,13 +132,14 @@ function searchText(
 			formatted = `${formatted.slice(0, budget.lineChars)} [line truncated]`;
 		}
 		// The section's header and the blank line before it count once, with its first line.
-		const headerCost = lines.length === 0 ? header.length + 2 : 0;
+		const headerCost =
+			lines.length === 0 && header !== undefined ? header.length + 2 : 0;
 		const cost = headerCost + formatted.length + 1 + (separator ? 3 : 0);
 		if (budget.usedChars + cost > budget.maxChars) {
 			truncated = true;
 			return;
 		}
-		if (lines.length === 0) lines.push(header);
+		if (lines.length === 0 && header !== undefined) lines.push(header);
 		if (separator) lines.push("--");
 		lines.push(formatted);
 		budget.usedChars += cost;
@@ -186,6 +187,7 @@ export function createToolOutputTool(
 			'action "list" shows stored outputs, newest first. ' +
 			'action "search" returns lines matching a regex pattern, numbered like grep -n with context_lines around each match, from one output (id) or from all of them. ' +
 			'action "read" returns a line range (start_line/end_line) of one output. ' +
+			"Search first, then read only a range the search pointed to. " +
 			"Use this instead of re-running a command, re-reading or re-fetching to see output again.",
 		inputSchema: zodToJsonSchema(ToolOutputInputSchema),
 		execute: async (rawInput, context) => {

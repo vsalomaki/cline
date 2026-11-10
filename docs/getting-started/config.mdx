@@ -165,7 +165,8 @@ unless the name says bytes or lines.
 | `CLINE_MESSAGE_BUILDER_MAX_TOTAL_TEXT_BYTES` | `6000000` | Text across the whole request |
 | `CLINE_MESSAGE_BUILDER_MAX_ASSISTANT_TEXT_CHARS` | `200000` | Each assistant message |
 | `CLINE_MESSAGE_BUILDER_MAX_ASSISTANT_TOOL_MARKUP_CHARS` | `12000` | Assistant text carrying repeated tool-call markup |
-| `CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES` | `65536` | Reclaimable bytes before stale file reads are rewritten |
+| `CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES` | `65536` | Reclaimable bytes before stale file reads are rewritten, or older tool results shortened |
+| `CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS` | `6` | Tool results the model has acted on that are sent in full (see [Stored tool output](#stored-tool-output)) |
 
 Rules:
 
@@ -179,6 +180,8 @@ Rules:
   printed so far the same way
 - `CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES` also accepts `0` to rewrite
   superseded file reads immediately, or `infinity` to leave them in place
+- `CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS` also accepts `0` to shorten
+  every result the model has acted on, or `infinity` to never shorten
 - A tool result is re-sent on every later turn of a task, so larger limits cost
   tokens for the rest of that task
 - The IDE reads the environment its editor was launched with, which on a desktop
@@ -217,6 +220,21 @@ directory's `db` folder (`~/.cline/data/db`, or `CLINE_DB_DATA_DIR`). It is
 deleted with the task, after 7 days, or oldest first once the store holds more
 than 512 MB of text. If SQLite cannot be loaded, output is kept in memory for the
 session instead.
+
+`run_commands` takes optional `head_lines`, `tail_lines` and `grep` (a regular
+expression, with `context_lines` around each match, default 2). The result then
+shows only those parts of each command's output, with line numbers, while the
+whole output is stored, so nothing is lost the way it is with a `| tail` or
+`| grep` pipe.
+
+Older tool results are shortened in what is sent to the model. Once the model has
+acted on a stored result and six newer ones (`CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS`)
+have followed it, the request carries a one-line pointer instead: what the call
+was, its outcome for commands, its size and the stored output's id. The task
+history keeps the full result. Shortening happens in batches, once at least
+`CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES` would be freed, and a shortened
+result stays shortened, so the start of the request rarely changes and provider
+prompt caches stay valid. Results under 2,000 characters are never shortened.
 
 ### Tool calls
 

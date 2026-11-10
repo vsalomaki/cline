@@ -26,14 +26,17 @@ import {
 	CommandInterruptedError,
 	CommandTerminationError,
 } from "./executors/bash";
+import { applyCommandOutputView } from "./executors/command-output-view";
 import {
 	formatError,
 	formatReadFileQuery,
+	formatRunCommandQuery,
 	formatRunCommandQueryPreview,
 	getEditorSizeError,
 	getReadFileRangeError,
 	normalizeReadFileRequests,
 	normalizeRunCommandsInput,
+	normalizeRunCommandsView,
 	normalizeSearchQueries,
 	TimeoutError,
 	withTimeout,
@@ -55,6 +58,7 @@ import {
 	normalizeListFilesInput,
 	type ReadFilesInput,
 	ReadFilesInputSchema,
+	type RunCommandsView,
 	type SearchCodebaseInput,
 	SearchCodebaseInputSchema,
 	type SkillsInput,
@@ -193,6 +197,8 @@ async function executeShellCommands(
 		timeoutSource: "default_setting" | "configured_setting";
 		telemetry?: ITelemetryService;
 		commandPreviewChars: number;
+		view: RunCommandsView;
+		limits: Pick<ToolContextLimits, "commandOutputChars" | "lineChars">;
 	},
 ): Promise<ToolOperationResult[]> {
 	const {
@@ -203,6 +209,8 @@ async function executeShellCommands(
 		timeoutSource,
 		telemetry,
 		commandPreviewChars,
+		view,
+		limits,
 	} = options;
 
 	return Promise.all(
@@ -226,6 +234,13 @@ async function executeShellCommands(
 						),
 					timeoutMs,
 				);
+				const shapeOutput = (output: string) =>
+					applyCommandOutputView(output, view, {
+						context,
+						summary: formatRunCommandQuery(command),
+						maxChars: limits.commandOutputChars,
+						lineChars: limits.lineChars,
+					});
 				const commandContext: AgentToolContext = {
 					...context,
 					signal: context.signal
@@ -253,7 +268,7 @@ async function executeShellCommands(
 					const output = await executor(command, cwd, commandContext);
 					return {
 						query,
-						result: output,
+						result: shapeOutput(output),
 						success: true,
 					};
 				} catch (error) {
@@ -277,7 +292,7 @@ async function executeShellCommands(
 					) {
 						return {
 							query,
-							result: error.output,
+							result: shapeOutput(error.output),
 							error: error.message,
 							success: false,
 						};
@@ -464,6 +479,11 @@ export function createListFilesTool(
 	});
 }
 
+const RUN_COMMANDS_VIEW_INSTRUCTIONS =
+	"To see only part of a long output, set head_lines, tail_lines or grep (with context_lines) instead of piping through head, tail or grep: the result shows that part and the full output is still stored. " +
+	'For example, run a test suite as {"commands": ["npm test"], "tail_lines": 40, "grep": "FAIL|Error"}. ' +
+	"A successful result means exit code 0 and a failed one names its exit code, so do not run a command again just to check it. ";
+
 const runCommandsSharedInstructions = (listFilesAvailable: boolean) =>
 	(listFilesAvailable
 		? "Use for checking git status, running builds, executing tests, etc. To list a directory, use list_files instead. "
@@ -505,7 +525,8 @@ export function buildRunCommandsDescription(
 		return (
 			`Run non-interactive shell commands from the root of the workspace${isWindows ? " in Windows environment" : ""}. ` +
 			sharedInstructions +
-			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. Do not trim test or build output with filters, which throws the rest away. ` +
+			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. ` +
+			RUN_COMMANDS_VIEW_INSTRUCTIONS +
 			`Commands run through ${shellName}; quote paths and arguments for ${executable} and use ${sequencingOperator} to sequence commands. ` +
 			`Write commands directly; do not wrap them in another ${wrapper} invocation. ` +
 			"Only start another shell when you intentionally need a different shell or a separate process. " +
@@ -524,7 +545,8 @@ export function buildRunCommandsDescription(
 		sharedInstructions +
 		environmentNote +
 		"Commands should be properly shell-escaped and targeted to avoid error or timeout. Include multiple commands in the same call when they are independent complete shell commands and safe to run concurrently; multiline scripts and heredocs must be a single command string. When independent reads, searches, or edits are also needed, call those tools in the same response. " +
-		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. Do not trim test or build output with head, tail or grep pipes, which throws the rest away. ` +
+		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. ` +
+		RUN_COMMANDS_VIEW_INSTRUCTIONS +
 		"For long-running commands, run them in background and redirect output to a tmp file that you can read from later."
 	);
 }
@@ -598,6 +620,8 @@ export function createShellTool(
 				timeoutSource,
 				telemetry: config.telemetry,
 				commandPreviewChars: limits.commandPreviewChars,
+				view: normalizeRunCommandsView(input),
+				limits,
 			});
 		},
 	});

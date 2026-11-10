@@ -412,6 +412,18 @@ export const AGENT_LIMIT_DEFINITIONS = [
 		envVar: "CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES",
 	},
 	{
+		id: "message.keepRecentToolResults",
+		group: "providerRequest",
+		label: "Recent tool results kept",
+		description:
+			"Tool results the agent has already acted on that are sent in full. Older long results are replaced with a pointer to their stored copy, collected like stale reads. A large number keeps them all.",
+		unit: "count",
+		default: 6,
+		min: 0,
+		max: 10_000,
+		envVar: "CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS",
+	},
+	{
 		id: "timeout.fileRead",
 		group: "timeouts",
 		label: "File read",

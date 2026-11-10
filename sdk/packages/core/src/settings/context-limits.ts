@@ -19,6 +19,11 @@ export interface MessageContextLimits {
 	assistantTextChars: number;
 	assistantToolMarkupChars: number;
 	minOutdatedRewriteBytes: number;
+	/**
+	 * Tool results the model has acted on that stay in full; older stored ones
+	 * are shortened to a pointer in requests. Infinity turns this off.
+	 */
+	keepRecentToolResults: number;
 }
 
 /** Executor and tool-input budgets, applied before a result is ever returned. */
@@ -52,6 +57,7 @@ export const DEFAULT_CONTEXT_LIMITS: ContextLimits = {
 		assistantToolMarkupChars: 12_000,
 		// Batch stale-read rewrites to spare prefix caches; 0 rewrites eagerly.
 		minOutdatedRewriteBytes: 65_536,
+		keepRecentToolResults: 6,
 	},
 	tool: {
 		commandOutputChars: 48_000,
@@ -82,6 +88,7 @@ export const MESSAGE_LIMIT_ENV: Record<keyof MessageContextLimits, string> = {
 	assistantToolMarkupChars:
 		"CLINE_MESSAGE_BUILDER_MAX_ASSISTANT_TOOL_MARKUP_CHARS",
 	minOutdatedRewriteBytes: "CLINE_MESSAGE_BUILDER_MIN_OUTDATED_REWRITE_BYTES",
+	keepRecentToolResults: "CLINE_MESSAGE_BUILDER_KEEP_RECENT_TOOL_RESULTS",
 };
 
 export const TOOL_LIMIT_ENV: Record<keyof ToolContextLimits, string> = {
@@ -110,6 +117,12 @@ function parsePositiveEnv(raw: string | undefined): number | undefined {
  * `minOutdatedRewriteBytes` alone accepts 0 to rewrite eagerly, and
  * "infinity"/"disable" to switch stale-read rewriting off entirely.
  */
+/** Limits where 0 is meaningful and `infinity`/`disable` switch the behavior off. */
+const NON_NEGATIVE_MESSAGE_LIMITS = new Set<keyof MessageContextLimits>([
+	"minOutdatedRewriteBytes",
+	"keepRecentToolResults",
+]);
+
 function parseNonNegativeEnv(raw: string | undefined): number | undefined {
 	if (raw === undefined) return undefined;
 	const trimmed = raw.trim();
@@ -132,10 +145,9 @@ export function getContextLimitEnvSources(
 	for (const key of Object.keys(MESSAGE_LIMIT_ENV) as Array<
 		keyof MessageContextLimits
 	>) {
-		const parse =
-			key === "minOutdatedRewriteBytes"
-				? parseNonNegativeEnv
-				: parsePositiveEnv;
+		const parse = NON_NEGATIVE_MESSAGE_LIMITS.has(key)
+			? parseNonNegativeEnv
+			: parsePositiveEnv;
 		if (parse(env[MESSAGE_LIMIT_ENV[key]]) !== undefined) {
 			message[key] = MESSAGE_LIMIT_ENV[key];
 		}
@@ -192,10 +204,9 @@ export function resolveContextLimits(
 	);
 
 	for (const key of Object.keys(message) as Array<keyof MessageContextLimits>) {
-		const parse =
-			key === "minOutdatedRewriteBytes"
-				? parseNonNegativeEnv
-				: parsePositiveEnv;
+		const parse = NON_NEGATIVE_MESSAGE_LIMITS.has(key)
+			? parseNonNegativeEnv
+			: parsePositiveEnv;
 		const fromEnv = parse(env[MESSAGE_LIMIT_ENV[key]]);
 		if (fromEnv !== undefined) message[key] = fromEnv;
 	}

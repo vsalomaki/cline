@@ -1,5 +1,7 @@
 import type { AgentToolContext, ITelemetryService } from "@cline/shared";
 import { describe, expect, it, vi } from "vitest";
+import { MemoryToolOutputStore } from "../../services/tool-output/store";
+import { DEFAULT_CONTEXT_LIMITS } from "../../settings/context-limits";
 import {
 	buildRunCommandsDescription,
 	createDefaultTools,
@@ -2475,5 +2477,154 @@ describe("other agents' tool input shapes", () => {
 			["https://c.example", "Return the main content of the page."],
 			["https://d.example", "Return the main content of the page."],
 		]);
+	});
+});
+
+describe("run_commands output views", () => {
+	const SESSION = "session-1";
+	const fullOutput = Array.from(
+		{ length: 400 },
+		(_, index) => `output line ${index + 1}`,
+	);
+	fullOutput[199] = "FAIL in the middle";
+	const longOutput = fullOutput.join("\n");
+
+	function viewContext(store: MemoryToolOutputStore): AgentToolContext {
+		return {
+			agentId: "agent-1",
+			sessionId: SESSION,
+			conversationId: "conv-1",
+			toolCallId: "call-1",
+			iteration: 1,
+			metadata: { toolOutputStore: store },
+		};
+	}
+
+	it("declares the view fields in the input schema and mentions them in the description", () => {
+		const tool = createShellTool(async () => "ok");
+		const properties = (
+			tool.inputSchema as { properties: Record<string, unknown> }
+		).properties;
+		for (const field of ["head_lines", "tail_lines", "grep", "context_lines"]) {
+			expect(properties).toHaveProperty(field);
+		}
+		expect(tool.description).toContain("tail_lines");
+	});
+
+	it("leaves the output alone without view options", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput);
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"] } as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result).toBe(longOutput);
+		expect(store.list(SESSION, 10)).toEqual([]);
+	});
+
+	it("shows the tail of a successful command and stores the full output", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput);
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"], tail_lines: 2 } as never,
+			viewContext(store),
+		)) as Array<{ query: string; result: string; success: boolean }>;
+
+		expect(result[0].success).toBe(true);
+		expect(result[0].result).toContain("--- last 2 lines ---");
+		expect(result[0].result).toContain(
+			"399| output line 399\n400| output line 400",
+		);
+		expect(result[0].result).not.toContain("output line 398");
+		const record = store.findByToolCall(SESSION, "call-1/command");
+		expect(record?.summary).toBe("npm test");
+		expect(store.readText(SESSION, record?.id ?? "")).toBe(longOutput);
+	});
+
+	it("greps a successful command, with numeric strings coerced", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput);
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"], grep: "FAIL", context_lines: "1" } as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result).toContain(
+			"199- output line 199\n200: FAIL in the middle\n201- output line 201",
+		);
+		expect(result[0].result).not.toContain("output line 198");
+	});
+
+	it("applies the view to the captured output of a failing command", async () => {
+		const store = new MemoryToolOutputStore();
+		const failed = `[Command exited with code 1]\n${longOutput}`;
+		const tool = createShellTool(async () => {
+			throw new CommandExitError(1, failed);
+		});
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"], tail_lines: 1, grep: "FAIL" } as never,
+			viewContext(store),
+		)) as Array<{
+			result: string;
+			error: string;
+			success: boolean;
+		}>;
+
+		expect(result[0].success).toBe(false);
+		expect(result[0].error).toBe("Command exited with code 1");
+		expect(result[0].result).toContain("FAIL in the middle");
+		expect(result[0].result).toContain(
+			"--- last 1 lines ---\n401| output line 400",
+		);
+		const record = store.findByToolCall(SESSION, "call-1/command");
+		expect(store.readText(SESSION, record?.id ?? "")).toBe(failed);
+	});
+
+	it("shapes each command's output separately", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async (command) =>
+			longOutput.replaceAll("output", String(command)),
+		);
+
+		const result = (await tool.execute(
+			{ commands: ["a", "b"], head_lines: 1 } as never,
+			viewContext(store),
+		)) as Array<{ query: string; result: string }>;
+
+		expect(result[0].result).toContain("1| a line 1");
+		expect(result[1].result).toContain("1| b line 1");
+		expect(store.list(SESSION, 10)).toHaveLength(2);
+	});
+
+	it("ignores invalid view options", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput);
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"], tail_lines: -5, head_lines: "x" } as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result).toBe(longOutput);
+	});
+
+	it("caps the shaped result at the command output limit", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput, {
+			limits: { ...DEFAULT_CONTEXT_LIMITS.tool, commandOutputChars: 300 },
+		});
+
+		const result = (await tool.execute(
+			{ commands: ["npm test"], head_lines: 300 } as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result.length).toBeLessThan(450);
+		expect(result[0].result).toContain("[... output truncated:");
 	});
 });
