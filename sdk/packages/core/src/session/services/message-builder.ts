@@ -88,7 +88,7 @@ export interface MessageBuilderOptions {
 	/** Synchronous Core-owned recovery lookup; undefined leaves the normal result projection unchanged. */
 	getToolResultRecovery?: (
 		result: ToolResultContent,
-	) => { uri?: string } | undefined;
+	) => { outputId?: string } | undefined;
 	maxToolResultChars?: number;
 	maxFileContentChars?: number;
 	maxTotalTextBytes?: number;
@@ -281,10 +281,10 @@ export class MessageBuilder {
 					{ type: "text", text: this.truncateMiddle(text) },
 					...images,
 				];
-				if (recovery.uri) {
+				if (recovery.outputId) {
 					const notice: TextContent = {
 						type: "text",
-						text: `Full result is temporarily saved to ${recovery.uri}. Only read_files can access this cache URI. Use read_files with specific line ranges if omitted content is needed.`,
+						text: `The full result is stored as tool output ${recovery.outputId}. Use tool_output to search it or read line ranges if omitted content is needed.`,
 					};
 					const bytes = utf8ByteLength(notice.text);
 					if (this.recoveryNoticeBytes + bytes <= this.maxTotalTextBytes / 2) {

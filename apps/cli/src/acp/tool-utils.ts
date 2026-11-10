@@ -9,6 +9,7 @@ const TOOL_KIND_MAP: Record<string, ToolKind> = {
 	Grep: "search",
 	search_codebase: "search",
 	code_intelligence: "search",
+	tool_output: "search",
 	Edit: "edit",
 	Write: "edit",
 	editor: "edit",

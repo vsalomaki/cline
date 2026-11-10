@@ -5,7 +5,6 @@ import {
 	copyFile,
 	mkdir,
 	mkdtemp,
-	readdir,
 	readFile,
 	rm,
 	utimes,
@@ -15,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentToolContext } from "@cline/shared";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { MemoryToolOutputStore } from "../../../services/tool-output/store";
 import { TimeoutError } from "../helpers";
 import {
 	CommandExitError,
@@ -31,7 +31,7 @@ const ctx: AgentToolContext = {
 	iteration: 1,
 };
 
-// Saved command output lands in os.tmpdir(); keep this file's out of the real one.
+// Detached command logs land in os.tmpdir(); keep this file's out of the real one.
 let testTmpDir: string;
 beforeAll(async () => {
 	testTmpDir = await mkdtemp(join(tmpdir(), "bash-test-"));
@@ -980,156 +980,142 @@ describe("createShellExecutor", () => {
 	});
 
 	describe("output too long for the result", () => {
-		const savedPathPattern =
-			/The full output is saved to (\S+) for 24 hours; read line ranges from it with read_files or grep it instead of re-running the command/;
+		const storedIdPattern = /stored as tool output ([0-9a-f]{8});/;
 
-		async function withOutputDirectory(
-			run: (directory: string) => Promise<void>,
-		): Promise<void> {
-			const directory = await mkdtemp(join(tmpdir(), "cline-output-file-"));
-			try {
-				await run(directory);
-			} finally {
-				await rm(directory, { recursive: true, force: true });
-			}
+		function storeContext(
+			store: MemoryToolOutputStore,
+			overrides: Partial<AgentToolContext> = {},
+		): AgentToolContext {
+			return {
+				...ctx,
+				toolCallId: "call-1",
+				metadata: { toolOutputStore: store },
+				...overrides,
+			};
 		}
 
-		it("saves the whole output to a file and names it in the notice", async () => {
-			await withOutputDirectory(async (directory) => {
-				const shell = createShellExecutor({
-					maxOutputChars: 100,
-					outputFileDirectory: directory,
-				});
-				const output = await shell(
-					{
-						command: process.execPath,
-						args: [
-							"-e",
-							"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
-						],
-					},
-					process.cwd(),
-					ctx,
-				);
+		it("stores the whole output and names its id in the notice", async () => {
+			const store = new MemoryToolOutputStore();
+			const shell = createShellExecutor({ maxOutputChars: 100 });
+			const output = await shell(
+				{
+					command: process.execPath,
+					args: [
+						"-e",
+						"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
+					],
+				},
+				process.cwd(),
+				storeContext(store),
+			);
 
-				const path = output.match(savedPathPattern)?.[1];
-				expect(path).toBeDefined();
-				expect(path?.startsWith(join(directory, "cline-command-"))).toBe(true);
-				const expected = Array.from(
-					{ length: 2000 },
-					(_, i) => `line-${i}\n`,
-				).join("");
-				expect(output).toContain(`${expected.length} chars total`);
-				expect(await readFile(path as string, "utf8")).toBe(expected);
-				expect(
-					await fileExists(join(dirname(path as string), "completed-at")),
-				).toBe(true);
+			const id = output.match(storedIdPattern)?.[1];
+			expect(id).toBeDefined();
+			expect(output).toContain(
+				"search it or read line ranges with tool_output",
+			);
+			const expected = Array.from(
+				{ length: 2000 },
+				(_, i) => `line-${i}\n`,
+			).join("");
+			expect(output).toContain(`${expected.length} chars total`);
+			expect(store.readText("agent-1", id as string)).toBe(expected);
+			expect(store.findByToolCall("agent-1", "call-1/command")).toMatchObject({
+				id,
+				toolName: "run_commands",
+				chars: expected.length,
 			});
 		});
 
-		it("keeps parallel commands of different agents in their own named files", async () => {
-			await withOutputDirectory(async (directory) => {
-				const shell = createShellExecutor({
-					maxOutputChars: 20,
-					outputFileDirectory: directory,
-				});
-				const run = (agentId: string, toolCallId: string, text: string) =>
-					shell(
-						{
-							command: process.execPath,
-							args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
-						},
-						process.cwd(),
-						{ ...ctx, sessionId: "session-1", agentId, toolCallId },
-					);
-				const outputs = await Promise.all([
-					run("lead", "call-1", "L".repeat(100)),
-					run("lead", "call-1", "M".repeat(100)),
-					run("subagent-7", "call-2", "S".repeat(100)),
-				]);
-
-				const paths = outputs.map(
-					(output) => output.match(savedPathPattern)?.[1] as string,
-				);
-				expect(new Set(paths).size).toBe(3);
-				expect(paths[0]).toContain("cline-command-ssession1-alead-ccall1-");
-				expect(paths[2]).toContain("cline-command-ssession1-aubagent7-ccall2-");
-				expect(await readFile(paths[0], "utf8")).toBe("L".repeat(100));
-				expect(await readFile(paths[1], "utf8")).toBe("M".repeat(100));
-				expect(await readFile(paths[2], "utf8")).toBe("S".repeat(100));
-			});
-		});
-
-		it("writes no file when the output fits", async () => {
-			await withOutputDirectory(async (directory) => {
-				const shell = createShellExecutor({
-					maxOutputChars: 1000,
-					outputFileDirectory: directory,
-				});
-				const output = await shell(
+		it("keeps parallel commands of different agents in their own records", async () => {
+			const store = new MemoryToolOutputStore();
+			const shell = createShellExecutor({ maxOutputChars: 20 });
+			const run = (agentId: string, toolCallId: string, text: string) =>
+				shell(
 					{
 						command: process.execPath,
-						args: ["-e", "process.stdout.write('b'.repeat(500))"],
+						args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
 					},
 					process.cwd(),
-					ctx,
+					storeContext(store, { sessionId: "session-1", agentId, toolCallId }),
 				);
+			const outputs = await Promise.all([
+				run("lead", "call-1", "L".repeat(100)),
+				run("lead", "call-1", "M".repeat(100)),
+				run("subagent-7", "call-2", "S".repeat(100)),
+			]);
 
-				expect(output).toBe("b".repeat(500));
-				expect(await readdir(directory)).toEqual([]);
+			const ids = outputs.map(
+				(output) => output.match(storedIdPattern)?.[1] as string,
+			);
+			expect(new Set(ids).size).toBe(3);
+			expect(store.readText("session-1", ids[0])).toBe("L".repeat(100));
+			expect(store.readText("session-1", ids[1])).toBe("M".repeat(100));
+			expect(store.readText("session-1", ids[2])).toBe("S".repeat(100));
+			expect(store.get("session-1", ids[2])).toMatchObject({
+				agentId: "subagent-7",
+				toolCallId: "call-2/command",
 			});
+			expect(store.get("session-1", ids[0])?.agentId).toBe("lead");
 		});
 
-		it("names the file when a failing command's output is truncated", async () => {
-			await withOutputDirectory(async (directory) => {
-				const shell = createShellExecutor({
-					maxOutputChars: 50,
-					outputFileDirectory: directory,
-				});
-				const error = await shell(
-					{
-						command: process.execPath,
-						args: [
-							"-e",
-							"process.stdout.write('OUT' + 'o'.repeat(100)); process.stderr.write('ERR' + 'e'.repeat(100) + 'END'); process.exit(3)",
-						],
-					},
-					process.cwd(),
-					ctx,
-				).catch((caught: unknown) => caught);
+		it("stores nothing when the output fits", async () => {
+			const store = new MemoryToolOutputStore();
+			const shell = createShellExecutor({ maxOutputChars: 1000 });
+			const output = await shell(
+				{
+					command: process.execPath,
+					args: ["-e", "process.stdout.write('b'.repeat(500))"],
+				},
+				process.cwd(),
+				storeContext(store),
+			);
 
-				if (!(error instanceof CommandExitError)) {
-					throw new Error("Expected CommandExitError");
-				}
-				expect(error.output).toMatch(/^\[Command exited with code 3\]/);
-				const path = error.output.match(savedPathPattern)?.[1];
-				expect(path).toBeDefined();
-				const saved = await readFile(path as string, "utf8");
-				expect(saved).toContain(`OUT${"o".repeat(100)}`);
-				expect(saved).toContain(`ERR${"e".repeat(100)}END`);
-			});
+			expect(output).toBe("b".repeat(500));
+			expect(store.list("agent-1", 10)).toEqual([]);
 		});
 
-		it("keeps the plain notice when the file cannot be created", async () => {
-			await withOutputDirectory(async (directory) => {
-				const shell = createShellExecutor({
-					maxOutputChars: 20,
-					outputFileDirectory: join(directory, "missing"),
-				});
-				const output = await shell(
-					{
-						command: process.execPath,
-						args: ["-e", "process.stdout.write('x'.repeat(100))"],
-					},
-					process.cwd(),
-					ctx,
-				);
+		it("names the stored output when a failing command's output is truncated", async () => {
+			const store = new MemoryToolOutputStore();
+			const shell = createShellExecutor({ maxOutputChars: 50 });
+			const error = await shell(
+				{
+					command: process.execPath,
+					args: [
+						"-e",
+						"process.stdout.write('OUT' + 'o'.repeat(100)); process.stderr.write('ERR' + 'e'.repeat(100) + 'END'); process.exit(3)",
+					],
+				},
+				process.cwd(),
+				storeContext(store),
+			).catch((caught: unknown) => caught);
 
-				expect(output).toContain(
-					"[... output truncated: 100 chars total. Refine the command",
-				);
-				expect(output).not.toContain("saved to");
-			});
+			if (!(error instanceof CommandExitError)) {
+				throw new Error("Expected CommandExitError");
+			}
+			expect(error.output).toMatch(/^\[Command exited with code 3\]/);
+			const id = error.output.match(storedIdPattern)?.[1];
+			expect(id).toBeDefined();
+			const saved = store.readText("agent-1", id as string);
+			expect(saved).toContain(`OUT${"o".repeat(100)}`);
+			expect(saved).toContain(`ERR${"e".repeat(100)}END`);
+		});
+
+		it("keeps the plain notice when the context has no store", async () => {
+			const shell = createShellExecutor({ maxOutputChars: 20 });
+			const output = await shell(
+				{
+					command: process.execPath,
+					args: ["-e", "process.stdout.write('x'.repeat(100))"],
+				},
+				process.cwd(),
+				ctx,
+			);
+
+			expect(output).toContain(
+				"[... output truncated: 100 chars total. Refine the command",
+			);
+			expect(output).not.toContain("tool_output");
 		});
 
 		describe("when the command is interrupted", () => {
@@ -1146,61 +1132,77 @@ describe("createShellExecutor", () => {
 				return error;
 			}
 
-			it("keeps short output inline and writes no file on timeout", async () => {
-				await withOutputDirectory(async (directory) => {
-					const shell = createShellExecutor({
-						timeoutMs: 1_000,
-						outputFileDirectory: directory,
-					});
-					const error = await interrupted(
-						shell(
-							printThenHang("process.stdout.write('partial')"),
-							process.cwd(),
-							ctx,
-						),
-					);
+			it("keeps short output inline and stores nothing on timeout", async () => {
+				const store = new MemoryToolOutputStore();
+				const shell = createShellExecutor({ timeoutMs: 1_000 });
+				const error = await interrupted(
+					shell(
+						printThenHang("process.stdout.write('partial')"),
+						process.cwd(),
+						storeContext(store),
+					),
+				);
 
-					expect(error.message).toBe("Command timed out after 1000ms");
-					expect(error.timeoutMs).toBe(1_000);
-					expect(error.output).toBe(
-						"[Command timed out after 1000ms]\npartial",
-					);
-					expect(await readdir(directory)).toEqual([]);
-				});
+				expect(error.message).toBe("Command timed out after 1000ms");
+				expect(error.timeoutMs).toBe(1_000);
+				expect(error.output).toBe("[Command timed out after 1000ms]\npartial");
+				expect(store.list("agent-1", 10)).toEqual([]);
 			});
 
-			it("saves everything printed before a timeout when it outgrows the limit", async () => {
-				await withOutputDirectory(async (directory) => {
-					const shell = createShellExecutor({
-						timeoutMs: 1_000,
-						maxOutputChars: 100,
-						outputFileDirectory: directory,
-					});
-					const error = await interrupted(
-						shell(
-							printThenHang(
-								"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
-							),
-							process.cwd(),
-							ctx,
-						),
-					);
-
-					const expected = Array.from(
-						{ length: 2000 },
-						(_, i) => `line-${i}\n`,
-					).join("");
-					expect(error.output).toMatch(
-						/^\[Command timed out after 1000ms\]\nline-0\n/,
-					);
-					expect(error.output).toContain(
-						`output truncated: ${expected.length} chars total`,
-					);
-					expect(error.output).toMatch(/line-1999\n$/);
-					const path = error.output.match(savedPathPattern)?.[1];
-					expect(path).toBeDefined();
-					expect(await readFile(path as string, "utf8")).toBe(expected);
+			it("stores everything printed before a timeout when it outgrows the limit", async () => {
+				const store = new MemoryToolOutputStore();
+				const shell = createShellExecutor({
+					timeoutMs: 1_000,
+					maxOutputChars: 100,
 				});
+				const error = await interrupted(
+					shell(
+						printThenHang(
+							"for (let i = 0; i < 2000; i++) process.stdout.write('line-' + i + '\\n')",
+						),
+						process.cwd(),
+						storeContext(store),
+					),
+				);
+
+				const expected = Array.from(
+					{ length: 2000 },
+					(_, i) => `line-${i}\n`,
+				).join("");
+				expect(error.output).toMatch(
+					/^\[Command timed out after 1000ms\]\nline-0\n/,
+				);
+				expect(error.output).toContain(
+					`output truncated: ${expected.length} chars total`,
+				);
+				expect(error.output).toMatch(/line-1999\n$/);
+				const id = error.output.match(storedIdPattern)?.[1];
+				expect(id).toBeDefined();
+				expect(store.readText("agent-1", id as string)).toBe(expected);
+			});
+
+			it("stores the output printed before an abort when it outgrows the limit", async () => {
+				const store = new MemoryToolOutputStore();
+				const ac = new AbortController();
+				const shell = createShellExecutor({ maxOutputChars: 100 });
+				const error = await interrupted(
+					shell(
+						printThenHang("process.stdout.write('a'.repeat(500))"),
+						process.cwd(),
+						{
+							...storeContext(store),
+							signal: ac.signal,
+							emitUpdate: (update) => {
+								if ((update as { chunk?: string }).chunk) ac.abort();
+							},
+						},
+					),
+				);
+
+				expect(error.message).toBe("Command was aborted");
+				const id = error.output.match(storedIdPattern)?.[1];
+				expect(id).toBeDefined();
+				expect(store.readText("agent-1", id as string)).toBe("a".repeat(500));
 			});
 
 			it("keeps the output so far when aborted", async () => {

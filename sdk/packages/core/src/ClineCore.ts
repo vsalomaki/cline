@@ -50,6 +50,7 @@ import {
 	NoOpFeatureFlagsProvider,
 } from "./services/feature-flags";
 import { resolveCoreDistinctId } from "./services/telemetry/distinct-id";
+import { getToolOutputStore } from "./services/tool-output/store";
 import { compareCheckpointToWorkspace } from "./session/checkpoint-diff";
 import {
 	projectSessionMessagesForDisplay,
@@ -477,6 +478,7 @@ export class ClineCore {
 	 */
 	delete: RuntimeHost["deleteSession"] = async (sessionId) => {
 		const deleted = await this.host.deleteSession(sessionId);
+		getToolOutputStore().deleteSession(sessionId);
 		if (deleted) {
 			await this.disposeSessionBootstrap(sessionId);
 		}

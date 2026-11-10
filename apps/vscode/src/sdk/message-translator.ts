@@ -1040,6 +1040,16 @@ function sdkToolToClineSayTool(toolName: string, input?: unknown): ClineSayTool 
 		case "memory":
 			return describeMemoryTool(parsedInput)
 
+		case "tool_output": {
+			const id = getStringField(parsedInput, "id")
+			const pattern = getStringField(parsedInput, "pattern")
+			const action = getStringField(parsedInput, "action") ?? (pattern ? "search" : id ? "read" : "list")
+			return {
+				tool: "searchFiles",
+				regex: [`stored output: ${action}`, id, pattern].filter(Boolean).join(" "),
+			}
+		}
+
 		default: {
 			if (toolName.startsWith("team_")) {
 				return describeTeamTool(toolName, parsedInput)

@@ -198,6 +198,13 @@ export function formatToolInput(toolName: string, input: unknown): string {
 				return truncate(obj.path, 120);
 			}
 			break;
+		case "tool_output":
+			return truncate(
+				[obj.action, obj.id, obj.pattern]
+					.filter((part) => typeof part === "string" && part)
+					.join(" "),
+				120,
+			);
 		case "code_intelligence":
 			return truncate(
 				[obj.operation, obj.symbol ?? obj.query, obj.path]

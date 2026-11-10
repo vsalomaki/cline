@@ -14,8 +14,8 @@
 import {
 	CommandExitError,
 	CommandInterruptedError,
-	type CommandOutputFileOptions,
-	createCommandOutputFile,
+	type CommandOutputCaptureOptions,
+	createCommandOutputCapture,
 	createShellExecutor,
 	createShellTool,
 	resolveContextLimits,
@@ -252,7 +252,7 @@ export async function executeForeground(
 	foregroundCommands?: SdkForegroundCommandCoordinator,
 	terminalProfileId?: string,
 	autoProceedMs: number = FOREGROUND_COMMAND_AUTO_PROCEED_MS,
-	outputFileOptions?: Omit<CommandOutputFileOptions, "maxChars">,
+	outputContext?: CommandOutputCaptureOptions["context"],
 ): Promise<string> {
 	const terminalCommand = formatCommandForTerminal(command)
 
@@ -384,7 +384,11 @@ export async function executeForeground(
 		const process = terminalManager.runCommand(terminalInfo, terminalCommand)
 		const outputLines: string[] = []
 		let droppedLines = 0
-		const outputFile = createCommandOutputFile({ ...outputFileOptions, maxChars: maxOutputChars })
+		const outputFile = createCommandOutputCapture({
+			maxChars: maxOutputChars,
+			context: outputContext ?? { agentId: "" },
+			summary: terminalCommand,
+		})
 
 		// Accumulate output lines to return the full output once the command completes.
 		// The chat shows command output at completion, not incrementally.
@@ -393,8 +397,8 @@ export async function executeForeground(
 		// MAX_FULL_OUTPUT_SIZE — see VscodeTerminalProcess), so it needs its own cap:
 		// a long-running command emitting many lines must not accumulate them here
 		// without bound. Once the cap is hit, keep only the tail, since build/test
-		// failures usually appear at the end of output; the whole output goes to
-		// outputFile from then on.
+		// failures usually appear at the end of output; the capture keeps the whole
+		// output for the tool output store.
 		const maxBufferedLines = MAX_UNRETRIEVED_LINES
 		const bufferLine = (line: string): void => {
 			outputFile.append(`${line}\n`)
@@ -658,7 +662,7 @@ function createVscodeShellExecutor(
 			options.foregroundCommands,
 			profileId,
 			options.foregroundAutoProceedMs,
-			{ owner: context },
+			context,
 		)
 	}
 }

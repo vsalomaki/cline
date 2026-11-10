@@ -14,8 +14,8 @@ export interface StartSessionResult {
 }
 
 export {
-	type CommandOutputFileOptions,
-	createCommandOutputFile,
+	type CommandOutputCaptureOptions,
+	createCommandOutputCapture,
 	type SavedCommandOutput,
 	savedCommandOutputNotice,
 } from "../../../../sdk/packages/core/src/extensions/tools/executors/command-output-file"

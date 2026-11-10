@@ -662,7 +662,7 @@ describe("run_commands tool description", () => {
 
 		const onUnix = buildRunCommandsDescription("/bin/bash", false);
 		expect(onUnix).not.toContain("Windows");
-		expect(onUnix).toContain("grep/head/tail");
+		expect(onUnix).toContain("tool_output");
 	});
 
 	it("derives the createShellTool description from config.shell", () => {

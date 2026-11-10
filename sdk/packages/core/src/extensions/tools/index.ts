@@ -29,9 +29,9 @@ export {
 	createWebFetchTool,
 } from "./definitions";
 export {
-	type CommandOutputFile,
-	type CommandOutputFileOptions,
-	createCommandOutputFile,
+	type CommandOutputCapture,
+	type CommandOutputCaptureOptions,
+	createCommandOutputCapture,
 	type SavedCommandOutput,
 	savedCommandOutputNotice,
 } from "./executors/command-output-file";

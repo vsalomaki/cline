@@ -1,10 +1,17 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
 		environment: "node",
 		// Upstream tests expect telemetry and Cline services on; gate tests turn them off.
-		env: { CLINE_REMOTE_SERVICES: "on" },
+		env: {
+			CLINE_REMOTE_SERVICES: "on",
+			// Keeps the tool output store and other data out of the real data dir.
+			CLINE_DATA_DIR: mkdtempSync(join(tmpdir(), "cline-core-test-db-")),
+		},
 		include: ["src/**/*.test.ts"],
 		exclude: ["src/**/*.e2e.test.ts"],
 		// Process, Git, and SQLite integration coverage shares this suite with

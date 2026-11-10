@@ -1,7 +1,7 @@
 import { CommandExitError, CommandInterruptedError } from "@cline/core"
 import { EventEmitter } from "events"
 import * as fs from "fs"
-import * as os from "os"
+import * as path from "path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import * as vscode from "vscode"
 import type { VscodeTerminalManager } from "@/hosts/vscode/terminal/VscodeTerminalManager"
@@ -16,6 +16,19 @@ import {
 	PROCEED_LOG_MAX_BYTES,
 	VSCODE_FOREGROUND_RUN_COMMANDS_TIMEOUT_MS,
 } from "./vscode-run-commands-tool"
+
+interface TestToolOutputStore {
+	list(sessionId: string, limit: number): unknown[]
+	readText(sessionId: string, id: string): string | undefined
+	findByToolCall(sessionId: string, toolCallId: string): Record<string, unknown> | undefined
+}
+// /core is stubbed in unit tests, so load the real store by path.
+// A static import would pull SDK source into the tsc program.
+const storeModulePath = path.resolve(import.meta.dirname, "../../../../sdk/packages/core/src/services/tool-output/store.ts")
+const { MemoryToolOutputStore } = (await import(/* @vite-ignore */ storeModulePath)) as {
+	MemoryToolOutputStore: new () => TestToolOutputStore
+}
+type MemoryToolOutputStore = TestToolOutputStore
 
 const mocks = vi.hoisted(() => ({
 	existsSync: vi.fn<(path: fs.PathLike) => boolean>(),
@@ -174,15 +187,6 @@ describe("createVscodeRunCommandsTool", () => {
  * an EventEmitter that is also awaitable (mirroring mergePromise in
  * VscodeTerminalProcess.ts), emitting the given lines then completing.
  */
-async function withOutputDirectory<T>(run: (directory: string) => Promise<T>): Promise<T> {
-	const directory = fs.realpathSync(fs.mkdtempSync(`${os.tmpdir()}/cline-vscode-output-file-`))
-	try {
-		return await run(directory)
-	} finally {
-		fs.rmSync(directory, { recursive: true, force: true })
-	}
-}
-
 function createFakeTerminalProcess(options: { lines?: string[]; completionDetails?: TerminalCompletionDetails } = {}) {
 	const emitter = new EventEmitter()
 	let resolvePromise!: () => void
@@ -447,32 +451,40 @@ describe("executeForeground", () => {
 		const manyLines = Array.from({ length: 10_001 }, (_, i) => `line-${i}`)
 		const terminalManager = createFakeTerminalManager(createFakeTerminalProcess({ lines: manyLines }))
 
-		const result = await withOutputDirectory((directory) =>
-			executeForeground(
-				"noisy-cmd",
-				"/workspace",
-				terminalManager,
-				10_000_000,
-				undefined,
-				undefined,
-				undefined,
-				undefined,
-				{
-					directory,
-				},
-			),
+		const store = new MemoryToolOutputStore()
+		const result = await executeForeground(
+			"noisy-cmd",
+			"/workspace",
+			terminalManager,
+			10_000_000,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ agentId: "lead", sessionId: "session-1", toolCallId: "call-1", metadata: { toolOutputStore: store } },
 		)
 
+		expect(store.list("session-1", 10)).toHaveLength(1)
 		expect(result).not.toContain("line-0\n")
 		expect(result).toContain("line-10000")
 		expect(result).toContain("output truncated")
 	})
 
 	describe("output too long for the result", () => {
-		const savedPathPattern =
-			/The full output is saved to (\S+) for 24 hours; read line ranges from it with read_files or grep it instead of re-running the command/
+		const storedIdPattern = /stored as tool output ([0-9a-f]{8});/
 		const lines = (count: number, width = 0) => Array.from({ length: count }, (_, i) => `line-${i}${"x".repeat(width)}`)
-		const run = (lineList: string[], maxChars: number, directory: string, completionDetails?: TerminalCompletionDetails) =>
+		const contextFor = (store?: MemoryToolOutputStore) => ({
+			sessionId: "session-1",
+			agentId: "lead",
+			toolCallId: "call-9",
+			metadata: store ? { toolOutputStore: store } : undefined,
+		})
+		const run = (
+			lineList: string[],
+			maxChars: number,
+			store?: MemoryToolOutputStore,
+			completionDetails?: TerminalCompletionDetails,
+		) =>
 			executeForeground(
 				"build",
 				"/workspace",
@@ -482,71 +494,69 @@ describe("executeForeground", () => {
 				undefined,
 				undefined,
 				undefined,
-				{ directory, owner: { sessionId: "session-1", agentId: "lead", toolCallId: "call-9" } },
+				contextFor(store),
 			)
+		const storedText = (store: MemoryToolOutputStore, output: string) =>
+			store.readText("session-1", output.match(storedIdPattern)?.[1] as string)
 
-		it("saves every line from the first once more lines arrive than the buffer keeps", async () => {
-			await withOutputDirectory(async (directory) => {
-				const all = lines(600)
-				const result = await run(all, 100_000, directory)
+		it("stores every line from the first once more lines arrive than the buffer keeps", async () => {
+			const store = new MemoryToolOutputStore()
+			const all = lines(600)
+			const result = await run(all, 100_000, store)
 
-				const path = result.match(savedPathPattern)?.[1]
-				expect(path).toContain(`${directory}/cline-command-ssession1-alead-ccall9-`)
-				expect(fs.readFileSync(path as string, "utf8")).toBe(`${all.join("\n")}\n`)
-				expect(result.startsWith("[... output truncated:")).toBe(true)
-				expect(result).toContain("line-599")
-				expect(result).not.toContain("line-99\n")
+			expect(storedText(store, result)).toBe(`${all.join("\n")}\n`)
+			expect(store.findByToolCall("session-1", "call-9/command")).toMatchObject({
+				agentId: "lead",
+				toolName: "run_commands",
+				summary: "build",
 			})
+			expect(result.startsWith("[... output truncated:")).toBe(true)
+			expect(result).toContain("search it or read line ranges with tool_output")
+			expect(result).toContain("line-599")
+			expect(result).not.toContain("line-99\n")
 		})
 
-		it("saves the output once it outgrows the character limit", async () => {
-			await withOutputDirectory(async (directory) => {
-				const all = lines(50, 20)
-				const result = await run(all, 200, directory)
+		it("stores the output once it outgrows the character limit", async () => {
+			const store = new MemoryToolOutputStore()
+			const all = lines(50, 20)
+			const result = await run(all, 200, store)
 
-				const path = result.match(savedPathPattern)?.[1]
-				expect(fs.readFileSync(path as string, "utf8")).toBe(`${all.join("\n")}\n`)
-				expect(result).toContain("line-0")
-				expect(result).toContain("line-49")
-			})
+			expect(storedText(store, result)).toBe(`${all.join("\n")}\n`)
+			expect(result).toContain("line-0")
+			expect(result).toContain("line-49")
 		})
 
-		it("writes no file when the output fits", async () => {
-			await withOutputDirectory(async (directory) => {
-				const result = await run(["short"], 1000, directory)
+		it("stores nothing when the output fits", async () => {
+			const store = new MemoryToolOutputStore()
+			const result = await run(["short"], 1000, store)
 
-				expect(result).toBe("short")
-				expect(fs.readdirSync(directory)).toEqual([])
-			})
+			expect(result).toBe("short")
+			expect(store.list("session-1", 10)).toEqual([])
 		})
 
-		it("names the file when a failing command's output is truncated", async () => {
-			await withOutputDirectory(async (directory) => {
-				const error = await run(lines(600), 100_000, directory, { exitCode: 2 }).catch((caught: unknown) => caught)
+		it("names the stored output when a failing command's output is truncated", async () => {
+			const store = new MemoryToolOutputStore()
+			const error = await run(lines(600), 100_000, store, { exitCode: 2 }).catch((caught: unknown) => caught)
 
-				expect(error).toBeInstanceOf(CommandExitError)
-				const output = (error as InstanceType<typeof CommandExitError>).output
-				expect(output).toMatch(/^\[Command exited with code 2\]\n\[\.\.\. output truncated: \d+ chars total/)
-				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toContain("line-0\n")
-			})
+			expect(error).toBeInstanceOf(CommandExitError)
+			const output = (error as InstanceType<typeof CommandExitError>).output
+			expect(output).toMatch(/^\[Command exited with code 2\]\n\[\.\.\. output truncated: \d+ chars total/)
+			expect(storedText(store, output)).toContain("line-0\n")
 		})
 
-		it("names the file when the terminal closes mid-command", async () => {
-			await withOutputDirectory(async (directory) => {
-				const error = await run(lines(600), 100_000, directory, { terminalClosed: true }).catch(
-					(caught: unknown) => caught,
-				)
+		it("names the stored output when the terminal closes mid-command", async () => {
+			const store = new MemoryToolOutputStore()
+			const error = await run(lines(600), 100_000, store, { terminalClosed: true }).catch((caught: unknown) => caught)
 
-				expect(error).toBeInstanceOf(CommandExitError)
-				const output = (error as InstanceType<typeof CommandExitError>).output
-				expect(output).toMatch(
-					/^\[Terminal closed while the command was running; output may be incomplete\]\n\[\.\.\. output truncated:/,
-				)
-				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toContain("line-0\n")
-			})
+			expect(error).toBeInstanceOf(CommandExitError)
+			const output = (error as InstanceType<typeof CommandExitError>).output
+			expect(output).toMatch(
+				/^\[Terminal closed while the command was running; output may be incomplete\]\n\[\.\.\. output truncated:/,
+			)
+			expect(storedText(store, output)).toContain("line-0\n")
 		})
 
-		const abortAfter = async (lineList: string[], maxChars: number, directory: string) => {
+		const abortAfter = async (lineList: string[], maxChars: number, store: MemoryToolOutputStore) => {
 			const { process, emitLine } = createControllableTerminalProcess()
 			const terminalManager = {
 				getOrCreateTerminal: async () => ({ terminal: { show: () => {} } }) as never,
@@ -563,7 +573,7 @@ describe("executeForeground", () => {
 				undefined,
 				undefined,
 				undefined,
-				{ directory },
+				contextFor(store),
 			)
 			await waitFor(() => process.listenerCount("line") > 0)
 			for (const line of lineList) {
@@ -575,33 +585,29 @@ describe("executeForeground", () => {
 			return (error as InstanceType<typeof CommandInterruptedError>).output
 		}
 
-		it("keeps an aborted command's short output inline without a file", async () => {
-			await withOutputDirectory(async (directory) => {
-				const output = await abortAfter(["compiling", "linking"], 1000, directory)
+		it("keeps an aborted command's short output inline without storing it", async () => {
+			const store = new MemoryToolOutputStore()
+			const output = await abortAfter(["compiling", "linking"], 1000, store)
 
-				expect(output).toBe("[Command execution aborted]\ncompiling\nlinking")
-				expect(fs.readdirSync(directory)).toEqual([])
-			})
+			expect(output).toBe("[Command execution aborted]\ncompiling\nlinking")
+			expect(store.list("session-1", 10)).toEqual([])
 		})
 
-		it("names the file when an aborted command kept only the tail of its lines", async () => {
-			await withOutputDirectory(async (directory) => {
-				const all = lines(600)
-				const output = await abortAfter(all, 100_000, directory)
+		it("names the stored output when an aborted command kept only the tail of its lines", async () => {
+			const store = new MemoryToolOutputStore()
+			const all = lines(600)
+			const output = await abortAfter(all, 100_000, store)
 
-				expect(output).toMatch(/^\[Command execution aborted\]\n\[\.\.\. output truncated:/)
-				expect(output).toContain("line-599")
-				expect(fs.readFileSync(output.match(savedPathPattern)?.[1] as string, "utf8")).toBe(`${all.join("\n")}\n`)
-			})
+			expect(output).toMatch(/^\[Command execution aborted\]\n\[\.\.\. output truncated:/)
+			expect(output).toContain("line-599")
+			expect(storedText(store, output)).toBe(`${all.join("\n")}\n`)
 		})
 
-		it("keeps the dropped-lines notice when the file cannot be created", async () => {
-			await withOutputDirectory(async (directory) => {
-				const result = await run(lines(600), 100_000, `${directory}/missing`)
+		it("keeps the dropped-lines notice when the context has no store", async () => {
+			const result = await run(lines(600), 100_000)
 
-				expect(result.startsWith("[... 100 earlier lines dropped ...]\nline-100\n")).toBe(true)
-				expect(result).not.toContain("saved to")
-			})
+			expect(result.startsWith("[... 100 earlier lines dropped ...]\nline-100\n")).toBe(true)
+			expect(result).not.toContain("tool_output")
 		})
 	})
 
