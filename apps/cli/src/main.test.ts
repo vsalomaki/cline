@@ -1250,6 +1250,66 @@ describe("runCli lightweight command dispatch", () => {
 		);
 	});
 
+	it("continues a session headless when --id comes with a prompt", async () => {
+		process.argv = [
+			"bun",
+			"src/index.ts",
+			"--id",
+			"sess_123",
+			"--json",
+			"and now?",
+		];
+
+		const { runCli } = await import("./main");
+
+		await expect(runCli()).resolves.toBeUndefined();
+		expect(runtimeMocks.runInteractive).not.toHaveBeenCalled();
+		expect(runtimeMocks.runAgent).toHaveBeenCalledWith(
+			"and now?",
+			expect.any(Object),
+			expect.anything(),
+			expect.objectContaining({ resumeSessionId: "sess_123" }),
+		);
+	});
+
+	it("does not continue a session headless in zen mode", async () => {
+		process.argv = [
+			"bun",
+			"src/index.ts",
+			"--id",
+			"sess_123",
+			"--zen",
+			"and now?",
+		];
+
+		const { runCli } = await import("./main");
+
+		await expect(runCli()).resolves.toBeUndefined();
+		expect(runtimeMocks.runAgent).not.toHaveBeenCalled();
+	});
+
+	it("opens the TUI for --id with a prompt when --tui is set", async () => {
+		process.argv = [
+			"bun",
+			"src/index.ts",
+			"--id",
+			"sess_123",
+			"--tui",
+			"and now?",
+		];
+
+		const { runCli } = await import("./main");
+
+		await expect(runCli()).resolves.toBeUndefined();
+		expect(runtimeMocks.runAgent).not.toHaveBeenCalled();
+		expect(runtimeMocks.runInteractive).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.anything(),
+			"sess_123",
+			expect.objectContaining({ startupTarget: "chat" }),
+		);
+	});
+
 	it("opens history inside the interactive TUI for the history picker", async () => {
 		migrationNoticeMocks.getClineCliMigrationNotice.mockReturnValue({
 			id: "cline-cli-cline-pass-intro",

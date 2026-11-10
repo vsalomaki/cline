@@ -8,6 +8,7 @@ const sessionManagerMocks = vi.hoisted(() => ({
 	dispose: vi.fn(),
 	abort: vi.fn(),
 	getAccumulatedUsage: vi.fn(),
+	readMessages: vi.fn(),
 }));
 
 const hookMocks = vi.hoisted(() => ({
@@ -247,6 +248,124 @@ describe("runAgent", () => {
 		expect(startInput?.localRuntime).not.toHaveProperty(
 			"userInstructionService",
 		);
+	});
+
+	describe("continuing a saved session", () => {
+		const config = {
+			cwd: process.cwd(),
+			enableTools: [],
+			execution: { maxConsecutiveMistakes: 3 },
+			mode: "act",
+			modelId: "m",
+			outputMode: "text",
+			providerId: "p",
+			systemPrompt: "system",
+			thinking: false,
+			toolPolicies: { "*": { autoApprove: true } },
+			verbose: false,
+			workspaceRoot: process.cwd(),
+		} as never;
+
+		it("starts with the session's id and saved messages", async () => {
+			const saved = [{ role: "user", content: "earlier" }];
+			sessionManagerMocks.readMessages.mockResolvedValue(saved);
+			sessionManagerMocks.start.mockResolvedValue({
+				sessionId: "sess_123",
+				manifest: { session_id: "sess_123" },
+			});
+			sessionManagerMocks.send.mockResolvedValue({
+				text: "ok",
+				usage: { inputTokens: 1, outputTokens: 1 },
+				messages: [],
+				toolCalls: [],
+				iterations: 1,
+				finishReason: "completed",
+				model: { id: "m", provider: "p", info: {} },
+				durationMs: 1,
+			});
+			const { runAgent } = await import("./run-agent");
+
+			await runAgent("and now?", config, undefined, {
+				resumeSessionId: "sess_123",
+			});
+
+			expect(sessionManagerMocks.readMessages).toHaveBeenCalledWith("sess_123");
+			expect(sessionManagerMocks.start).toHaveBeenCalledWith(
+				expect.objectContaining({
+					config: expect.objectContaining({ sessionId: "sess_123" }),
+					initialMessages: saved,
+					interactive: false,
+				}),
+			);
+			expect(sessionManagerMocks.start.mock.calls[0]?.[0]).not.toHaveProperty(
+				"prompt",
+			);
+			expect(sessionManagerMocks.send).toHaveBeenCalledWith(
+				expect.objectContaining({ sessionId: "sess_123", prompt: "prompt" }),
+			);
+		});
+
+		it("reports only the follow-up's own usage", async () => {
+			const totals = (inputTokens: number) => ({
+				inputTokens,
+				outputTokens: inputTokens / 10,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+				totalCost: 0,
+			});
+			sessionManagerMocks.readMessages.mockResolvedValue([
+				{ role: "user", content: "earlier" },
+			]);
+			sessionManagerMocks.start.mockResolvedValue({
+				sessionId: "sess_123",
+				manifest: { session_id: "sess_123" },
+			});
+			sessionManagerMocks.getAccumulatedUsage
+				.mockResolvedValueOnce({ usage: totals(1_000) })
+				.mockResolvedValueOnce({ usage: totals(1_500) });
+			sessionManagerMocks.send.mockResolvedValue({
+				text: "ok",
+				usage: totals(500),
+				messages: [],
+				toolCalls: [],
+				iterations: 1,
+				finishReason: "completed",
+				model: { id: "m", provider: "p", info: {} },
+				durationMs: 1,
+			});
+			const { runAgent } = await import("./run-agent");
+
+			await runAgent(
+				"and now?",
+				{ ...(config as object), outputMode: "json" } as never,
+				undefined,
+				{ resumeSessionId: "sess_123" },
+			);
+
+			expect(outputMocks.emitJsonLine).toHaveBeenCalledWith(
+				"stdout",
+				expect.objectContaining({
+					type: "run_result",
+					sessionId: "sess_123",
+					usage: expect.objectContaining({
+						inputTokens: 500,
+						outputTokens: 50,
+					}),
+				}),
+			);
+		});
+
+		it("does not start a session when the saved one has no messages", async () => {
+			sessionManagerMocks.readMessages.mockResolvedValue([]);
+			const { runAgent } = await import("./run-agent");
+
+			await runAgent("and now?", config, undefined, {
+				resumeSessionId: "missing",
+			});
+
+			expect(sessionManagerMocks.start).not.toHaveBeenCalled();
+			expect(process.exitCode).toBe(1);
+		});
 	});
 
 	it("registers CLI capability factory through the CLI core facade", async () => {

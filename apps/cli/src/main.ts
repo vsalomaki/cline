@@ -79,6 +79,12 @@ import {
 } from "./utils/telemetry";
 import type { Config } from "./utils/types";
 
+function resumeOptions(
+	resumeSessionId: string | undefined,
+): [] | [{ resumeSessionId: string }] {
+	return resumeSessionId ? [{ resumeSessionId }] : [];
+}
+
 export function stdinHasPipedInput(): boolean {
 	if (process.stdin.isTTY) return false;
 	try {
@@ -748,7 +754,15 @@ export async function runCli(): Promise<void> {
 			return;
 		}
 		resumeSessionId = sessionId;
-		startupTarget = "chat";
+		// A prompt argument without --tui, --zen or --worktree continues the session headless.
+		const headlessFollowUp =
+			!!args.prompt &&
+			!args.interactive &&
+			args.mode !== "zen" &&
+			!args.worktree;
+		if (!headlessFollowUp) {
+			startupTarget = "chat";
+		}
 		process.env.CLINE_HOOK_AGENT_RESUME = "1";
 	} else {
 		delete process.env.CLINE_HOOK_AGENT_RESUME;
@@ -1255,7 +1269,12 @@ export async function runCli(): Promise<void> {
 					await runZen(pipedEffectivePrompt, config, userInstructionService);
 					return;
 				}
-				await runAgent(pipedEffectivePrompt, config, userInstructionService);
+				await runAgent(
+					pipedEffectivePrompt,
+					config,
+					userInstructionService,
+					...resumeOptions(resumeSessionId),
+				);
 				return;
 			}
 		}
@@ -1330,7 +1349,12 @@ export async function runCli(): Promise<void> {
 			return;
 		}
 
-		await runAgent(effectivePrompt, config, userInstructionService);
+		await runAgent(
+			effectivePrompt,
+			config,
+			userInstructionService,
+			...resumeOptions(resumeSessionId),
+		);
 		// Exit once agent is done in non-interactive mode
 		return;
 	} finally {
