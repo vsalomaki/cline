@@ -72,6 +72,7 @@ describe("public shell error boundary", () => {
 					result: "[Command terminated by signal SIGTERM]\npartial output",
 					error: "Command terminated by signal SIGTERM",
 					success: false,
+					duration: expect.any(Number),
 				},
 			]);
 		},

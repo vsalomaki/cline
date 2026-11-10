@@ -12,6 +12,7 @@ import { renameSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import type { AgentToolContext } from "@cline/shared";
 import { getToolOutputStoreFromContext } from "../../../services/tool-output/store";
+import { toolOutputSearchCall } from "../tool-output-tool";
 
 export const DETACHED_LOG_DIRECTORY_PREFIX = "cline-command-";
 export const DETACHED_LOG_FILENAME = "output.log";
@@ -98,6 +99,7 @@ export function createCommandOutputCapture(
 ): CommandOutputCapture {
 	const store = getToolOutputStoreFromContext(options.context);
 	const maxStoredChars = options.maxStoredChars ?? MAX_COMMAND_LOG_BYTES;
+	const startedAt = Date.now();
 	let chunks: string[] = [];
 	let storedChars = 0;
 	let totalChars = 0;
@@ -140,6 +142,7 @@ export function createCommandOutputCapture(
 					toolName: "run_commands",
 					summary: options.summary,
 					text: chunks.join("") + capNote,
+					durationMs: Date.now() - startedAt,
 				});
 				if (record) {
 					result = { id: record.id, totalChars, capped, maxStoredChars };
@@ -165,7 +168,7 @@ export function savedCommandOutputNotice(saved: SavedCommandOutput): string {
 		: "The full output is";
 	return (
 		`[... output truncated: ${saved.totalChars} chars total. ` +
-		`${what} stored as tool output ${saved.id}; ` +
-		"search it or read line ranges with tool_output instead of re-running the command ...]"
+		`${what} stored as tool output ${saved.id}${saved.capped ? "; later output was not stored" : ""}. ` +
+		`To see more of it, use ${toolOutputSearchCall(saved.id)} or read a line range with tool_output instead of re-running the command ...]`
 	);
 }

@@ -323,7 +323,7 @@ describe("shortening old tool results", () => {
 				conversation([turn("c0", "search_codebase", bigText("x"))]),
 			);
 			expect(stubText(prepared, "c0")).toBe(
-				"[Earlier search_codebase result shortened to save context: grep foo. 60 lines, 2900 chars, stored as tool output ab12cd34; search or read it with tool_output if you need it.]",
+				"[Earlier search_codebase result, shortened to save context: grep foo. 60 lines stored as tool output ab12cd34; search or read it with tool_output if you need it. It shows that call, not the current state.]",
 			);
 			expect(requested).toContain("c0");
 		});
@@ -373,6 +373,9 @@ describe("shortening old tool results", () => {
 			expect(stubText(prepared, "c0")).toMatch(
 				/with tool_output if you need it\. Read the file again for its current content\.\]$/,
 			);
+			expect(stubText(prepared, "c1")).toMatch(
+				/It shows that call, not the current state\.\]$/,
+			);
 			expect(stubText(prepared, "c1")).not.toContain("Read the file again");
 		});
 
@@ -393,7 +396,7 @@ describe("shortening old tool results", () => {
 				]),
 			);
 			expect(stubText(prepared, "c0")).toContain(
-				"(npm test: ok; npm run lint: Command exited with code 1; npm run build: failed)",
+				"npm test → ok; npm run lint → Command exited with code 1; npm run build → failed. ",
 			);
 		});
 
@@ -404,7 +407,9 @@ describe("shortening old tool results", () => {
 			const prepared = createBuilder().buildForApi(
 				conversation([turn("c0", "run_commands", JSON.stringify(results))]),
 			);
-			expect(stubText(prepared, "c0")).toContain("(ls: ok)");
+			expect(stubText(prepared, "c0")).toContain(
+				"shortened to save context: ls → ok. ",
+			);
 		});
 
 		it("omits the outcome when the result is not a list of command results", () => {
@@ -434,7 +439,9 @@ describe("shortening old tool results", () => {
 				]),
 			);
 			const stub = stubText(prepared, "c0") ?? "";
-			const status = /\((command number 0: ok.*…)\)\./.exec(stub)?.[1];
+			const status = /context: (command number 0 → ok.*…)\. \d+ lines/.exec(
+				stub,
+			)?.[1];
 			expect(status).toBeDefined();
 			expect(status?.length).toBeLessThanOrEqual(300);
 		});

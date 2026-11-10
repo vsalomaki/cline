@@ -1,7 +1,11 @@
 import type { AgentToolContext } from "@cline/shared";
 import { getToolOutputStoreFromContext } from "../../../services/tool-output/store";
 import type { RunCommandsView } from "../schemas";
-import { compilePattern, searchText } from "../tool-output-tool";
+import {
+	compilePattern,
+	searchText,
+	toolOutputSearchCall,
+} from "../tool-output-tool";
 import { truncateCommandOutput } from "./output-limits";
 
 const STORED_OUTPUT_ID = /stored as tool output ([0-9a-f]{8})/;
@@ -19,6 +23,7 @@ export interface CommandOutputViewOptions {
 	summary: string;
 	maxChars: number;
 	lineChars: number;
+	durationMs?: number;
 }
 
 export function hasCommandOutputView(view: RunCommandsView): boolean {
@@ -82,6 +87,7 @@ export function applyCommandOutputView(
 			toolName: "run_commands",
 			summary: options.summary,
 			text: full,
+			durationMs: options.durationMs,
 		})?.id;
 	}
 
@@ -136,9 +142,7 @@ export function applyCommandOutputView(
 
 	const where = !id
 		? "The rest of the output was not kept."
-		: storedCapped
-			? `The start of the output is stored as tool output ${id}; search or read it with tool_output.`
-			: `The full output is stored as tool output ${id}; search or read it with tool_output.`;
+		: `The ${storedCapped ? "start of the" : "full"} output is stored as tool output ${id}. To see other parts, use ${toolOutputSearchCall(id)} instead of running the command again.`;
 	const header = `[Showing ${shown.join(", ")} of ${lines.length} lines. ${where}]`;
 	return truncateCommandOutput([header, ...sections].join("\n"), {
 		maxChars: options.maxChars,

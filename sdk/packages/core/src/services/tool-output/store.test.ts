@@ -97,6 +97,15 @@ describe.each([
 	],
 	["MemoryToolOutputStore", (): ToolOutputStore => new MemoryToolOutputStore()],
 ])("%s", (_name, createStore) => {
+	it("keeps the duration when one is given", () => {
+		const store = createStore();
+		const timed = store.put(input({ durationMs: 24_000 }));
+		const untimed = store.put(input({ toolCallId: "call-2" }));
+
+		expect(store.get("s1", timed?.id as string)?.durationMs).toBe(24_000);
+		expect(store.get("s1", untimed?.id as string)?.durationMs).toBeUndefined();
+	});
+
 	it("stores a record and reads it back by id", () => {
 		const store = createStore();
 		const record = store.put(input());
@@ -244,6 +253,29 @@ describe("SqliteToolOutputStore", () => {
 
 		expect(reopened.get("s1", record?.id as string)).toEqual(record);
 		expect(reopened.readText("s1", record?.id as string)).toBe(input().text);
+	});
+
+	it("adds the duration column to a database created before it existed", () => {
+		const db = openDb("old-schema.db");
+		db.exec(`CREATE TABLE tool_outputs (
+			session_id TEXT NOT NULL, id TEXT NOT NULL, agent_id TEXT,
+			tool_call_id TEXT NOT NULL, tool_name TEXT NOT NULL, summary TEXT NOT NULL,
+			chars INTEGER NOT NULL, lines INTEGER NOT NULL, created_at INTEGER NOT NULL,
+			text TEXT NOT NULL, PRIMARY KEY (session_id, id)
+		)`);
+		db.prepare(
+			"INSERT INTO tool_outputs (session_id, id, tool_call_id, tool_name, summary, chars, lines, created_at, text) VALUES ('s1', 'old00001', 'c', 'run_commands', 'npm test', 1, 1, ?, 'x')",
+		).run(Date.now());
+
+		const store = new SqliteToolOutputStore(db);
+
+		expect(store.get("s1", "old00001")?.durationMs).toBeUndefined();
+		const record = store.put(input({ durationMs: 1_500 }));
+		expect(store.get("s1", record?.id as string)?.durationMs).toBe(1_500);
+
+		// A second process opening the file finds the column already added.
+		const other = new SqliteToolOutputStore(openDb("old-schema.db"));
+		expect(other.get("s1", record?.id as string)?.durationMs).toBe(1_500);
 	});
 
 	it("returns undefined instead of throwing when the write fails", () => {

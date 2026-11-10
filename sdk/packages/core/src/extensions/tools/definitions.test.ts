@@ -1,5 +1,5 @@
 import type { AgentToolContext, ITelemetryService } from "@cline/shared";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryToolOutputStore } from "../../services/tool-output/store";
 import { DEFAULT_CONTEXT_LIMITS } from "../../settings/context-limits";
 import {
@@ -767,6 +767,7 @@ describe("default run_commands tool", () => {
 				query: "ls",
 				result: "ran:ls",
 				success: true,
+				duration: expect.any(Number),
 			},
 		]);
 		expect(execute).toHaveBeenCalledTimes(1);
@@ -841,6 +842,7 @@ describe("default run_commands tool", () => {
 				query: "node -e console.log('ok')",
 				result: "ran:node:-e,console.log('ok')",
 				success: true,
+				duration: expect.any(Number),
 			},
 		]);
 		expect(execute).toHaveBeenCalledWith(
@@ -878,11 +880,17 @@ describe("default run_commands tool", () => {
 		);
 
 		expect(result).toEqual([
-			{ query: "pwd", result: "ran:pwd", success: true },
+			{
+				query: "pwd",
+				result: "ran:pwd",
+				success: true,
+				duration: expect.any(Number),
+			},
 			{
 				query: "node --version",
 				result: "ran:node:--version",
 				success: true,
+				duration: expect.any(Number),
 			},
 		]);
 		expect(execute).toHaveBeenNthCalledWith(
@@ -979,6 +987,7 @@ describe("default run_commands tool", () => {
 				query: "git status --short",
 				result: "ran:git:status,--short",
 				success: true,
+				duration: expect.any(Number),
 			},
 		]);
 		expect(execute).toHaveBeenCalledWith(
@@ -1013,6 +1022,7 @@ describe("default run_commands tool", () => {
 				query: "git status --short",
 				result: "ran:git status --short",
 				success: true,
+				duration: expect.any(Number),
 			},
 		]);
 	});
@@ -1041,6 +1051,7 @@ describe("default run_commands tool", () => {
 				result: "[Command exited with code 1]\nfailed assertion details",
 				error: "Command exited with code 1",
 				success: false,
+				duration: expect.any(Number),
 			},
 		]);
 	});
@@ -1082,6 +1093,7 @@ describe("default run_commands tool", () => {
 				query: expect.stringContaining("cd /app && python3"),
 				result: `ran:${expectedCommand}`,
 				success: true,
+				duration: expect.any(Number),
 			}),
 		]);
 	});
@@ -1568,6 +1580,7 @@ describe("default run_commands tool", () => {
 				result: "[Command timed out after 1000ms]\ncompiled 3 of 9",
 				error: "Command timed out after 1000ms",
 				success: false,
+				duration: expect.any(Number),
 			}),
 		]);
 		expect(capturedTimeoutEvents(telemetry)).toEqual([
@@ -2509,6 +2522,81 @@ describe("run_commands output views", () => {
 			expect(properties).toHaveProperty(field);
 		}
 		expect(tool.description).toContain("tail_lines");
+	});
+
+	let nowSpy: ReturnType<typeof vi.spyOn> | undefined;
+	afterEach(() => {
+		nowSpy?.mockRestore();
+		nowSpy = undefined;
+	});
+
+	function makeCommandsSlow(): void {
+		let now = 1_000_000;
+		nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+			now += 2_500;
+			return now;
+		});
+	}
+
+	it("notes that a filter pipe dropped output, naming the option to use instead", async () => {
+		makeCommandsSlow();
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => "last line");
+
+		const result = (await tool.execute(
+			{
+				commands: [
+					"npm test 2>&1 | tail -20",
+					'npm test | grep -E "a|b"',
+					"npm test",
+				],
+			} as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result).toContain(
+			"[The shell pipe `| tail` removed output before it was stored. On later runs, set the run_commands tail_lines option instead:",
+		);
+		expect(result[0].result).toContain(
+			"Run this command again only if the missing output is needed to finish the task and running it again is safe.]",
+		);
+		expect(result[1].result).toContain(
+			"set the run_commands grep option instead",
+		);
+		expect(result[2].result).toBe("last line");
+	});
+
+	it("tells a call that set the view option and also piped that the pipe removed output first", async () => {
+		makeCommandsSlow();
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => "not ok 1");
+
+		const result = (await tool.execute(
+			{ commands: ["npm test | grep 'not ok'"], grep: "not ok" } as never,
+			viewContext(store),
+		)) as Array<{ result: string }>;
+
+		expect(result[0].result).toContain(
+			"[The shell pipe `| grep` removed output before the grep option saw it, and the removed lines were not stored. On later runs, drop the pipe and use only grep. Do not run this command again just to change what is shown.]",
+		);
+	});
+
+	it("adds no notes for a command that finished quickly", async () => {
+		const store = new MemoryToolOutputStore();
+		const tool = createShellTool(async () => longOutput);
+
+		const piped = (await tool.execute(
+			{ commands: ["npm test | tail -5"] } as never,
+			{ ...viewContext(store), toolCallId: "call-2" },
+		)) as Array<{ result: string }>;
+		const pipedWithOption = (await tool.execute(
+			{ commands: ["npm test | grep FAIL"], grep: "FAIL" } as never,
+			{ ...viewContext(store), toolCallId: "call-3" },
+		)) as Array<{ result: string }>;
+
+		for (const [{ result }] of [piped, pipedWithOption]) {
+			expect(result).not.toContain("The shell pipe");
+		}
 	});
 
 	it("leaves the output alone without view options", async () => {

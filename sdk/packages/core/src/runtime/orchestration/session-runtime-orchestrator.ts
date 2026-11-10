@@ -1331,6 +1331,7 @@ export class SessionRuntime {
 			toolName: ctx.toolCall.toolName,
 			summary: describeToolCall(ctx.input),
 			text,
+			durationMs: ctx.durationMs,
 		});
 		this.storedOutputs.set(toolCallId, record);
 	}
