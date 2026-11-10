@@ -172,8 +172,11 @@ export interface AgentToolDefinition {
 	name: string;
 	description: string;
 	inputSchema: Record<string, unknown>;
-	/** Core may cache oversized output for bounded model recovery. Original output is retained. */
-	resultPolicy?: "cache-oversized";
+	/**
+	 * Core stores long text results so the model can search them with tool_output;
+	 * "no-store" opts out. "cache-oversized" behaves like the default.
+	 */
+	resultPolicy?: "cache-oversized" | "no-store";
 	lifecycle?: {
 		/**
 		 * Whether a successful call to this tool completes the current run.

@@ -26,10 +26,11 @@ import {
 	type ProcessStartTokenProbeResult,
 	probeProcessStartTokenAsync,
 } from "../../../runtime/process-start-token";
+import { describeToolCall } from "../../../services/tool-output/describe";
 import { TimeoutError } from "../helpers";
 import type { ShellExecutor } from "../types";
 import {
-	createCommandOutputFile,
+	createCommandOutputCapture,
 	DEFAULT_COMMAND_LOG_RETENTION_MS,
 	DETACHED_LOG_COMPLETED_FILENAME,
 	DETACHED_LOG_DIRECTORY_PREFIX,
@@ -430,14 +431,6 @@ export interface ShellExecutorOptions {
 
 	/** Process identity provider used to enable safe command detachment. */
 	processStartTokenProbe?: ProcessStartTokenProbe;
-
-	/**
-	 * Where output too long for the tool result is saved, kept for
-	 * detachedLogRetentionMs. The startup reaper only scans the default.
-	 *
-	 * @default os.tmpdir()
-	 */
-	outputFileDirectory?: string;
 }
 
 interface SpawnConfig {
@@ -709,7 +702,7 @@ function spawnAndCollect(
 	maxOutputChars: number,
 	combineOutput: boolean,
 	detachedLogRetentionMs: number,
-	outputFileDirectory: string | undefined,
+	commandSummary: string,
 	executionController?: RunCommandExecutionController,
 	processStartTokenProbe: ProcessStartTokenProbe = probeProcessStartTokenAsync,
 ): Promise<string> {
@@ -733,11 +726,10 @@ function spawnAndCollect(
 
 		const stdout = createRollingCollector(maxOutputChars);
 		const stderr = createRollingCollector(maxOutputChars);
-		const outputFile = createCommandOutputFile({
+		const outputFile = createCommandOutputCapture({
 			maxChars: maxOutputChars,
-			directory: outputFileDirectory,
-			retentionMs: detachedLogRetentionMs,
-			owner: context,
+			context,
+			summary: commandSummary,
 		});
 		const executionId = randomUUID();
 		const supportsDetachment = Boolean(
@@ -1152,7 +1144,6 @@ export function createShellExecutor(
 		combineOutput = true,
 		executionController,
 		processStartTokenProbe = probeProcessStartTokenAsync,
-		outputFileDirectory,
 	} = options;
 	const detachedLogRetentionMs = resolveDetachedLogRetentionMs(
 		options.detachedLogRetentionMs,
@@ -1188,7 +1179,7 @@ export function createShellExecutor(
 			maxOutputChars,
 			combineOutput,
 			detachedLogRetentionMs,
-			outputFileDirectory,
+			describeToolCall(command),
 			executionController,
 			processStartTokenProbe,
 		);

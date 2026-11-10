@@ -31,20 +31,18 @@ describe("synchronous model-only recovery", () => {
 		const messages = history(full);
 		const builder = new MessageBuilder({
 			maxToolResultChars: 500,
-			getToolResultRecovery: () => ({
-				uri: "cline://cache/session/result.result.txt",
-			}),
+			getToolResultRecovery: () => ({ outputId: "ab12cd34" }),
 		});
 		const prepared = builder.buildForApi(messages);
 		expect(prepared).not.toBeInstanceOf(Promise);
 		expect(JSON.stringify(result(prepared))).toContain(
-			"cline://cache/session/result.result.txt",
+			"The full result is stored as tool output ab12cd34. Use tool_output to search it",
 		);
 		expect(JSON.stringify(result(prepared))).not.toContain(full);
 		expect(result(messages).content).toBe(full);
 	});
 
-	it("bounds structured results made of many small fields without a live cache URI", () => {
+	it("bounds structured results made of many small fields without a stored output id", () => {
 		const rows = Array.from({ length: 300 }, (_, id) => ({
 			id,
 			title: "small item",
@@ -75,9 +73,7 @@ describe("synchronous model-only recovery", () => {
 		]);
 		const builder = new MessageBuilder({
 			maxToolResultChars: 500,
-			getToolResultRecovery: () => ({
-				uri: "cline://cache/session/result.result.txt",
-			}),
+			getToolResultRecovery: () => ({ outputId: "ab12cd34" }),
 		});
 		expect(result(builder.buildForApi(messages)).content).toContainEqual(image);
 		expect(result(messages).content).toContainEqual(image);
@@ -112,19 +108,19 @@ describe("synchronous model-only recovery", () => {
 						.map((entry) => entry.text)
 						.join("");
 		expect(Buffer.byteLength(text)).toBeLessThanOrEqual(maxTotalTextBytes);
-		expect(text).not.toContain("cline://cache/");
+		expect(text).not.toContain("tool_output");
 		expect(result(messages).content).toHaveLength(500000);
 	});
 
 	it("protects generated instructions within the aggregate budget", () => {
-		const uri = "cline://cache/session/result.result.txt";
+		const outputId = "ab12cd34";
 		const builder = new MessageBuilder({
 			maxToolResultChars: 1000,
 			maxTotalTextBytes: 1000,
-			getToolResultRecovery: () => ({ uri }),
+			getToolResultRecovery: () => ({ outputId }),
 		});
 		const prepared = builder.buildForApi(history("x".repeat(10000)));
-		expect(JSON.stringify(result(prepared))).toContain(uri);
+		expect(JSON.stringify(result(prepared))).toContain(outputId);
 		const entries = result(prepared).content as Array<{ text?: string }>;
 		expect(
 			entries.some((entry) => entry.text?.includes("provider request budget")),

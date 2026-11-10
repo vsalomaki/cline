@@ -1041,8 +1041,8 @@ export {
 	type CodeSymbol,
 	CommandExitError,
 	CommandInterruptedError,
-	type CommandOutputFile,
-	type CommandOutputFileOptions,
+	type CommandOutputCapture,
+	type CommandOutputCaptureOptions,
 	CommandSpawnError,
 	CommandTerminationError,
 	type CreateBuiltinToolsOptions,
@@ -1050,7 +1050,7 @@ export {
 	computePatchChanges,
 	createApplyPatchExecutor,
 	createBuiltinTools,
-	createCommandOutputFile,
+	createCommandOutputCapture,
 	createDefaultExecutors,
 	createDefaultShellExecutor,
 	createDefaultTools,
@@ -1096,6 +1096,7 @@ export {
 	ToolPresets,
 	truncateCommandOutput,
 } from "./extensions/tools";
+export { TOOL_OUTPUT_TOOL_NAME } from "./extensions/tools/tool-output-tool";
 export * from "./remote/remote-environments";
 export { ensureLoginShellPath } from "./remote/shell-path";
 export { isClineAccountFeatureEnabled } from "./services/feature-flags/cline-account-feature-flags";
@@ -1187,6 +1188,12 @@ export {
 	TelemetryService,
 	type TelemetryServiceOptions,
 } from "./services/telemetry/TelemetryService";
+export {
+	getToolOutputStore,
+	MIN_STORED_OUTPUT_CHARS,
+	type ToolOutputRecord,
+	type ToolOutputStore,
+} from "./services/tool-output/store";
 export {
 	createSessionCompactionState,
 	parseSessionCompactionState,

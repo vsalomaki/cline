@@ -33,6 +33,7 @@ describe("tool policy helpers", () => {
 			search_codebase: { autoApprove: true },
 			skills: { autoApprove: true },
 			submit_and_exit: { autoApprove: true },
+			tool_output: { autoApprove: true },
 		});
 	});
 

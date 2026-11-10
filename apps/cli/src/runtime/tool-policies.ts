@@ -11,6 +11,7 @@ const SAFE_AUTO_APPROVE_TOOL_NAMES = [
 	"search_codebase",
 	"skills",
 	"submit_and_exit",
+	"tool_output",
 ];
 
 const SAFE_AUTO_APPROVE_TOOLS = new Set<string>(SAFE_AUTO_APPROVE_TOOL_NAMES);

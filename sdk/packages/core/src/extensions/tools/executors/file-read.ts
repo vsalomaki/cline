@@ -8,14 +8,10 @@ import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import type { AgentToolContext } from "@cline/shared";
 import { resolveExistingFilePath } from "@cline/shared/storage";
 import { getFileReadLedger } from "../../../session/services/file-read-ledger";
-import {
-	TOOL_RESULT_CACHE_MISS,
-	ToolResultCache,
-} from "../../../session/services/tool-result-cache";
 import { getCodeIntelligence } from "../code-intelligence/problems-after-edit";
 import type { ReadFileRequest } from "../schemas";
 import type { FileReadExecutor } from "../types";
@@ -108,13 +104,13 @@ function getAbortError(signal: AbortSignal): Error {
 	return new Error("File read was aborted");
 }
 
-interface ReadWindowCaps {
+export interface ReadWindowCaps {
 	maxReadLines: number;
 	maxLineChars: number;
 	maxReadOutputChars: number;
 }
 
-async function readTextWindow(
+export async function readTextWindow(
 	stream: Readable,
 	includeLineNumbers: boolean,
 	startLine: number | null | undefined,
@@ -264,20 +260,6 @@ export function createFileReadExecutor(
 
 	return async (request: ReadFileRequest, context: AgentToolContext) => {
 		const { path: filePath, start_line, end_line } = request;
-		if (filePath.startsWith("cline://")) {
-			context.signal?.throwIfAborted();
-			const cache = context.metadata?.toolResultCache;
-			if (!(cache instanceof ToolResultCache))
-				throw new Error(TOOL_RESULT_CACHE_MISS);
-			return readTextWindow(
-				Readable.from([cache.read(filePath)]),
-				includeLineNumbers,
-				start_line,
-				end_line,
-				caps,
-				context.signal,
-			);
-		}
 		const initialPath = path.isAbsolute(filePath)
 			? path.normalize(filePath)
 			: path.resolve(options.cwd ?? process.cwd(), filePath);

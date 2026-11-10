@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "@cline/agents";
 import { createAgentRuntime } from "@cline/agents";
 import {
+	type AgentAfterToolContext,
 	type AgentConfig,
 	type AgentEvent,
 	type AgentExtension,
@@ -63,6 +64,7 @@ import type {
 	CodeIntelligenceProvider,
 	ProblemsAfterEditLevel,
 } from "../../extensions/tools/code-intelligence/types";
+import { createToolOutputTool } from "../../extensions/tools/tool-output-tool";
 import {
 	type ComposedPromptRule,
 	type ComposedSystemPrompt,
@@ -79,22 +81,25 @@ import {
 	captureMistakeLimitReached,
 	captureSessionErrorRecorded,
 } from "../../services/telemetry/core-events";
-import { toPersistedToolResultContent } from "../../session/persisted-tool-result-content";
+import { describeToolCall } from "../../services/tool-output/describe";
+import {
+	getToolOutputStore,
+	MIN_STORED_OUTPUT_CHARS,
+	type ToolOutputStore,
+} from "../../services/tool-output/store";
 import { FileReadLedger } from "../../session/services/file-read-ledger";
 import { FileWriteHistory } from "../../session/services/file-write-history";
 import {
-	DEFAULT_MAX_TOOL_RESULT_CHARS,
 	getMessageBuilderOptions,
 	MessageBuilder,
 } from "../../session/services/message-builder";
-import {
-	prepareToolResultPreview,
-	prepareToolResultRecovery,
-	ToolResultCache,
-} from "../../session/services/tool-result-cache";
+import { prepareToolResultRecovery } from "../../session/services/tool-result-cache";
 import { ConversationStore } from "../../session/stores/conversation-store";
 import { resolveCodeIntelligenceSettings } from "../../settings/code-intelligence";
-import type { ContextLimitOverrides } from "../../settings/context-limits";
+import {
+	type ContextLimitOverrides,
+	resolveContextLimits,
+} from "../../settings/context-limits";
 import { resolveToolCallSettings } from "../../settings/tool-calls";
 import {
 	agentMessagesToMessages,
@@ -361,6 +366,8 @@ export interface SessionRuntimeOrchestratorDeps {
 	readonly createAgentRuntimeImpl?: (
 		config: Parameters<typeof createAgentRuntime>[0],
 	) => AgentRuntime;
+	/** Test hook: defaults to the process-wide tool output store. */
+	readonly toolOutputStore?: ToolOutputStore;
 }
 
 /** Connection overrides applied via `updateConnection`. */
@@ -405,12 +412,13 @@ export class SessionRuntime {
 	// (services/agent-events.ts).
 	readonly telemetry?: ITelemetryService;
 	private readonly conversation: ConversationStore;
-	private readonly toolResultCache: ToolResultCache;
+	private readonly toolOutputs: ToolOutputStore;
+	private readonly toolOutputTool: AgentTool;
+	// Stored output id per tool call; the message builder asks on every request.
+	private readonly storedOutputIds = new Map<string, string | undefined>();
 	private readonly fileReadLedger: FileReadLedger | undefined;
 	private readonly fileWriteHistory: FileWriteHistory | undefined;
 	private readonly codeIntelligenceMetadata: Record<string, unknown>;
-	private cacheableToolNames = new Set<string>();
-	private readonly maxCachedResultChars: number;
 	private pendingTerminalError:
 		| Extract<AgentEvent, { type: "error" }>
 		| undefined;
@@ -514,9 +522,11 @@ export class SessionRuntime {
 			deps.createAgentRuntimeImpl ?? createAgentRuntime;
 
 		this.conversation = new ConversationStore(config.initialMessages);
-		this.toolResultCache = new ToolResultCache(
-			config.sessionId ?? this.agentId,
-		);
+		this.toolOutputs = deps.toolOutputStore ?? getToolOutputStore();
+		this.toolOutputTool = createToolOutputTool(
+			this.toolOutputs,
+			resolveContextLimits(config.contextLimits).tool,
+		) as unknown as AgentTool;
 		const toolCallSettings = resolveToolCallSettings(config);
 		this.fileReadLedger = toolCallSettings.readBeforeWrite
 			? new FileReadLedger()
@@ -531,14 +541,12 @@ export class SessionRuntime {
 		const messageBuilderOptions = getMessageBuilderOptions(
 			config.contextLimits,
 		);
-		this.maxCachedResultChars =
-			messageBuilderOptions.maxToolResultChars ?? DEFAULT_MAX_TOOL_RESULT_CHARS;
 		this.messageBuilder = new MessageBuilder({
 			...messageBuilderOptions,
-			getToolResultRecovery: (result) =>
-				this.cacheableToolNames.has(result.name ?? "")
-					? { uri: this.toolResultCache.uriFor(result.tool_use_id) }
-					: undefined,
+			getToolResultRecovery: (result) => {
+				const outputId = this.storedOutputId(result.tool_use_id);
+				return outputId ? { outputId } : undefined;
+			},
 		});
 		this.contributionRegistry = createContributionRegistry<
 			AgentExtension,
@@ -701,7 +709,6 @@ export class SessionRuntime {
 	}
 
 	private resetConversationBoundaryTrackers(): void {
-		this.toolResultCache.clear();
 		this.messageBuilder.resetConversationState();
 		this.mistakeTracker.reset();
 		this.loopTracker.reset();
@@ -805,7 +812,6 @@ export class SessionRuntime {
 			return;
 		}
 		this.shutdownCalled = true;
-		this.toolResultCache.clear();
 	}
 
 	// -------------------------------------------------------------------
@@ -1094,6 +1100,17 @@ export class SessionRuntime {
 			Array.from(mergedToolsByName.values()),
 			this.config.toolPolicies,
 		);
+		if (
+			availableTools.length > 0 &&
+			!mergedToolsByName.has(this.toolOutputTool.name)
+		) {
+			availableTools.push(
+				...filterAvailableExtensionTools(
+					[this.toolOutputTool],
+					this.config.toolPolicies,
+				),
+			);
+		}
 		const tools = toolCallingDisabled ? [] : availableTools;
 		const composedPrompt = await this.composeSystemPrompt(
 			new Set(tools.map((tool) => tool.name)),
@@ -1127,11 +1144,6 @@ export class SessionRuntime {
 		const initialMessages = messagesToAgentMessages(
 			this.conversation.getMessages(),
 		);
-		this.cacheableToolNames = new Set(
-			tools
-				.filter((tool) => tool.resultPolicy === "cache-oversized")
-				.map((tool) => tool.name.toLowerCase()),
-		);
 		const runtimeConfig = createAgentRuntimeConfig({
 			agentConfig: {
 				...this.config,
@@ -1148,7 +1160,7 @@ export class SessionRuntime {
 			toolContextMetadata: {
 				modelSupportsImages: modelSupportsImageInput(modelInfo ?? {}),
 				...this.config.toolContextMetadata,
-				toolResultCache: this.toolResultCache,
+				toolOutputStore: this.toolOutputs,
 				...(this.fileReadLedger ? { fileReadLedger: this.fileReadLedger } : {}),
 				...(this.fileWriteHistory
 					? { fileWriteHistory: this.fileWriteHistory }
@@ -1285,6 +1297,39 @@ export class SessionRuntime {
 		this.extensionsInitialized = true;
 	}
 
+	/** Lead and subagents share the root session id, so they share stored output. */
+	private get toolOutputKey(): string {
+		return this.config.sessionId ?? this.agentId;
+	}
+
+	private storedOutputId(toolCallId: string): string | undefined {
+		if (!this.storedOutputIds.has(toolCallId)) {
+			this.storedOutputIds.set(
+				toolCallId,
+				this.toolOutputs.findByToolCall(this.toolOutputKey, toolCallId)?.id,
+			);
+		}
+		return this.storedOutputIds.get(toolCallId);
+	}
+
+	/** Keeps a long text result for tool_output. */
+	private storeToolOutput(ctx: AgentAfterToolContext, output: unknown): void {
+		if (ctx.tool.resultPolicy === "no-store") return;
+		const { text } = prepareToolResultRecovery(output);
+		if (typeof text !== "string" || text.length < MIN_STORED_OUTPUT_CHARS)
+			return;
+		const toolCallId = ctx.toolCall.toolCallId;
+		const record = this.toolOutputs.put({
+			sessionId: this.toolOutputKey,
+			agentId: this.agentId,
+			toolCallId,
+			toolName: ctx.toolCall.toolName,
+			summary: describeToolCall(ctx.input),
+			text,
+		});
+		this.storedOutputIds.set(toolCallId, record?.id);
+	}
+
 	private createRuntimeHooks(): Partial<AgentRuntimeHooks> {
 		const hooks = mergeRuntimeHooks([
 			this.config.hooks,
@@ -1297,19 +1342,7 @@ export class SessionRuntime {
 			afterTool: async (ctx) => {
 				const control = await hooks.afterTool?.(ctx);
 				const result = control?.result ?? ctx.result;
-				if (ctx.tool.resultPolicy === "cache-oversized") {
-					const { text: previewText } = prepareToolResultPreview(
-						toPersistedToolResultContent(result.output),
-					);
-					if (
-						typeof previewText === "string" &&
-						previewText.length > this.maxCachedResultChars
-					) {
-						const { text } = prepareToolResultRecovery(result.output);
-						if (typeof text === "string")
-							this.toolResultCache.store(ctx.toolCall.toolCallId, text);
-					}
-				}
+				this.storeToolOutput(ctx, result.output);
 				return control;
 			},
 			beforeModel: async (ctx) => {
@@ -1440,7 +1473,6 @@ export class SessionRuntime {
 				break;
 			}
 			case "turn-started": {
-				this.toolResultCache.advanceIteration();
 				// Reset per-turn tool-outcome counters used by the
 				// MistakeTracker wiring. Parity with pre-Step-9
 				// agent.ts which accumulates per-iteration success/fail

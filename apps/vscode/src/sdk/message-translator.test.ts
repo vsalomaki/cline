@@ -4607,6 +4607,20 @@ describe("tool display paths are relativized to the cwd", () => {
 		expect(tool.path).toBe("src/a.ts")
 	})
 
+	it("renders a tool_output call as a search row, inferring the action", () => {
+		const search = parseTool(
+			translateSessionEvent(toolEvent("content_start", "tool_output", { id: "3f9a1c2b", pattern: "FAIL" }), stateWithCwd())
+				.messages[0].text,
+		)
+		expect(search.tool).toBe("searchFiles")
+		expect(search.regex).toBe("stored output: search 3f9a1c2b FAIL")
+
+		const list = parseTool(
+			translateSessionEvent(toolEvent("content_start", "tool_output", { action: "list" }), stateWithCwd()).messages[0].text,
+		)
+		expect(list.regex).toBe("stored output: list")
+	})
+
 	it("relativizes editor and delete_file paths", () => {
 		const editState = stateWithCwd()
 		const editResult = translateSessionEvent(

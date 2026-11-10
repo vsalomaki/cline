@@ -550,7 +550,7 @@ describe("SessionRuntime.getExtensionRegistry", () => {
 		);
 		await session.run("go");
 		const toolNames = observedTools.map((t) => t.name).sort();
-		expect(toolNames).toEqual(["config-tool-b", "ext-tool-a"]);
+		expect(toolNames).toEqual(["config-tool-b", "ext-tool-a", "tool_output"]);
 	});
 });
 
@@ -1409,7 +1409,10 @@ describe("SessionRuntime.run", () => {
 		await session.run("Answer normally or generate an image");
 
 		expect(configs).toHaveLength(1);
-		expect(configs[0]?.tools?.map((tool) => tool.name)).toEqual(["read_files"]);
+		expect(configs[0]?.tools?.map((tool) => tool.name)).toEqual([
+			"read_files",
+			"tool_output",
+		]);
 		expect(configs[0]?.completionPolicy).toEqual(completionPolicy);
 	});
 
