@@ -980,7 +980,7 @@ describe("createShellExecutor", () => {
 	});
 
 	describe("output too long for the result", () => {
-		const storedIdPattern = /stored as tool output ([0-9a-f]{8});/;
+		const storedIdPattern = /stored as tool output ([0-9a-f]{8})\./;
 
 		function storeContext(
 			store: MemoryToolOutputStore,
@@ -1011,9 +1011,7 @@ describe("createShellExecutor", () => {
 
 			const id = output.match(storedIdPattern)?.[1];
 			expect(id).toBeDefined();
-			expect(output).toContain(
-				"search it or read line ranges with tool_output",
-			);
+			expect(output).toContain("or read a line range with tool_output");
 			const expected = Array.from(
 				{ length: 2000 },
 				(_, i) => `line-${i}\n`,

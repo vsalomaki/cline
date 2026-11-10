@@ -84,6 +84,15 @@ describe("tool_output tool", () => {
 			);
 		});
 
+		it("shows how long a call took when that is known", async () => {
+			const { run, put } = setup();
+			const id = put("x\ny", { summary: "npm test", durationMs: 24_400 });
+
+			expect(await run({ action: "list" })).toBe(
+				`${id} run_commands: npm test (2 lines, 3 chars, took 24 s), just now`,
+			);
+		});
+
 		it("lists only the 50 newest", async () => {
 			const { run, put } = setup();
 			for (let n = 0; n < 55; n++) put(`text ${n}`, { summary: `cmd ${n}` });

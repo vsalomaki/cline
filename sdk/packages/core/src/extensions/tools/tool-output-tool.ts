@@ -17,6 +17,11 @@ import { readTextWindow } from "./executors/file-read";
 
 export const TOOL_OUTPUT_TOOL_NAME = "tool_output";
 
+/** A call the model can copy to search one stored output. */
+export function toolOutputSearchCall(id: string): string {
+	return `tool_output {"action": "search", "id": "${id}", "pattern": "FAIL|Error", "ignore_case": true}`;
+}
+
 const LIST_LIMIT = 50;
 const DEFAULT_CONTEXT_LINES = 2;
 const NOTES_RESERVE_CHARS = 300;
@@ -75,8 +80,19 @@ function formatAge(ms: number): string {
 	return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
+/** "0.8 s", "24 s". */
+function formatDuration(ms: number): string {
+	return ms < 10_000
+		? `${(ms / 1000).toFixed(1)} s`
+		: `${Math.round(ms / 1000)} s`;
+}
+
 function describeRecord(record: ToolOutputRecord): string {
-	return `${record.id} ${record.toolName}: ${record.summary} (${record.lines} lines, ${record.chars} chars)`;
+	const took =
+		record.durationMs === undefined
+			? ""
+			: `, took ${formatDuration(record.durationMs)}`;
+	return `${record.id} ${record.toolName}: ${record.summary} (${record.lines} lines, ${record.chars} chars${took})`;
 }
 
 function missingOutput(id: string): Error {
@@ -187,8 +203,9 @@ export function createToolOutputTool(
 			'action "list" shows stored outputs, newest first. ' +
 			'action "search" returns lines matching a regex pattern, numbered like grep -n with context_lines around each match, from one output (id) or from all of them. ' +
 			'action "read" returns a line range (start_line/end_line) of one output. ' +
-			"Search first, then read only a range the search pointed to. " +
-			"Use this instead of re-running a command, re-reading or re-fetching to see output again.",
+			"If you know the line range, read it directly; otherwise search for the specific text you need, such as a test name or an error message. " +
+			"Use this instead of running a command again or re-fetching a page to see more of its output. " +
+			"Stored output is a snapshot of that call: read files again for their current content, and run checks again after relevant changes.",
 		inputSchema: zodToJsonSchema(ToolOutputInputSchema),
 		execute: async (rawInput, context) => {
 			const input = validateWithZod(

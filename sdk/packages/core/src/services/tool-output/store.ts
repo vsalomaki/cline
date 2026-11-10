@@ -32,6 +32,8 @@ export interface ToolOutputRecord {
 	chars: number;
 	lines: number;
 	createdAt: number;
+	/** How long the call ran, when known. */
+	durationMs?: number;
 }
 
 export interface ToolOutputInput {
@@ -41,6 +43,7 @@ export interface ToolOutputInput {
 	toolName: string;
 	summary: string;
 	text: string;
+	durationMs?: number;
 }
 
 export interface ToolOutputStore {
@@ -78,7 +81,7 @@ function clampStoredText(text: string): string {
 }
 
 const RECORD_COLUMNS =
-	"id, session_id, agent_id, tool_call_id, tool_name, summary, chars, lines, created_at";
+	"id, session_id, agent_id, tool_call_id, tool_name, summary, chars, lines, created_at, duration_ms";
 
 function toRecord(row: Record<string, unknown>): ToolOutputRecord {
 	return {
@@ -91,6 +94,8 @@ function toRecord(row: Record<string, unknown>): ToolOutputRecord {
 		chars: Number(row.chars),
 		lines: Number(row.lines),
 		createdAt: Number(row.created_at),
+		durationMs:
+			typeof row.duration_ms === "number" ? row.duration_ms : undefined,
 	};
 }
 
@@ -120,8 +125,15 @@ export class SqliteToolOutputStore implements ToolOutputStore {
 			lines INTEGER NOT NULL,
 			created_at INTEGER NOT NULL,
 			text TEXT NOT NULL,
+			duration_ms INTEGER,
 			PRIMARY KEY (session_id, id)
 		)`);
+		try {
+			db.exec("ALTER TABLE tool_outputs ADD COLUMN duration_ms INTEGER");
+		} catch (error) {
+			// Created with the column, or another process added it first.
+			if (!String(error).includes("duplicate column name")) throw error;
+		}
 		db.exec(
 			"CREATE INDEX IF NOT EXISTS tool_outputs_call ON tool_outputs (session_id, tool_call_id)",
 		);
@@ -144,9 +156,10 @@ export class SqliteToolOutputStore implements ToolOutputStore {
 				chars: text.length,
 				lines: countLines(text),
 				createdAt: Date.now(),
+				durationMs: input.durationMs,
 			};
 			const insert = this.db.prepare(
-				`INSERT OR IGNORE INTO tool_outputs (${RECORD_COLUMNS}, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT OR IGNORE INTO tool_outputs (${RECORD_COLUMNS}, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			);
 			// Ids are short for the model's sake, so retry the rare clash within a session.
 			for (let attempt = 0; attempt < 5; attempt++) {
@@ -161,6 +174,7 @@ export class SqliteToolOutputStore implements ToolOutputStore {
 					record.chars,
 					record.lines,
 					record.createdAt,
+					record.durationMs ?? null,
 					text,
 				);
 				if (changes === 1) {
@@ -268,6 +282,7 @@ export class MemoryToolOutputStore implements ToolOutputStore {
 			chars: text.length,
 			lines: countLines(text),
 			createdAt: Date.now(),
+			durationMs: input.durationMs,
 		};
 		this.entries.set(this.key(input.sessionId, id), { record, text });
 		this.totalChars += text.length;

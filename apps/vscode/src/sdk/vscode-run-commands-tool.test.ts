@@ -471,7 +471,7 @@ describe("executeForeground", () => {
 	})
 
 	describe("output too long for the result", () => {
-		const storedIdPattern = /stored as tool output ([0-9a-f]{8});/
+		const storedIdPattern = /stored as tool output ([0-9a-f]{8})\./
 		const lines = (count: number, width = 0) => Array.from({ length: count }, (_, i) => `line-${i}${"x".repeat(width)}`)
 		const contextFor = (store?: MemoryToolOutputStore) => ({
 			sessionId: "session-1",
@@ -511,7 +511,7 @@ describe("executeForeground", () => {
 				summary: "build",
 			})
 			expect(result.startsWith("[... output truncated:")).toBe(true)
-			expect(result).toContain("search it or read line ranges with tool_output")
+			expect(result).toContain("or read a line range with tool_output")
 			expect(result).toContain("line-599")
 			expect(result).not.toContain("line-99\n")
 		})

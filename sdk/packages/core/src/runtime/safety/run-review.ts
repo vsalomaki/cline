@@ -158,7 +158,7 @@ export function formatRunReviewRequest(changes: Map<string, string>): string {
 	return [
 		"[SYSTEM] Before you give your final report, review the whole run. Files changed since this request started:",
 		...listed,
-		"Check each one against the request: read its diff (git diff, or the file itself), make sure nothing was emptied, deleted or reverted by mistake, and remove leftovers such as debug output, scratch files and commented-out code. If you have not run the checks that show the change works, run them now. Then give your final report: what changed, what you verified and how, and what is left unverified or unresolved.",
+		"Check each one against the request: read its diff (git diff, or the file itself), make sure nothing was emptied, deleted or reverted by mistake, and remove leftovers such as debug output, scratch files and commented-out code. Run the checks that show the change works if they have not run since your last edit. A check that already ran after it can be reused, since its output is stored and tool_output can search it; run it again only when something it depends on changed, that run was cut short, or its result looks flaky. If this review leads to another edit, run the checks that edit affects. Then give your final report: what changed, what you verified and how, and what is left unverified or unresolved.",
 	].join("\n");
 }
 

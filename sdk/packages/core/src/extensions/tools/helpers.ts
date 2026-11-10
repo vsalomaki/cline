@@ -312,6 +312,72 @@ export function normalizeRunCommandsInput(
 	return [validate];
 }
 
+const OUTPUT_FILTER_COMMAND = /^(head|tail|grep|egrep|fgrep|rg)(?=\s|$)/;
+
+interface ShellSegment {
+	text: string;
+	/** Reads the previous segment's output through a pipe. */
+	piped: boolean;
+}
+
+/**
+ * Splits a shell command at pipes and at `;`, `&&`, `||` and newlines,
+ * ignoring those inside quotes or escaped. Everything from a heredoc (`<<`)
+ * on stays one segment, since its body is text, not shell syntax.
+ */
+function splitShellCommand(command: string): ShellSegment[] {
+	const segments: ShellSegment[] = [];
+	let quote: "'" | '"' | undefined;
+	let piped = false;
+	let segmentStart = 0;
+	for (let index = 0; index < command.length; index++) {
+		const char = command[index];
+		if (quote) {
+			if (char === quote) quote = undefined;
+			else if (char === "\\" && quote === '"') index++;
+			continue;
+		}
+		if (char === "\\") {
+			index++;
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		const pair = command.slice(index, index + 2);
+		if (pair === "<<") break;
+		const isSeparator =
+			char === ";" || char === "\n" || pair === "&&" || pair === "||";
+		const isPipe = char === "|" && !isSeparator;
+		if (!isSeparator && !isPipe) continue;
+		segments.push({ text: command.slice(segmentStart, index).trim(), piped });
+		piped = isPipe;
+		if (pair === "&&" || pair === "||" || pair === "|&") index++;
+		segmentStart = index + 1;
+	}
+	segments.push({ text: command.slice(segmentStart).trim(), piped });
+	return segments;
+}
+
+function filterOf(segment: ShellSegment): string | undefined {
+	return segment.piped
+		? OUTPUT_FILTER_COMMAND.exec(segment.text)?.[1]
+		: undefined;
+}
+
+/**
+ * The head, tail or grep a shell command pipes output into, if any. Pipes
+ * inside quotes (`grep -E "a|b"`), `||` and heredoc bodies are not pipes.
+ */
+export function findOutputFilterPipe(command: string): string | undefined {
+	for (const segment of splitShellCommand(command)) {
+		const filter = filterOf(segment);
+		if (filter) return filter;
+	}
+	return undefined;
+}
+
 /** The view options of a run_commands call; anything malformed is ignored. */
 export function normalizeRunCommandsView(input: unknown): RunCommandsView {
 	if (!input || typeof input !== "object" || Array.isArray(input)) return {};

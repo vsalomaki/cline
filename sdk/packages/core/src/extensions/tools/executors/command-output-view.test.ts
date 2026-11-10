@@ -304,7 +304,7 @@ describe("applyCommandOutputView", () => {
 	});
 
 	it("notes when matches were cut off by the budget", () => {
-		const { options } = setup({ maxChars: 400 });
+		const { options } = setup({ maxChars: 800 });
 		const output = Array.from({ length: 500 }, (_, index) => `match ${index}`);
 		const result = applyCommandOutputView(
 			output.join("\n"),
@@ -330,7 +330,7 @@ describe("applyCommandOutputView", () => {
 			});
 			expect(store.readText(SESSION, record?.id ?? "")).toBe(output);
 			expect(result).toContain(
-				`The full output is stored as tool output ${record?.id}; search or read it with tool_output.]`,
+				`The full output is stored as tool output ${record?.id}. To see other parts, use tool_output {"action": "search", "id": "${record?.id}", "pattern": "FAIL|Error", "ignore_case": true} instead of running the command again.]`,
 			);
 		});
 
@@ -385,7 +385,7 @@ describe("applyCommandOutputView", () => {
 				"--- 1 lines match /SECRET/ ---\n500: SECRET only in the middle",
 			);
 			expect(result).toContain("of 1000 lines.");
-			expect(result).toContain(`stored as tool output ${stored?.id};`);
+			expect(result).toContain(`stored as tool output ${stored?.id}.`);
 			expect(store.list(SESSION, 10)).toHaveLength(1);
 		});
 

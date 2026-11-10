@@ -168,6 +168,23 @@ describe("createCommandOutputCapture", () => {
 		expect(store.list("sess_1", 10)).toEqual([]);
 	});
 
+	it("says later output was not stored when the stored copy is capped", () => {
+		const output = truncateCommandOutput("x".repeat(100), {
+			maxChars: 20,
+			savedOutput: {
+				id: "ab12cd34",
+				totalChars: 100,
+				capped: true,
+				maxStoredChars: 10 * 1024 * 1024,
+			},
+		});
+
+		expect(output).toContain(
+			"The first 10 MB of output is stored as tool output ab12cd34; later output was not stored. To see more of it, use tool_output",
+		);
+		expect(output).not.toContain("The full output");
+	});
+
 	it("puts the id and tool_output in the truncation notice", () => {
 		const output = truncateCommandOutput("x".repeat(100), {
 			maxChars: 20,
@@ -181,7 +198,7 @@ describe("createCommandOutputCapture", () => {
 
 		expect(output).toBe(
 			`${"x".repeat(10)}\n` +
-				"[... output truncated: 100 chars total. The full output is stored as tool output ab12cd34; search it or read line ranges with tool_output instead of re-running the command ...]\n" +
+				'[... output truncated: 100 chars total. The full output is stored as tool output ab12cd34. To see more of it, use tool_output {"action": "search", "id": "ab12cd34", "pattern": "FAIL|Error", "ignore_case": true} or read a line range with tool_output instead of re-running the command ...]\n' +
 				"x".repeat(10),
 		);
 	});

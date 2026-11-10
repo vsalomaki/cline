@@ -28,6 +28,7 @@ import {
 } from "./executors/bash";
 import { applyCommandOutputView } from "./executors/command-output-view";
 import {
+	findOutputFilterPipe,
 	formatError,
 	formatReadFileQuery,
 	formatRunCommandQuery,
@@ -234,13 +235,24 @@ async function executeShellCommands(
 						),
 					timeoutMs,
 				);
-				const shapeOutput = (output: string) =>
-					applyCommandOutputView(output, view, {
+				const filter =
+					typeof command === "string"
+						? findOutputFilterPipe(command)
+						: undefined;
+				const commandText = formatRunCommandQuery(command);
+				const shapeOutput = (output: string) => {
+					const shaped = applyCommandOutputView(output, view, {
 						context,
-						summary: formatRunCommandQuery(command),
+						summary: commandText,
 						maxChars: limits.commandOutputChars,
 						lineChars: limits.lineChars,
+						durationMs: Date.now() - startedAt,
 					});
+					const slow = Date.now() - startedAt >= NOTE_MIN_DURATION_MS;
+					return filter && slow
+						? `${shaped}\n${filterPipeNote(filter, view)}`
+						: shaped;
+				};
 				const commandContext: AgentToolContext = {
 					...context,
 					signal: context.signal
@@ -270,6 +282,7 @@ async function executeShellCommands(
 						query,
 						result: shapeOutput(output),
 						success: true,
+						duration: Date.now() - startedAt,
 					};
 				} catch (error) {
 					const timedOutAfterMs =
@@ -295,6 +308,7 @@ async function executeShellCommands(
 							result: shapeOutput(error.output),
 							error: error.message,
 							success: false,
+							duration: Date.now() - startedAt,
 						};
 					}
 					const msg = formatError(error);
@@ -479,8 +493,31 @@ export function createListFilesTool(
 	});
 }
 
+const VIEW_OPTION_FOR_FILTER: Record<string, keyof RunCommandsView> = {
+	head: "head_lines",
+	tail: "tail_lines",
+};
+
+/** The pipe note only matters for commands this slow. */
+const NOTE_MIN_DURATION_MS = 2_000;
+
+function filterPipeNote(filter: string, view: RunCommandsView): string {
+	const option = VIEW_OPTION_FOR_FILTER[filter] ?? "grep";
+	if (view[option] !== undefined) {
+		return (
+			`[The shell pipe \`| ${filter}\` removed output before the ${option} option saw it, and the removed lines were not stored. ` +
+			`On later runs, drop the pipe and use only ${option}. Do not run this command again just to change what is shown.]`
+		);
+	}
+	return (
+		`[The shell pipe \`| ${filter}\` removed output before it was stored. ` +
+		`On later runs, set the run_commands ${option} option instead: it shows the same part and stores the whole output. ` +
+		"Run this command again only if the missing output is needed to finish the task and running it again is safe.]"
+	);
+}
+
 const RUN_COMMANDS_VIEW_INSTRUCTIONS =
-	"To see only part of a long output, set head_lines, tail_lines or grep (with context_lines) instead of piping through head, tail or grep: the result shows that part and the full output is still stored. " +
+	"To see only part of a long output, set head_lines, tail_lines or grep (with context_lines) instead of piping through head, tail or grep: the result shows that part and the whole output is stored. " +
 	'For example, run a test suite as {"commands": ["npm test"], "tail_lines": 40, "grep": "FAIL|Error"}. ' +
 	"A successful result means exit code 0 and a failed one names its exit code, so do not run a command again just to check it. ";
 
@@ -525,8 +562,8 @@ export function buildRunCommandsDescription(
 		return (
 			`Run non-interactive shell commands from the root of the workspace${isWindows ? " in Windows environment" : ""}. ` +
 			sharedInstructions +
-			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. ` +
 			RUN_COMMANDS_VIEW_INSTRUCTIONS +
+			`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and stored under an id named in the result; search or read it with tool_output instead of running the command again. ` +
 			`Commands run through ${shellName}; quote paths and arguments for ${executable} and use ${sequencingOperator} to sequence commands. ` +
 			`Write commands directly; do not wrap them in another ${wrapper} invocation. ` +
 			"Only start another shell when you intentionally need a different shell or a separate process. " +
@@ -545,9 +582,8 @@ export function buildRunCommandsDescription(
 		sharedInstructions +
 		environmentNote +
 		"Commands should be properly shell-escaped and targeted to avoid error or timeout. Include multiple commands in the same call when they are independent complete shell commands and safe to run concurrently; multiline scripts and heredocs must be a single command string. When independent reads, searches, or edits are also needed, call those tools in the same response. " +
-		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and the full output is stored under an id named in the result; search or read it with tool_output instead of running the command again. ` +
 		RUN_COMMANDS_VIEW_INSTRUCTIONS +
-		"For long-running commands, run them in background and redirect output to a tmp file that you can read from later."
+		`Output beyond ~${Math.round(limits.commandOutputChars / 1000)}k characters is middle-truncated (start and end preserved) and stored under an id named in the result; search or read it with tool_output instead of running the command again.`
 	);
 }
 

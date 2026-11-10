@@ -575,13 +575,12 @@ export class MessageBuilder {
 		const stored = this.getStoredToolOutput?.(block.tool_use_id);
 		if (!stored) return undefined;
 		const status = describeCommandResults(text);
-		const reread = this.isReadTool(toolName)
-			? " Read the file again for its current content."
-			: "";
+		const current = this.isReadTool(toolName)
+			? "Read the file again for its current content."
+			: "It shows that call, not the current state.";
 		return (
-			`[Earlier ${toolName} result shortened to save context: ${stored.summary}` +
-			`${status ? ` (${status})` : ""}. ${stored.lines} lines, ${stored.chars} chars, ` +
-			`stored as tool output ${stored.id}; search or read it with tool_output if you need it.${reread}]`
+			`[Earlier ${toolName} result, shortened to save context: ${status ?? stored.summary}. ` +
+			`${stored.lines} lines stored as tool output ${stored.id}; search or read it with tool_output if you need it. ${current}]`
 		);
 	}
 
@@ -1709,7 +1708,7 @@ function describeCommandResults(text: string): string | undefined {
 				: typeof error === "string" && error
 					? error
 					: "failed";
-		parts.push(typeof query === "string" ? `${query}: ${outcome}` : outcome);
+		parts.push(typeof query === "string" ? `${query} → ${outcome}` : outcome);
 	}
 	const joined = parts.join("; ");
 	return joined.length > MAX_CLEARED_STATUS_CHARS
